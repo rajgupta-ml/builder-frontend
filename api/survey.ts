@@ -27,13 +27,11 @@ export const surveyApi = {
 
   // Quota Methods
   getQuotas: async (surveyId: string): Promise<SurveyQuota[]> => {
-      console.log("I reach get survey quotas");
       const response = await apiClient.get<{ data: SurveyQuota[] }>(`/surveys/${surveyId}/quotas`);
       return response.data.data;
   },
 
   createQuota: async (surveyId: string, data: { rule: any; limit: number; enabled?: boolean }): Promise<SurveyQuota> => {
-      console.log("I reach create survey quotas");
       const response = await apiClient.post<{ data: SurveyQuota }>(`/surveys/${surveyId}/quotas`, data);
       return response.data.data;
   },
