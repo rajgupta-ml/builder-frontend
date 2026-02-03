@@ -3,18 +3,18 @@ import { Survey, SurveyQuota } from "@/src/shared/types/survey";
 
 export const surveyApi = {
   getSurveys: async (): Promise<Survey[]> => {
-    const response = await apiClient.get<{ surveys: Survey[] }>("/surveys");
-    return response.data.surveys;
+    const response = await apiClient.get<{ data: Survey[] }>("/surveys");
+    return response.data.data;
   },
 
   getSurvey: async (id: string): Promise<Survey> => {
-    const response = await apiClient.get<{ survey: Survey }>(`/surveys/${id}`);
-    return response.data.survey;
+    const response = await apiClient.get<{ data: Survey }>(`/surveys/${id}`);
+    return response.data.data;
   },
 
   createSurvey: async (data: { name: string; description?: string; client: string }): Promise<Survey> => {
-    const response = await apiClient.post<{ survey: Survey }>("/surveys", data);
-    return response.data.survey;
+    const response = await apiClient.post<{ data: Survey }>("/surveys", data);
+    return response.data.data;
   },
 
   updateSurvey: async (id: string, data: { name?: string; description?: string; redirectUrl?: string | null; overQuotaUrl?: string | null; securityTerminateUrl?: string | null; globalQuota?: number | null }): Promise<void> => {

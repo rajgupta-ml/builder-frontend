@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { surveyApi } from "@/api/survey";
 import { toast } from "sonner";
 import { IconCheck, IconX } from "@tabler/icons-react";
@@ -14,6 +15,7 @@ interface NewSurveyModalProps {
 }
 
 export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurveyModalProps) {
+    const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
         name: "",
@@ -37,11 +39,16 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
                 return;
             }
 
-            await surveyApi.createSurvey(validation.data);
+            const res = await surveyApi.createSurvey(validation.data);
             toast.success("Survey created successfully!");
             onSuccess();
             onClose();
             setFormData({ name: "", description: "", client: "" });
+
+            // Redirect to design area
+            if (res && res.id) {
+                router.push(`/dashboard/surveys/${res.id}`);
+            }
         } catch (error) {
             console.error("Failed to create survey:", error);
             toast.error("Failed to create survey. Please try again.");

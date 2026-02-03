@@ -4,15 +4,11 @@ import { useParams, useRouter } from 'next/navigation';
 import apiClient from '@/lib/api-client';
 import {
     ReactFlow,
-    applyNodeChanges,
-    applyEdgeChanges,
     addEdge,
     Background,
     Controls,
     type Node as ReactFlowNode,
     type Edge as ReactFlowEdge,
-    type OnNodesChange,
-    type OnEdgesChange,
     type OnConnect,
     ReactFlowProvider,
     useReactFlow,
@@ -90,6 +86,7 @@ function SurveyFlow() {
     const [workflowId, setWorkflowId] = useState<string | null>(null);
     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'unsaved'>('saved');
     const [publishStatus, setPublishStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
+    const [survey, setSurvey] = useState<any>(null);
 
     // 3. Modal States
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -97,8 +94,12 @@ function SurveyFlow() {
     const [isShareOpen, setIsShareOpen] = useState(false);
     const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
 
-    const testLink = `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:3000'}/s/${surveyId}?mode=test`;
-    const liveLink = `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:3000'}/s/${surveyId}`;
+    const testLink = survey?.testSlug
+        ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}`
+        : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}?mode=test`;
+    const liveLink = survey?.slug
+        ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.slug}`
+        : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}`;
 
     // 4. Load Data
     useEffect(() => {
@@ -108,6 +109,7 @@ function SurveyFlow() {
             try {
                 // Fetch Survey Status
                 const surveyRes = await apiClient.get(`/surveys/${surveyId}`);
+                setSurvey(surveyRes.data.data);
                 setPublishStatus(surveyRes.data.data.status);
 
                 // Fetch Workflow

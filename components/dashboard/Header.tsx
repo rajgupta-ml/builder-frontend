@@ -38,7 +38,7 @@ export const DashboardHeader = () => {
             <NewSurveyModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onSuccess={() => window.location.reload()} // Quick way to refresh list
+                onSuccess={() => { }} // Modal handles redirect
             />
 
             <header className="h-20 bg-background/50 backdrop-blur-md border-b border-border px-8 flex items-center justify-between sticky top-0 z-30">
