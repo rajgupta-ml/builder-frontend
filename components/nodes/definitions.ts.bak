@@ -1,0 +1,324 @@
+import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers } from '@tabler/icons-react';
+
+export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
+export type PropertyType = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'color' | 'options' | 'condition' | 'stepBuilder';
+
+export interface PropertyField {
+    name: string;
+    label: string;
+    type: PropertyType;
+    placeholder?: string;
+    helperText?: string;
+    defaultValue?: any;
+    options?: { label: string, value: string }[]; // For select type
+}
+
+export interface NodeDefinition {
+    type: string;
+    label: string;
+    description: string;
+    icon: React.ElementType;
+    category: NodeCategory;
+    component?: React.ComponentType<any>; 
+    properties: PropertyField[];
+}
+
+// Category Configuration
+export const CATEGORY_CONFIG: Record<NodeCategory, { label: string, icon: React.ElementType }> = {
+    input: { label: 'Input Fields', icon: IconForms },
+    choice: { label: 'Choices', icon: IconListCheck },
+    logic: { label: 'Logic', icon: IconGitBranch },
+    media: { label: 'Media', icon: IconPhoto },
+    flow: { label: 'Flow', icon: IconArrowMerge } // New category for Start/End
+};
+
+// Common properties used across multiple nodes
+const commonProperties: PropertyField[] = [
+    { name: 'label', label: 'Field Label', type: 'text', placeholder: 'e.g., What is your name?', defaultValue: 'New Question' },
+    { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Helper text for the user', defaultValue: '' },
+    { name: 'required', label: 'Required', type: 'switch', defaultValue: false },
+    { name: 'condition', label: 'Logic Applied To This Node', type: 'condition', defaultValue: { logicType: 'AND', rules: [] }, helperText: 'Define when this node should be shown (Skip Logic)' },
+];
+
+export const NODE_DEFINITIONS: NodeDefinition[] = [
+    // Inputs
+    { 
+        type: 'textInput', 
+        label: 'Text Answer', 
+        description: 'Capture text responses', 
+        icon: IconTextCaption, 
+        category: 'input',
+        properties: [
+            ...commonProperties,
+            { name: 'placeholder', label: 'Placeholder', type: 'text', placeholder: 'e.g., Type here...', defaultValue: '' },
+            { name: 'longAnswer', label: 'Long Answer (Multi-line)', type: 'switch', defaultValue: false }
+        ]
+    },
+    {
+        type: 'multiInput',
+        label: 'Multi-Input',
+        description: 'Multiple fields in one screen',
+        icon: IconForms,
+        category: 'input',
+        properties: [
+            ...commonProperties,
+            // We'll treat this as a list of fields where each has a label. 
+            // For MVP, we'll use the 'options' type but renaming it conceptually in the UI or strict new type.
+            // Let's create a specific property type for this to include more meta data if needed later.
+            { 
+                name: 'fields', 
+                label: 'Input Fields', 
+                type: 'options', // Re-using options for now: label = Field Label, value = Field Type (text, email, number) 
+                defaultValue: [
+                    { label: 'First Name', value: 'text' }, 
+                    { label: 'Last Name', value: 'text' }
+                ],
+                helperText: 'Value column represents input type (text, number, email)'
+            }
+        ]
+    },
+
+    // ... (Number, Email, Date stay same)
+    { 
+        type: 'numberInput', 
+        label: 'Number', 
+        description: 'Input for numerical values', 
+        icon: IconNumbers, 
+        category: 'input',
+        properties: [
+            ...commonProperties,
+            { name: 'min', label: 'Minimum Value', type: 'number' },
+            { name: 'max', label: 'Maximum Value', type: 'number' }
+        ]
+    },
+    { 
+        type: 'emailInput', 
+        label: 'Email', 
+        description: 'Validate email addresses', 
+        icon: IconMail, 
+        category: 'input',
+        properties: [...commonProperties]
+    },
+    { 
+        type: 'dateInput', 
+        label: 'Date Picker', 
+        description: 'Select dates from a calendar', 
+        icon: IconCalendar, 
+        category: 'input',
+        properties: [...commonProperties]
+    },
+
+    // Choices
+    { 
+        type: 'singleChoice', 
+        label: 'Single Choice', 
+        description: 'Select one option from a list', 
+        icon: IconListDetails, 
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { name: 'options', label: 'Options', type: 'options', defaultValue: [{ label: 'Option 1', value: 'opt1' }, { label: 'Option 2', value: 'opt2' }] },
+            { name: 'allowOther', label: 'Allow "Other" Option', type: 'switch', defaultValue: false },
+            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', defaultValue: 'Other (Please specify)', helperText: 'Label for the open-ended option' }
+        ]
+    },
+    { 
+        type: 'ranking',
+        label: 'Ranking',
+        description: 'Rank options in order',
+        icon: IconListNumbers,
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { name: 'options', label: 'Items to Rank', type: 'options', defaultValue: [{ label: 'Item A', value: 'a' }, { label: 'Item B', value: 'b' }, { label: 'Item C', value: 'c' }] }
+        ]
+    },
+    { 
+        type: 'consent',
+        label: 'Consent',
+        description: 'Terms and agreement checkbox',
+        icon: IconCheckbox,
+        category: 'choice',
+        properties: [
+            { name: 'label', label: 'Title', type: 'text', defaultValue: 'Terms of Service' },
+            { name: 'description', label: 'Terms Text', type: 'textarea', defaultValue: 'I agree to the terms and conditions...' },
+            { name: 'checkboxLabel', label: 'Checkbox Label', type: 'text', defaultValue: 'I agree' },
+            { name: 'required', label: 'Required', type: 'switch', defaultValue: true }
+        ]
+    },
+    { 
+        type: 'multipleChoice', 
+        label: 'Multiple Choice', 
+        description: 'Select multiple options', 
+        icon: IconCheckbox, 
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { name: 'options', label: 'Options', type: 'options', defaultValue: [{ label: 'Option 1', value: 'opt1' }, { label: 'Option 2', value: 'opt2' }] },
+            { name: 'allowOther', label: 'Allow "Other" Option', type: 'switch', defaultValue: false },
+            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', defaultValue: 'Other (Please specify)' }
+        ]
+    },
+    { 
+        type: 'rating', 
+        label: 'Rating', 
+        description: 'Star rating scale', 
+        icon: IconStar, 
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { name: 'maxRating', label: 'Max Stars', type: 'number', defaultValue: 5 }
+        ]
+    },
+    {
+        type: 'slider',
+        label: 'Slider',
+        description: 'Select a value from a range',
+        icon: IconNumbers,
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { name: 'min', label: 'Minimum', type: 'number', defaultValue: 0 },
+            { name: 'max', label: 'Maximum', type: 'number', defaultValue: 100 },
+            { name: 'step', label: 'Step', type: 'number', defaultValue: 1 }
+        ]
+    },
+
+    // Flow
+    {
+        type: 'start',
+        label: 'Start',
+        description: 'Entry point of the survey',
+        icon: IconArrowMerge, // IconPlayerPlay
+        category: 'flow',
+        properties: [] // No properties for Start usually
+    },
+
+    // Logic
+    { 
+        type: 'branch', 
+        label: 'Branch', 
+        description: 'Split flow based on conditions', 
+        icon: IconArrowMerge, 
+        category: 'logic',
+        properties: [
+            { name: 'condition', label: 'Logic Rule', type: 'condition', defaultValue: { id: 'root', logicType: 'AND', children: [] } }
+        ]
+    },
+    { 
+        type: 'end', 
+        label: 'End Screen', 
+        description: 'Terminate the survey flow', 
+        icon: IconForbid, 
+        category: 'flow',
+        properties: [
+            { name: 'message', label: 'Thank You Message', type: 'textarea', defaultValue: 'Thank you for completing the survey!' },
+            { name: 'redirectUrl', label: 'Redirect URL', type: 'text', placeholder: 'https://...' },
+            { 
+                name: 'outcome', 
+                label: 'Session Outcome', 
+                type: 'select', 
+                defaultValue: 'completed',
+                options: [
+                    { label: 'Completed', value: 'completed' },
+                    { label: 'Failed', value: 'failed' },
+                    { label: 'Over Quota', value: 'over_quota' },
+                    { label: 'Disqualified', value: 'disqualified' },
+                    { label: 'Quality Terminate', value: 'quality_terminate' }
+                ]
+            }
+        ]
+    },
+
+    // Media
+    { 
+        type: 'image', 
+        label: 'Image', 
+        description: 'Display an image', 
+        icon: IconPhoto, 
+        category: 'media',
+        properties: [
+            { name: 'url', label: 'Image URL', type: 'text', placeholder: 'https://...' },
+            { name: 'alt', label: 'Alt Text', type: 'text' }
+        ]
+    },
+    {
+        type: 'video',
+        label: 'Video',
+        description: 'Embed a video',
+        icon: IconPhoto, // You might want a specific video icon if available
+        category: 'media',
+        properties: [
+            { name: 'url', label: 'Video URL', type: 'text', placeholder: 'https://...' },
+            { name: 'autoplay', label: 'Autoplay', type: 'switch', defaultValue: false }
+        ]
+    },
+    {
+        type: 'audio',
+        label: 'Audio',
+        description: 'Play an audio clip',
+        icon: IconPhoto, // Using generic photo/media icon for now or import Music/Volume
+        category: 'media',
+        properties: [
+            { name: 'url', label: 'Audio URL', type: 'text', placeholder: 'https://...' },
+            { name: 'autoplay', label: 'Autoplay', type: 'switch', defaultValue: false }
+        ]
+    },
+
+    // Special Inputs
+    {
+        type: 'zipCodeInput',
+        label: 'Accepted Zip Codes',
+        description: 'Validate against a list of zip codes',
+        icon: IconForms, // Using generic icon
+        category: 'input',
+        properties: [
+            ...commonProperties,
+            { name: 'allowedZips', label: 'Allowed Zip Codes', type: 'textarea', placeholder: '10001, 10002, 90210... (Leave empty to allow all)', helperText: 'Comma separated list of allowed codes' }
+        ]
+    },
+    {
+        type: 'matrixChoice',
+        label: 'Grid / Matrix',
+        description: 'Grid of rows and columns',
+        icon: IconListCheck,
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { name: 'rows', label: 'Rows (Questions)', type: 'options', defaultValue: [{ label: 'Performance', value: 'p' }, { label: 'Design', value: 'd' }] },
+            { name: 'columns', label: 'Columns (Options)', type: 'options', defaultValue: [{ label: 'Poor', value: '1' }, { label: 'Great', value: '5' }] },
+            { name: 'multiple', label: 'Allow Multiple', type: 'switch', defaultValue: false }
+        ]
+    },
+    {
+        type: 'cascadingChoice',
+        label: 'Multi-Step Select',
+        description: 'Conditional drill-down options',
+        icon: IconListDetails,
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { name: 'steps', label: 'Steps', type: 'stepBuilder', defaultValue: [{ id: 's1', title: 'Step 1', options: [{ label: 'Option A', value: 'optA' }] }] }
+        ]
+    },
+];
+
+// Recursive Logic Types
+export interface LogicRule {
+    id: string; 
+    type: 'rule'; 
+    field: string;
+    subField?: string; 
+    operator: string;
+    value: any;
+    valueType: 'static' | 'variable'; 
+}
+
+export interface LogicGroup {
+    id: string;
+    type: 'group';
+    logicType: 'AND' | 'OR'; 
+    children: LogicItem[];
+}
+
+export type LogicItem = LogicGroup | LogicRule;
