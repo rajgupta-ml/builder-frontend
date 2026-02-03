@@ -227,6 +227,13 @@ function SurveyFlow() {
         setSaveStatus('unsaved');
     }, [nodes, edges]);
 
+    // 8. Auto-Unpublish on Change
+    useEffect(() => {
+        if (saveStatus === 'unsaved') {
+            setPublishStatus('DRAFT');
+        }
+    }, [saveStatus]);
+
 
     const openPublishModal = async () => {
         if (!workflowId) {
