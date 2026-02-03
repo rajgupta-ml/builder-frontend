@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "https://api.algorithmicintelmatrix.com/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -30,8 +30,9 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.algorithmicintelmatrix.com/api";
         const res = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
+          `${apiUrl}/auth/refresh`,
           {},
           { withCredentials: true }
         );
