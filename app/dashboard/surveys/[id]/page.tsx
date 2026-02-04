@@ -25,7 +25,7 @@ import NodeViewer from '@/components/NodeViewer';
 import { IconCloudUpload, IconCheck, IconAlertCircle, IconLoader2, IconPlayerPlay, IconWorld, IconShare, IconCopy, IconX, IconExternalLink, IconChartBar, IconFilter, IconSettings } from '@tabler/icons-react';
 import { validateWorkflow } from '@/lib/validate-workflow';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { cn, decompressJson } from '@/lib/utils';
 import { generateUniqueId } from "@/lib/utils";
 import { SurveySettingsModal } from '@/components/modals/SurveySettingsModal';
 import { SurveyQuotaModal } from '@/components/modals/SurveyQuotaModal';
@@ -120,10 +120,27 @@ function SurveyFlow() {
 
                     if (content) {
                         // Restore Nodes/Edges
-                        const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
-                        // Adjust layout if needed (not implementing auto-layout here)
-                        if (parsedContent.nodes) setNodes(parsedContent.nodes);
-                        if (parsedContent.edges) setEdges(parsedContent.edges);
+                        // Content might be a double-encoded string (JSON string of a base64 string) or just a base64 string
+                        let parsedContent: any = null;
+
+                        try {
+                            // Try parsing as JSON first (to catch \"...\" strings)
+                            const inner = typeof content === 'string' ? JSON.parse(content) : content;
+                            if (typeof inner === 'string') {
+                                // If it's a string, it's the base64 gzipped content
+                                parsedContent = decompressJson(inner);
+                            } else {
+                                parsedContent = inner;
+                            }
+                        } catch (e) {
+                            // If JSON parse fails, try direct decompression
+                            parsedContent = decompressJson(content);
+                        }
+
+                        if (parsedContent && parsedContent.nodes) {
+                            setNodes(parsedContent.nodes);
+                            if (parsedContent.edges) setEdges(parsedContent.edges);
+                        }
                     }
                 }
             } catch (err) {
