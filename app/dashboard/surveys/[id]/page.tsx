@@ -29,7 +29,6 @@ import { cn, decompressJson } from '@/lib/utils';
 import { generateUniqueId } from "@/lib/utils";
 import { SurveySettingsModal } from '@/components/modals/SurveySettingsModal';
 import { SurveyQuotaModal } from '@/components/modals/SurveyQuotaModal';
-import { SurveyPublishModal } from '@/components/modals/SurveyPublishModal';
 
 // Helper to generate unique ID
 const getId = () => generateUniqueId('node');
@@ -92,7 +91,6 @@ function SurveyFlow() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
-    const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
 
     const testLink = survey?.testSlug
         ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}`
@@ -231,15 +229,6 @@ function SurveyFlow() {
         setSelectedNodeId(null);
     }, []);
 
-    // Wrap change handlers to trigger save
-    // NOTE: onNodesChange / onEdgesChange set state, which triggers dependency in autosave effect if we added [nodes, edges] deps.
-    // But hooks return stable functions. We need to detect changes.
-    // The useNodesState setters trigger re-renders.
-    // We need to set 'unsaved' when changes occur.
-    // A simple way is to use an effect on [nodes, edges], but that triggers on load too.
-    // Better: Wrap setters or use `onNodesChange` callback wrapper.
-    // For now, let's rely on `useEffect(() => setSaveStatus('unsaved'), [nodes, edges])` but skip initial load.
-
     const isFirstLoad = useRef(true);
     useEffect(() => {
         if (isFirstLoad.current) {
@@ -256,14 +245,15 @@ function SurveyFlow() {
         }
     }, [saveStatus]);
 
+    const [isPublishing, setIsPublishing] = useState(false);
 
-    const openPublishModal = async () => {
+    const handlePublishLive = async () => {
         if (!workflowId) {
             toast.error("Please wait for draft to save first.");
             return;
         }
 
-        // 1. Validation before opening modal
+        // 1. Validation 
         const { isValid, errors } = validateWorkflow(nodes, edges);
 
         if (!isValid) {
@@ -281,7 +271,18 @@ function SurveyFlow() {
             return;
         }
 
-        setIsPublishModalOpen(true);
+        setIsPublishing(true);
+        try {
+            await apiClient.post(`/surveys/${surveyId}/publish`, { mode: 'LIVE' });
+            toast.success("Successfully published to LIVE mode!");
+            setPublishStatus('PUBLISHED');
+        } catch (error: any) {
+            console.error("Publish failed", error);
+            const msg = error?.response?.data?.error || "Failed to publish survey";
+            toast.error(msg);
+        } finally {
+            setIsPublishing(false);
+        }
     };
 
     const copyToClipboard = (text: string) => {
@@ -424,12 +425,14 @@ function SurveyFlow() {
                     <div className="w-px h-6 bg-border mx-2" />
 
                     <button
-                        onClick={openPublishModal}
+                        onClick={handlePublishLive}
+                        disabled={isPublishing}
                         className={cn(
-                            "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0",
+                            "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2",
                             isLive ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-primary text-primary-foreground hover:bg-primary/90"
                         )}
                     >
+                        {isPublishing ? <IconLoader2 className="animate-spin" size={14} /> : null}
                         {isLive ? "Go Live / Update" : "Publish to Live"}
                     </button>
                 </div>
@@ -500,7 +503,7 @@ function SurveyFlow() {
                 />
             )}
 
-            {/* Quota & Settings & Publish Modals */}
+            {/* Quota & Settings Modals - Publish Modal Removed */}
             <SurveySettingsModal
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
@@ -510,12 +513,6 @@ function SurveyFlow() {
                 isOpen={isQuotaOpen}
                 onClose={() => setIsQuotaOpen(false)}
                 surveyId={surveyId || ""}
-            />
-            <SurveyPublishModal
-                isOpen={isPublishModalOpen}
-                onClose={() => setIsPublishModalOpen(false)}
-                surveyId={surveyId || ""}
-                onPublishSuccess={() => setPublishStatus('PUBLISHED')}
             />
         </div>
     );
