@@ -107,6 +107,42 @@ export default function SurveyMetricsPage() {
         overQuota: 0, qualityTerminate: 0, securityTerminate: 0
     });
 
+    // Calculate Average Completion Time
+    const completedResponses = responses.filter(r => r.status === 'COMPLETED' && r.createdAt && r.updatedAt);
+    const avgTimeMs = completedResponses.length > 0
+        ? completedResponses.reduce((acc, curr) => {
+            const start = new Date(curr.createdAt).getTime();
+            const end = new Date(curr.updatedAt).getTime();
+            return acc + (end - start);
+        }, 0) / completedResponses.length
+        : 0;
+
+    const formatTime = (ms: number) => {
+        if (ms === 0) return "N/A";
+        const seconds = Math.floor(ms / 1000);
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    };
+
+    // Fix: If clicked is 0, Total Traffic should at least be the sum of all terminal states
+    const safeTotalTraffic = Math.max(
+        totalMetrics.clicked,
+        totalMetrics.completed + totalMetrics.dropped + totalMetrics.disqualified + totalMetrics.overQuota + totalMetrics.qualityTerminate + totalMetrics.securityTerminate
+    );
+
+    // Fix: Mode Distribution should use total responses per mode if clicked is missing
+    const getModeTotal = (mode: string) => {
+        const m = metrics.find(met => met.mode === mode);
+        if (!m) return 0;
+        return Math.max(m.clicked, m.completed + m.dropped + m.disqualified + m.overQuota + m.qualityTerminate + m.securityTerminate);
+    };
+
+    const modeData = [
+        { name: 'Live', value: getModeTotal('LIVE') },
+        { name: 'Test', value: getModeTotal('TEST') }
+    ];
+
     const completionRate = totalMetrics.clicked > 0
         ? ((totalMetrics.completed / totalMetrics.clicked) * 100).toFixed(1)
         : "0";
@@ -291,7 +327,7 @@ export default function SurveyMetricsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <MetricCard
                         title="Total Traffic"
-                        value={totalMetrics.clicked}
+                        value={safeTotalTraffic}
                         icon={<IconClick size={24} />}
                         color="bg-blue-500"
                     />
@@ -309,7 +345,7 @@ export default function SurveyMetricsPage() {
                     />
                     <MetricCard
                         title="Conversion Rate"
-                        value={`${completionRate}%`}
+                        value={`${safeTotalTraffic > 0 ? ((totalMetrics.completed / safeTotalTraffic) * 100).toFixed(1) : 0}%`}
                         icon={<IconChartBar size={24} />}
                         color="bg-indigo-500"
                     />
@@ -321,7 +357,7 @@ export default function SurveyMetricsPage() {
                     <MiniMetricCard title="Disqualified" value={totalMetrics.disqualified} color="text-amber-600" />
                     <MiniMetricCard title="Over Quota" value={totalMetrics.overQuota} color="text-fuchsia-600" />
                     <MiniMetricCard title="Qual. Term" value={totalMetrics.qualityTerminate} color="text-indigo-600" />
-                    <MiniMetricCard title="Avg Time" value="2m 34s" color="text-slate-600" />
+                    <MiniMetricCard title="Avg Time" value={formatTime(avgTimeMs)} color="text-slate-600" />
                 </div>
 
                 {/* Charts Area */}
@@ -369,7 +405,7 @@ export default function SurveyMetricsPage() {
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie
-                                        data={[{ name: 'Live', value: metrics.find(m => m.mode === 'LIVE')?.clicked || 0 }, { name: 'Test', value: metrics.find(m => m.mode === 'TEST')?.clicked || 0 }]}
+                                        data={modeData}
                                         innerRadius={60}
                                         outerRadius={80}
                                         paddingAngle={5}
