@@ -52,17 +52,39 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId }: SurveyQuotaModal
             ]);
             setQuotas(quotasData);
 
+            console.log('[QuotaModal] Workflow Data:', workflowData);
+            console.log('[QuotaModal] Runtime JSON type:', typeof workflowData?.runtimeJson);
+            console.log('[QuotaModal] Runtime JSON:', workflowData?.runtimeJson);
+
             if (workflowData?.runtimeJson) {
+                // Check if runtimeJson is already an object or needs parsing
+                let runtimeData = workflowData.runtimeJson;
+
+                // If it's still a string, it might not have been decompressed
+                if (typeof runtimeData === 'string') {
+                    console.error('[QuotaModal] ERROR: runtimeJson is still a string, decompression may have failed');
+                    toast.error("Failed to load survey questions. Please refresh and try again.");
+                    return;
+                }
+
                 // Convert runtimeJson back to Node[] format for ConditionBuilder
-                const mappedNodes: Node[] = Object.values(workflowData.runtimeJson).map((n: any) => ({
+                const mappedNodes: Node[] = Object.values(runtimeData).map((n: any) => ({
                     id: n.id,
                     type: n.type,
                     data: n.data,
                     position: { x: 0, y: 0 }
                 }));
+
+                console.log('[QuotaModal] Mapped Nodes:', mappedNodes);
+                console.log('[QuotaModal] Total nodes found:', mappedNodes.length);
+
                 setFlowNodes(mappedNodes);
+            } else {
+                console.warn('[QuotaModal] No runtimeJson found in workflow data');
+                toast.error("No survey questions found. Please create questions first.");
             }
         } catch (error) {
+            console.error('[QuotaModal] Error loading quotas:', error);
             toast.error("Failed to load quotas");
         } finally {
             setLoading(false);
