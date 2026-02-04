@@ -97,6 +97,9 @@ function SurveyFlow() {
     const testLink = survey?.testSlug
         ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}`
         : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}?mode=test`;
+
+    // Live link only exists/is valid if published
+    const isLive = publishStatus === 'PUBLISHED';
     const liveLink = survey?.slug
         ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.slug}`
         : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}`;
@@ -286,6 +289,21 @@ function SurveyFlow() {
         toast.success("Link copied!");
     };
 
+    const [isSyncingTest, setIsSyncingTest] = useState(false);
+    const handleQuickTest = async () => {
+        setIsSyncingTest(true);
+        try {
+            // Background sync latest draft to TEST env
+            await apiClient.post(`/surveys/${surveyId}/publish`, { mode: 'TEST' });
+            window.open(testLink, '_blank');
+        } catch (err) {
+            console.error("Test sync failed", err);
+            toast.error("Failed to sync preview link");
+        } finally {
+            setIsSyncingTest(false);
+        }
+    };
+
     return (
         <div className="flex w-full h-screen bg-background overflow-hidden relative">
             <SurveyNodeSidebar />
@@ -314,13 +332,18 @@ function SurveyFlow() {
                 {/* Top Right Controls & Status */}
                 <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
                     {/* Live Status Badge */}
-                    {publishStatus === 'PUBLISHED' && (
+                    {publishStatus === 'PUBLISHED' ? (
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                             </span>
                             <span className="text-emerald-600 font-bold text-[10px] tracking-wider uppercase">Live</span>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2" title="Changes are saved but not yet live for respondents">
+                            <IconAlertCircle className="text-amber-500" size={14} />
+                            <span className="text-amber-600 font-bold text-[10px] tracking-wider uppercase whitespace-nowrap">Production Out-of-Sync</span>
                         </div>
                     )}
 
@@ -385,10 +408,15 @@ function SurveyFlow() {
                         <div className="w-px h-4 bg-border mx-1" />
 
                         <button
-                            onClick={() => window.open(testLink, '_blank')}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted rounded-md transition-all"
+                            onClick={handleQuickTest}
+                            disabled={isSyncingTest}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50"
                         >
-                            <IconPlayerPlay size={16} className="text-blue-500" />
+                            {isSyncingTest ? (
+                                <IconLoader2 className="animate-spin text-blue-500" size={16} />
+                            ) : (
+                                <IconPlayerPlay size={16} className="text-blue-500" />
+                            )}
                             Test
                         </button>
                     </div>
@@ -399,10 +427,10 @@ function SurveyFlow() {
                         onClick={openPublishModal}
                         className={cn(
                             "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0",
-                            "bg-primary text-primary-foreground hover:bg-primary/90"
+                            isLive ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-primary text-primary-foreground hover:bg-primary/90"
                         )}
                     >
-                        Publish
+                        {isLive ? "Go Live / Update" : "Publish to Live"}
                     </button>
                 </div>
             </div>
@@ -433,11 +461,21 @@ function SurveyFlow() {
                                 <label className="text-xs font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-2">
                                     <IconWorld size={14} /> Live Link (Public)
                                 </label>
-                                <div className="flex gap-2">
-                                    <input readOnly value={liveLink} className="flex-1 bg-emerald-50/50 border border-emerald-200/50 rounded-lg px-3 py-2 text-sm text-foreground font-mono" />
-                                    <button onClick={() => copyToClipboard(liveLink)} className="p-2 bg-background border border-border hover:bg-muted rounded-lg"><IconCopy size={18} /></button>
-                                    <button onClick={() => window.open(liveLink, '_blank')} className="p-2 bg-background border border-border hover:bg-muted rounded-lg"><IconExternalLink size={18} /></button>
-                                </div>
+                                {isLive ? (
+                                    <div className="flex gap-2 animate-in slide-in-from-top-1">
+                                        <input readOnly value={liveLink} className="flex-1 bg-emerald-50/50 border border-emerald-200/50 rounded-lg px-3 py-2 text-sm text-foreground font-mono" />
+                                        <button onClick={() => copyToClipboard(liveLink)} className="p-2 bg-background border border-border hover:bg-muted rounded-lg"><IconCopy size={18} /></button>
+                                        <button onClick={() => window.open(liveLink, '_blank')} className="p-2 bg-background border border-border hover:bg-muted rounded-lg"><IconExternalLink size={18} /></button>
+                                    </div>
+                                ) : (
+                                    <div className="p-4 bg-muted/50 border border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-2 text-center">
+                                        <div className="p-2 bg-background rounded-full border border-border shadow-sm">
+                                            <IconAlertCircle className="text-muted-foreground" size={20} />
+                                        </div>
+                                        <p className="text-sm font-medium">Production link is locked</p>
+                                        <p className="text-[10px] text-muted-foreground max-w-[200px]">Publish your survey to the Live environment to generate a public link.</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className="p-4 bg-muted/30 border-t border-border flex justify-end">
