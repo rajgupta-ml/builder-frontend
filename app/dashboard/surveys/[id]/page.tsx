@@ -27,6 +27,7 @@ import { validateWorkflow } from '@/lib/validate-workflow';
 import { toast } from 'sonner';
 import { cn, decompressJson } from '@/lib/utils';
 import { generateUniqueId } from "@/lib/utils";
+import { calculateConfigHash, calculateComponentHashes } from '@/lib/hash';
 import { SurveySettingsModal } from '@/components/modals/SurveySettingsModal';
 import { SurveyQuotaModal } from '@/components/modals/SurveyQuotaModal';
 
@@ -86,8 +87,13 @@ function SurveyFlow() {
     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'unsaved'>('saved');
     const [publishStatus, setPublishStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
     const [survey, setSurvey] = useState<any>(null);
+    const [quotas, setQuotas] = useState<any[]>([]);
 
-    // 3. Modal States
+    // 3. Publish State (Hash-based Change Detection)
+    const [publishedHash, setPublishedHash] = useState<string | null>(null);
+    const [publishedAt, setPublishedAt] = useState<string | null>(null);
+
+    // 4. Modal States
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
@@ -102,7 +108,7 @@ function SurveyFlow() {
         ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.slug}`
         : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}`;
 
-    // 4. Load Data
+    // 5. Load Data
     useEffect(() => {
         if (!surveyId) return;
 
@@ -113,6 +119,17 @@ function SurveyFlow() {
                 setSurvey(surveyRes.data.data);
                 setPublishStatus(surveyRes.data.data.status);
 
+                // Fetch Quotas
+                const quotasRes = await apiClient.get(`/surveys/${surveyId}/quotas`);
+                setQuotas(quotasRes.data.data || []);
+
+                // Fetch Published State (for hash comparison)
+                const publishStateRes = await apiClient.get(`/surveys/${surveyId}/publish-state?mode=LIVE`);
+                if (publishStateRes.data.data) {
+                    setPublishedHash(publishStateRes.data.data.configHash);
+                    setPublishedAt(publishStateRes.data.data.publishedAt);
+                }
+
                 // Fetch Workflow
                 const res = await apiClient.get(`/surveys/${surveyId}/element-workflow`);
                 if (res.data.data) {
@@ -121,20 +138,16 @@ function SurveyFlow() {
 
                     if (content) {
                         // Restore Nodes/Edges
-                        // Content might be a double-encoded string (JSON string of a base64 string) or just a base64 string
                         let parsedContent: any = null;
 
                         try {
-                            // Try parsing as JSON first (to catch \"...\" strings)
                             const inner = typeof content === 'string' ? JSON.parse(content) : content;
                             if (typeof inner === 'string') {
-                                // If it's a string, it's the base64 gzipped content
                                 parsedContent = decompressJson(inner);
                             } else {
                                 parsedContent = inner;
                             }
                         } catch (e) {
-                            // If JSON parse fails, try direct decompression
                             parsedContent = decompressJson(content);
                         }
 
@@ -238,12 +251,54 @@ function SurveyFlow() {
         setSaveStatus('unsaved');
     }, [nodes, edges]);
 
-    // 8. Auto-Unpublish on Change
-    useEffect(() => {
-        if (saveStatus === 'unsaved') {
-            setPublishStatus('DRAFT');
+    // 8. Hash-Based Change Detection
+    const calculateCurrentHash = useCallback(() => {
+        const runtimeJson = generateRuntimeJson(nodes, edges);
+        const config = {
+            runtimeJson,
+            quotas: quotas.filter(q => q.enabled), // Only enabled quotas
+            settings: {
+                redirectUrl: survey?.redirectUrl,
+                overQuotaUrl: survey?.overQuotaUrl,
+                securityTerminateUrl: survey?.securityTerminateUrl,
+                globalQuota: survey?.globalQuota
+            }
+        };
+        return calculateConfigHash(config);
+    }, [nodes, edges, quotas, survey]);
+
+    const detectChanges = useCallback(() => {
+        if (publishStatus !== 'PUBLISHED' || !publishedHash) {
+            return { hasChanges: false, changes: [] };
         }
-    }, [saveStatus]);
+
+        const currentHash = calculateCurrentHash();
+        if (currentHash === publishedHash) {
+            return { hasChanges: false, changes: [] };
+        }
+
+        // Detect specific changes
+        const runtimeJson = generateRuntimeJson(nodes, edges);
+        const componentHashes = calculateComponentHashes({
+            runtimeJson,
+            quotas: quotas.filter(q => q.enabled),
+            settings: {
+                redirectUrl: survey?.redirectUrl,
+                overQuotaUrl: survey?.overQuotaUrl,
+                securityTerminateUrl: survey?.securityTerminateUrl,
+                globalQuota: survey?.globalQuota
+            }
+        });
+
+        const changes: string[] = [];
+        // We don't have previous component hashes, so we'll just show generic message
+        // In a real implementation, you'd store these separately
+        changes.push('Configuration modified');
+
+        return { hasChanges: true, changes };
+    }, [publishStatus, publishedHash, calculateCurrentHash, nodes, edges, quotas, survey]);
+
+    const { hasChanges, changes } = detectChanges();
 
     const [isPublishing, setIsPublishing] = useState(false);
 
@@ -273,9 +328,14 @@ function SurveyFlow() {
 
         setIsPublishing(true);
         try {
-            await apiClient.post(`/surveys/${surveyId}/publish`, { mode: 'LIVE' });
-            toast.success("Successfully published to LIVE mode!");
+            const response = await apiClient.post(`/surveys/${surveyId}/publish`, { mode: 'LIVE' });
+
+            // Update publish state with new hash
+            setPublishedHash(response.data.configHash);
+            setPublishedAt(response.data.publishedAt);
             setPublishStatus('PUBLISHED');
+
+            toast.success(hasChanges ? "Live survey updated successfully!" : "Successfully published to LIVE mode!");
         } catch (error: any) {
             console.error("Publish failed", error);
             const msg = error?.response?.data?.error || "Failed to publish survey";
@@ -333,7 +393,7 @@ function SurveyFlow() {
                 {/* Top Right Controls & Status */}
                 <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
                     {/* Live Status Badge */}
-                    {publishStatus === 'PUBLISHED' ? (
+                    {publishStatus === 'PUBLISHED' && !hasChanges ? (
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
@@ -342,9 +402,11 @@ function SurveyFlow() {
                             <span className="text-emerald-600 font-bold text-[10px] tracking-wider uppercase">Live</span>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2" title="Changes are saved but not yet live for respondents">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2" title={hasChanges ? "Changes detected - republish needed" : "Not published yet"}>
                             <IconAlertCircle className="text-amber-500" size={14} />
-                            <span className="text-amber-600 font-bold text-[10px] tracking-wider uppercase whitespace-nowrap">Production Out-of-Sync</span>
+                            <span className="text-amber-600 font-bold text-[10px] tracking-wider uppercase whitespace-nowrap">
+                                {hasChanges ? "Out of Sync" : "Not Published"}
+                            </span>
                         </div>
                     )}
 
@@ -424,17 +486,37 @@ function SurveyFlow() {
 
                     <div className="w-px h-6 bg-border mx-2" />
 
-                    <button
-                        onClick={handlePublishLive}
-                        disabled={isPublishing}
-                        className={cn(
-                            "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2",
-                            isLive ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-primary text-primary-foreground hover:bg-primary/90"
+                    {/* Publish Button with Smart States */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handlePublishLive}
+                            disabled={isPublishing || (publishStatus === 'PUBLISHED' && !hasChanges)}
+                            className={cn(
+                                "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed",
+                                publishStatus !== 'PUBLISHED'
+                                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                                    : hasChanges
+                                        ? "bg-amber-600 text-white hover:bg-amber-700"
+                                        : "bg-emerald-600 text-white"
+                            )}
+                            title={hasChanges ? changes.join(', ') : undefined}
+                        >
+                            {isPublishing ? <IconLoader2 className="animate-spin" size={14} /> : null}
+                            {publishStatus !== 'PUBLISHED'
+                                ? "Publish to Live"
+                                : hasChanges
+                                    ? "Update Live"
+                                    : "Live ✓"
+                            }
+                        </button>
+
+                        {/* Change Indicator */}
+                        {hasChanges && (
+                            <div className="text-[10px] text-amber-600 font-medium">
+                                Changes detected
+                            </div>
                         )}
-                    >
-                        {isPublishing ? <IconLoader2 className="animate-spin" size={14} /> : null}
-                        {isLive ? "Go Live / Update" : "Publish to Live"}
-                    </button>
+                    </div>
                 </div>
             </div>
 
