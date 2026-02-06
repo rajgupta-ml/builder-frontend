@@ -10,10 +10,16 @@ import {
     type Node as ReactFlowNode,
     type Edge as ReactFlowEdge,
     type OnConnect,
+    type NodeChange,
+    type EdgeChange,
+    applyNodeChanges,
+    applyEdgeChanges,
     ReactFlowProvider,
     useReactFlow,
     useNodesState,
     useEdgesState,
+    type OnNodesChange,
+    type OnEdgesChange,
     type ReactFlowInstance
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -22,12 +28,11 @@ import { nodeTypes, edgeTypes, getNodeInitialData } from '@/components/nodes';
 import SurveyNodeSidebar from '@/components/SurveyNodeSidebar';
 import PropertiesPanel from '@/components/properties/PropertiesPanel';
 import NodeViewer from '@/components/NodeViewer';
-import { IconCloudUpload, IconCheck, IconAlertCircle, IconLoader2, IconPlayerPlay, IconWorld, IconShare, IconCopy, IconX, IconExternalLink, IconChartBar, IconFilter, IconSettings } from '@tabler/icons-react';
+import { IconCheck, IconAlertCircle, IconLoader2, IconPlayerPlay, IconWorld, IconShare, IconCopy, IconX, IconExternalLink, IconChartBar, IconFilter, IconSettings } from '@tabler/icons-react';
 import { validateWorkflow } from '@/lib/validate-workflow';
 import { toast } from 'sonner';
 import { cn, decompressJson } from '@/lib/utils';
 import { generateUniqueId } from "@/lib/utils";
-import { calculateConfigHash, calculateComponentHashes } from '@/lib/hash';
 import { SurveySettingsModal } from '@/components/modals/SurveySettingsModal';
 import { SurveyQuotaModal } from '@/components/modals/SurveyQuotaModal';
 
@@ -77,8 +82,8 @@ function SurveyFlow() {
     const { screenToFlowPosition } = useReactFlow();
 
     // 1. ReactFlow State
-    const [nodes, setNodes, onNodesChange] = useNodesState<ReactFlowNode>([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState<ReactFlowEdge>([]);
+    const [nodes, setNodes, onNodesChangeInternal] = useNodesState<ReactFlowNode>([]);
+    const [edges, setEdges, onEdgesChangeInternal] = useEdgesState<ReactFlowEdge>([]);
     const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
@@ -90,13 +95,38 @@ function SurveyFlow() {
     const [quotas, setQuotas] = useState<any[]>([]);
 
     // 3. Publish State (Hash-based Change Detection)
-    const [publishedHash, setPublishedHash] = useState<string | null>(null);
-    const [publishedAt, setPublishedAt] = useState<string | null>(null);
+    // These hashes are provided by the backend - NO local calculation needed
+    const [publishedHashes, setPublishedHashes] = useState<{
+        runtime: string | null;
+        quotas: string | null;
+        settings: string | null;
+    }>({ runtime: null, quotas: null, settings: null });
+
+    const [currentHashes, setCurrentHashes] = useState<{
+        runtime: string | null;
+        quotas: string | null;
+        settings: string | null;
+    }>({ runtime: null, quotas: null, settings: null });
 
     // 4. Modal States
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
+
+    // Helper to refresh current hashes (to detect changes in quotas/settings)
+    const refreshCurrentHashes = async () => {
+        try {
+            const res = await apiClient.get(`/surveys/${surveyId}/element-workflow`);
+            if (res.data.data) {
+                const { currentHashes: ch, publishedHashes: ph } = res.data.data;
+                if (ch) setCurrentHashes(ch);
+                if (ph) setPublishedHashes(ph);
+                if (res.data.data.status) setPublishStatus(res.data.data.status);
+            }
+        } catch (err) {
+            console.error("Failed to refresh hashes", err);
+        }
+    };
 
     const testLink = survey?.testSlug
         ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}`
@@ -123,18 +153,14 @@ function SurveyFlow() {
                 const quotasRes = await apiClient.get(`/surveys/${surveyId}/quotas`);
                 setQuotas(quotasRes.data.data || []);
 
-                // Fetch Published State (for hash comparison)
-                const publishStateRes = await apiClient.get(`/surveys/${surveyId}/publish-state?mode=LIVE`);
-                if (publishStateRes.data.data) {
-                    setPublishedHash(publishStateRes.data.data.configHash);
-                    setPublishedAt(publishStateRes.data.data.publishedAt);
-                }
-
-                // Fetch Workflow
+                // Fetch Workflow (includes hashes)
                 const res = await apiClient.get(`/surveys/${surveyId}/element-workflow`);
                 if (res.data.data) {
-                    const { id, content, runtimeJson } = res.data.data;
+                    const { id, content, runtimeJson, publishedHashes: ph, currentHashes: ch } = res.data.data;
                     setWorkflowId(id);
+
+                    if (ph) setPublishedHashes(ph);
+                    if (ch) setCurrentHashes(ch);
 
                     if (content) {
                         // Restore Nodes/Edges
@@ -168,9 +194,25 @@ function SurveyFlow() {
 
     // 5. Connect Handler
     const onConnect: OnConnect = useCallback((params) => {
-        setEdges((eds) => addEdge(params, eds));
+        setEdges((eds) => addEdge({ ...params, type: 'custom' }, eds));
         setSaveStatus('unsaved');
     }, [setEdges]);
+
+    const onNodesChange: OnNodesChange = useCallback(
+        (changes) => {
+            onNodesChangeInternal(changes);
+            setSaveStatus('unsaved');
+        },
+        [onNodesChangeInternal]
+    );
+
+    const onEdgesChange: OnEdgesChange = useCallback(
+        (changes) => {
+            onEdgesChangeInternal(changes);
+            setSaveStatus('unsaved');
+        },
+        [onEdgesChangeInternal]
+    );
 
     // 6. Drag & Drop
     const onDragOver = useCallback((event: React.DragEvent) => {
@@ -223,6 +265,12 @@ function SurveyFlow() {
                 });
 
                 setWorkflowId(res.data.data.id);
+
+                // Update current hashes from backend response (for change detection)
+                if (res.data.data.currentHashes) {
+                    setCurrentHashes(res.data.data.currentHashes);
+                }
+
                 setSaveStatus('saved');
             } catch (err) {
                 console.error("Save failed", err);
@@ -251,54 +299,12 @@ function SurveyFlow() {
         setSaveStatus('unsaved');
     }, [nodes, edges]);
 
-    // 8. Hash-Based Change Detection
-    const calculateCurrentHash = useCallback(() => {
-        const runtimeJson = generateRuntimeJson(nodes, edges);
-        const config = {
-            runtimeJson,
-            quotas: quotas.filter(q => q.enabled), // Only enabled quotas
-            settings: {
-                redirectUrl: survey?.redirectUrl,
-                overQuotaUrl: survey?.overQuotaUrl,
-                securityTerminateUrl: survey?.securityTerminateUrl,
-                globalQuota: survey?.globalQuota
-            }
-        };
-        return calculateConfigHash(config);
-    }, [nodes, edges, quotas, survey]);
-
-    const detectChanges = useCallback(() => {
-        if (publishStatus !== 'PUBLISHED' || !publishedHash) {
-            return { hasChanges: false, changes: [] };
-        }
-
-        const currentHash = calculateCurrentHash();
-        if (currentHash === publishedHash) {
-            return { hasChanges: false, changes: [] };
-        }
-
-        // Detect specific changes
-        const runtimeJson = generateRuntimeJson(nodes, edges);
-        const componentHashes = calculateComponentHashes({
-            runtimeJson,
-            quotas: quotas.filter(q => q.enabled),
-            settings: {
-                redirectUrl: survey?.redirectUrl,
-                overQuotaUrl: survey?.overQuotaUrl,
-                securityTerminateUrl: survey?.securityTerminateUrl,
-                globalQuota: survey?.globalQuota
-            }
-        });
-
-        const changes: string[] = [];
-        // We don't have previous component hashes, so we'll just show generic message
-        // In a real implementation, you'd store these separately
-        changes.push('Configuration modified');
-
-        return { hasChanges: true, changes };
-    }, [publishStatus, publishedHash, calculateCurrentHash, nodes, edges, quotas, survey]);
-
-    const { hasChanges, changes } = detectChanges();
+    // 8. Change Detection (using backend-provided granular hashes)
+    const hasChanges = publishStatus === 'PUBLISHED' &&
+        publishedHashes.runtime !== null &&
+        (currentHashes.runtime !== publishedHashes.runtime ||
+            currentHashes.quotas !== publishedHashes.quotas ||
+            currentHashes.settings !== publishedHashes.settings);
 
     const [isPublishing, setIsPublishing] = useState(false);
 
@@ -330,9 +336,12 @@ function SurveyFlow() {
         try {
             const response = await apiClient.post(`/surveys/${surveyId}/publish`, { mode: 'LIVE' });
 
-            // Update publish state with new hash
-            setPublishedHash(response.data.configHash);
-            setPublishedAt(response.data.publishedAt);
+            // Update publish state with new hashes - now current = published
+            const newHashes = response.data.hashes;
+            if (newHashes) {
+                setPublishedHashes(newHashes);
+                setCurrentHashes(newHashes); // After publish, both hashes match
+            }
             setPublishStatus('PUBLISHED');
 
             toast.success(hasChanges ? "Live survey updated successfully!" : "Successfully published to LIVE mode!");
@@ -499,7 +508,7 @@ function SurveyFlow() {
                                         ? "bg-amber-600 text-white hover:bg-amber-700"
                                         : "bg-emerald-600 text-white"
                             )}
-                            title={hasChanges ? changes.join(', ') : undefined}
+                            title={hasChanges ? "Configuration has changed since last publish" : undefined}
                         >
                             {isPublishing ? <IconLoader2 className="animate-spin" size={14} /> : null}
                             {publishStatus !== 'PUBLISHED'
@@ -590,11 +599,13 @@ function SurveyFlow() {
                 isOpen={isSettingsOpen}
                 onClose={() => setIsSettingsOpen(false)}
                 surveyId={surveyId || ""}
+                onSave={refreshCurrentHashes}
             />
             <SurveyQuotaModal
                 isOpen={isQuotaOpen}
                 onClose={() => setIsQuotaOpen(false)}
                 surveyId={surveyId || ""}
+                onSave={refreshCurrentHashes}
             />
         </div>
     );

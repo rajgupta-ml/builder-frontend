@@ -11,9 +11,10 @@ interface SurveySettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
     surveyId: string;
+    onSave?: () => void; // Final callback to refresh state in parent
 }
 
-export function SurveySettingsModal({ isOpen, onClose, surveyId }: SurveySettingsModalProps) {
+export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: SurveySettingsModalProps) {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [survey, setSurvey] = useState<Survey | null>(null);
@@ -63,6 +64,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId }: SurveySetting
                 globalQuota: formData.globalQuota ? parseInt(formData.globalQuota) : null
             });
             toast.success("Settings saved successfully");
+            if (onSave) onSave();
             onClose();
         } catch (error) {
             toast.error("Failed to save settings");

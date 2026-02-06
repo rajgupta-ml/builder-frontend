@@ -15,9 +15,10 @@ interface SurveyQuotaModalProps {
     isOpen: boolean;
     onClose: () => void;
     surveyId: string;
+    onSave?: () => void;
 }
 
-export function SurveyQuotaModal({ isOpen, onClose, surveyId }: SurveyQuotaModalProps) {
+export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQuotaModalProps) {
     const [quotas, setQuotas] = useState<SurveyQuota[]>([]);
     const [loading, setLoading] = useState(false);
     const [flowNodes, setFlowNodes] = useState<Node[]>([]);
@@ -110,6 +111,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId }: SurveyQuotaModal
                 logic: { id: 'root', type: 'group', logicType: 'AND', children: [] }
             });
             toast.success("Quota created");
+            if (onSave) onSave();
         } catch (error) {
             toast.error("Failed to create quota");
         }
@@ -121,6 +123,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId }: SurveyQuotaModal
             await surveyApi.deleteQuota(quotaId);
             setQuotas(quotas.filter(q => q.id !== quotaId));
             toast.success("Quota deleted");
+            if (onSave) onSave();
         } catch (error) {
             toast.error("Failed to delete quota");
         }
@@ -130,6 +133,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId }: SurveyQuotaModal
         try {
             const updated = await surveyApi.toggleQuota(quotaId, !currentStatus);
             setQuotas(quotas.map(q => q.id === quotaId ? updated : q));
+            if (onSave) onSave();
         } catch (error) {
             toast.error("Failed to update quota");
         }
