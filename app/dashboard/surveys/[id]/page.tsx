@@ -266,9 +266,12 @@ function SurveyFlow() {
 
                 setWorkflowId(res.data.data.id);
 
-                // Update current hashes from backend response (for change detection)
+                // Update hashes from backend response (for change detection)
                 if (res.data.data.currentHashes) {
                     setCurrentHashes(res.data.data.currentHashes);
+                }
+                if (res.data.data.publishedHashes) {
+                    setPublishedHashes(res.data.data.publishedHashes);
                 }
 
                 setSaveStatus('saved');
