@@ -12,6 +12,7 @@ export function simpleHash(str: string): string {
 
 /**
  * Calculate config hash for change detection
+ * MUST match backend calculateConfigHash exactly
  */
 export function calculateConfigHash(config: {
     runtimeJson: any;
@@ -23,8 +24,9 @@ export function calculateConfigHash(config: {
         globalQuota?: number | null;
     };
 }): string {
+    // IMPORTANT: Structure must match backend exactly
     const hashData = {
-        runtime: config.runtimeJson,
+        runtime: config.runtimeJson, // Use 'runtime' not 'runtimeJson' to match backend
         quotas: config.quotas,
         settings: config.settings
     };
