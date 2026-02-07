@@ -30,30 +30,43 @@ export const surveyResponseApi = {
              return;
         }
 
+        // 1. Identify all unique headers across all rows
+        const allKeys = new Set<string>();
+        data.forEach((row: any) => {
+            Object.keys(row).forEach(k => allKeys.add(k));
+        });
+        const headers = Array.from(allKeys).sort();
+
+        // 2. Normalize every row to have every header, filling missing with 'N/A'
+        const normalizedData = data.map((row: any) => {
+            const newRow: any = {};
+            headers.forEach(header => {
+                const val = row[header];
+                if (val === null || val === undefined || val === '' || val === '-') {
+                    newRow[header] = 'N/A';
+                } else {
+                    newRow[header] = val;
+                }
+            });
+            return newRow;
+        });
+
         if (format === 'csv') {
-            downloadCSV(data, surveyId);
+            downloadCSV(normalizedData, headers, surveyId);
         } else if (format === 'xlsx') {
-            downloadXLSX(data, surveyId);
+            downloadXLSX(normalizedData, surveyId);
         } else if (format === 'spss') {
-            await downloadSPSS(data, meta, surveyId);
+            await downloadSPSS(normalizedData, headers, meta, surveyId);
         }
     }
 }
 
-function downloadCSV(data: any[], surveyId: string) {
-    // Collect all unique keys
-    const allKeys = new Set<string>();
-    data.forEach((row: any) => {
-        Object.keys(row).forEach(k => allKeys.add(k));
-    });
-    
-    const headers = Array.from(allKeys).sort();
+function downloadCSV(data: any[], headers: string[], surveyId: string) {
     const csvContent = [
         headers.join(','), // Header row
         ...data.map((row: any) => headers.map((header: string) => {
             const val = row[header];
             // Escape CSV values
-            if (val === null || val === undefined) return '';
             const str = String(val);
             if (str.includes(',') || str.includes('"') || str.includes('\n')) {
                 return `"${str.replace(/"/g, '""')}"`;
@@ -73,25 +86,13 @@ function downloadXLSX(data: any[], surveyId: string) {
     XLSX.writeFile(workBook, `survey-export-${surveyId}.xlsx`);
 }
 
-async function downloadSPSS(data: any[], meta: any, surveyId: string) {
+async function downloadSPSS(data: any[], headers: string[], meta: any, surveyId: string) {
     const zip = new JSZip();
-    
-    // 1. Create CSV Data File (without headers for SPSS usually, but let's keep headers and skip 1 line in syntax)
-    // Actually SPSS syntax "GET DATA /TYPE=TXT" is standard.
-    // Let's reuse CSV generation but we might need specific formatting for SPSS dates etc if we want to be strict.
-    // simpler to just use the CSV we already have logic for.
-    
-    const allKeys = new Set<string>();
-    data.forEach((row: any) => {
-        Object.keys(row).forEach(k => allKeys.add(k));
-    });
-    const headers = Array.from(allKeys).sort();
     
     const csvContent = [
         headers.join(','),
         ...data.map((row: any) => headers.map((header: string) => {
             const val = row[header];
-            if (val === null || val === undefined) return '';
             const str = String(val);
              if (str.includes(',') || str.includes('"') || str.includes('\n')) {
                 return `"${str.replace(/"/g, '""')}"`;

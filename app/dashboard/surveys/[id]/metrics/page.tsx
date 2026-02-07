@@ -62,6 +62,7 @@ export default function SurveyMetricsPage() {
     const [loading, setLoading] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
+    const [isExportOpen, setIsExportOpen] = useState(false);
 
     // Pagination State
     // Pagination & Search State
@@ -156,42 +157,6 @@ export default function SurveyMetricsPage() {
         { name: 'Over Quota', value: totalMetrics.overQuota, color: '#f43f5e' },
     ].filter(d => d.value > 0 || true); // Keep all for debugging or filter as needed
 
-    // Helper to get option label
-    const getDisplayValue = (nodeId: string, answer: any) => {
-        if (answer === undefined || answer === null) return null;
-
-        const node = runtimeJson?.[nodeId];
-        if (!node) {
-            return typeof answer === 'object' ? JSON.stringify(answer) : String(answer);
-        }
-
-        // Handle Matrix Questions
-        if (node.type === 'matrixChoice' && typeof answer === 'object' && node.data?.rows && node.data?.columns) {
-            return Object.entries(answer).map(([rowId, colId]) => {
-                const row = node.data.rows.find((r: any) => r.value === rowId || r.id === rowId);
-                const col = node.data.columns.find((c: any) => c.value === colId || c.id === colId);
-                const rowLabel = row?.label || rowId;
-                const colLabel = col?.label || colId;
-                return `${rowLabel}: ${colLabel}`;
-            }).join(' | ');
-        }
-
-        // Handle Normal Options (Single/Multi Select)
-        if (node.data?.options) {
-            if (Array.isArray(answer)) {
-                return answer.map(val => {
-                    const opt = node.data.options.find((o: any) => o.id === val || o.value === val);
-                    return opt ? opt.label : val;
-                }).join(', ');
-            }
-            const opt = node.data.options.find((o: any) => o.id === answer || o.value === answer);
-            return opt ? opt.label : String(answer);
-        }
-
-        // Fallback for simple inputs (Text, Number, etc)
-        return typeof answer === 'object' ? JSON.stringify(answer) : String(answer);
-    };
-
     // Dynamic Columns Identification from Hydrated Data
     const dynamicHeaders = Array.from(new Set(
         responses.flatMap(r => Object.keys(r.hydrated_response || {}))
@@ -269,36 +234,58 @@ export default function SurveyMetricsPage() {
                         >
                             Open Builder
                         </button>
-                        <div className="relative group">
+                        <div className="relative">
                             <button
-                                className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary font-semibold rounded-lg hover:bg-primary/20 transition-all"
+                                onClick={() => setIsExportOpen(!isExportOpen)}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-all",
+                                    isExportOpen ? "bg-primary text-primary-foreground shadow-lg" : "bg-primary/10 text-primary hover:bg-primary/20"
+                                )}
                             >
                                 <IconDownload size={18} />
                                 Export Data
                             </button>
-                            <div className="absolute right-0 mt-2 w-48 bg-card border border-border shadow-xl rounded-xl p-1 z-50 hidden group-hover:block hover:block animate-in fade-in zoom-in-95 duration-200">
-                                <button
-                                    onClick={() => surveyResponseApi.exportResponses(id, 'csv')}
-                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
-                                >
-                                    <IconTable size={16} className="text-emerald-600" />
-                                    Export as CSV
-                                </button>
-                                <button
-                                    onClick={() => surveyResponseApi.exportResponses(id, 'xlsx')}
-                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
-                                >
-                                    <IconTable size={16} className="text-blue-600" />
-                                    Export as Excel
-                                </button>
-                                <button
-                                    onClick={() => surveyResponseApi.exportResponses(id, 'spss')}
-                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
-                                >
-                                    <IconTable size={16} className="text-purple-600" />
-                                    Export as SPSS
-                                </button>
-                            </div>
+
+                            {isExportOpen && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        onClick={() => setIsExportOpen(false)}
+                                    />
+                                    <div className="absolute right-0 mt-2 w-48 bg-card border border-border shadow-xl rounded-xl p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        <button
+                                            onClick={() => {
+                                                surveyResponseApi.exportResponses(id, 'csv');
+                                                setIsExportOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                        >
+                                            <IconTable size={16} className="text-emerald-600" />
+                                            Export as CSV
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                surveyResponseApi.exportResponses(id, 'xlsx');
+                                                setIsExportOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                        >
+                                            <IconTable size={16} className="text-blue-600" />
+                                            Export as Excel
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                surveyResponseApi.exportResponses(id, 'spss');
+                                                setIsExportOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                        >
+                                            <IconTable size={16} className="text-purple-600" />
+                                            Export as SPSS
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -517,10 +504,10 @@ export default function SurveyMetricsPage() {
                                                 return (
                                                     <td key={header} className="px-6 py-4 border-b border-border">
                                                         <div className="text-sm font-medium text-foreground line-clamp-2" title={String(displayValue || '')}>
-                                                            {displayValue !== undefined && displayValue !== null ? (
+                                                            {displayValue !== undefined && displayValue !== null && displayValue !== '' && displayValue !== '-' ? (
                                                                 displayValue
                                                             ) : (
-                                                                <span className="text-muted-foreground italic text-xs">-</span>
+                                                                <span className="text-muted-foreground italic text-xs">N/A</span>
                                                             )}
                                                         </div>
                                                     </td>
