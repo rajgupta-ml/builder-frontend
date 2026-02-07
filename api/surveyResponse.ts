@@ -30,16 +30,47 @@ export const surveyResponseApi = {
              return;
         }
 
-        // 1. Identify all unique headers across all rows
-        const allKeys = new Set<string>();
-        data.forEach((row: any) => {
-            Object.keys(row).forEach(k => allKeys.add(k));
-        });
-        const headers = Array.from(allKeys).sort();
+        // 1. Define Fixed Headers
+        const fixedHeaders = ['Respondent ID', 'Status', 'Outcome', 'Survey ID'];
+
+        // 2. Get Dynamic Headers in Order
+        let dynamicHeaders: string[] = [];
+        if (meta && meta.orderedHeaders && Array.isArray(meta.orderedHeaders)) {
+            dynamicHeaders = meta.orderedHeaders;
+        } else {
+            // Fallback: collect and sort alphabetic
+            const allKeys = new Set<string>();
+            data.forEach((row: any) => {
+                Object.keys(row).forEach(k => {
+                    if (!fixedHeaders.includes(k) && k !== 'Date') {
+                        allKeys.add(k);
+                    }
+                });
+            });
+            dynamicHeaders = Array.from(allKeys).sort();
+        }
+        
+        // 3. Ensure all dynamic headers used in data are included (capture any drift/missing)
+        const usedKeys = new Set<string>();
+        data.forEach((row: any) => Object.keys(row).forEach(k => usedKeys.add(k)));
+        
+        dynamicHeaders.forEach(h => usedKeys.delete(h));
+        fixedHeaders.forEach(h => usedKeys.delete(h));
+        usedKeys.delete('Date'); // Handle Date separately
+        
+        // Append any remaining unknown keys (e.g. from old versions not in current workflow)
+        const remainingKeys = Array.from(usedKeys).sort();
+        
+        // Final Header Order
+        const headers = [...fixedHeaders, ...dynamicHeaders, ...remainingKeys, 'Date'];
 
         // 2. Normalize every row to have every header, filling missing with 'N/A'
         const normalizedData = data.map((row: any) => {
             const newRow: any = {};
+            
+            // Inject Survey ID if not present
+            if (!row['Survey ID']) row['Survey ID'] = surveyId;
+
             headers.forEach(header => {
                 const val = row[header];
                 if (val === null || val === undefined || val === '' || val === '-') {
