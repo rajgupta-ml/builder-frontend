@@ -1,4 +1,6 @@
 import apiClient from "@/lib/api-client"
+import * as XLSX from "xlsx";
+import JSZip from "jszip";
 
 export const surveyResponseApi = {
     getMetrics: async (surveyId: string) => {
@@ -16,21 +18,162 @@ export const surveyResponseApi = {
         return response.data.data;
     },
 
-    exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' = 'csv', mode: 'LIVE' | 'TEST' = 'LIVE') => {
+    exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode: 'LIVE' | 'TEST' = 'LIVE') => {
         const response = await apiClient.get(`/responses/export/${surveyId}`, {
-            params: { format, mode },
-            responseType: 'blob'
+            params: { format: 'json', mode } // Always fetch JSON
         });
         
-        // Helper to trigger download
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        const extension = format === 'xlsx' ? 'xlsx' : 'csv';
-        link.setAttribute('download', `survey-export-${surveyId}.${extension}`);
-        document.body.appendChild(link);
-        link.click();
-        link.parentNode?.removeChild(link);
-        window.URL.revokeObjectURL(url);
+        const { data, meta } = response.data;
+
+        if (!data || data.length === 0) {
+             alert("No data available to export.");
+             return;
+        }
+
+        if (format === 'csv') {
+            downloadCSV(data, surveyId);
+        } else if (format === 'xlsx') {
+            downloadXLSX(data, surveyId);
+        } else if (format === 'spss') {
+            await downloadSPSS(data, meta, surveyId);
+        }
     }
+}
+
+function downloadCSV(data: any[], surveyId: string) {
+    // Collect all unique keys
+    const allKeys = new Set<string>();
+    data.forEach((row: any) => {
+        Object.keys(row).forEach(k => allKeys.add(k));
+    });
+    
+    const headers = Array.from(allKeys).sort();
+    const csvContent = [
+        headers.join(','), // Header row
+        ...data.map((row: any) => headers.map((header: string) => {
+            const val = row[header];
+            // Escape CSV values
+            if (val === null || val === undefined) return '';
+            const str = String(val);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        }).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    saveFile(blob, `survey-export-${surveyId}.csv`);
+}
+
+function downloadXLSX(data: any[], surveyId: string) {
+    const workSheet = XLSX.utils.json_to_sheet(data);
+    const workBook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workBook, workSheet, "Responses");
+    XLSX.writeFile(workBook, `survey-export-${surveyId}.xlsx`);
+}
+
+async function downloadSPSS(data: any[], meta: any, surveyId: string) {
+    const zip = new JSZip();
+    
+    // 1. Create CSV Data File (without headers for SPSS usually, but let's keep headers and skip 1 line in syntax)
+    // Actually SPSS syntax "GET DATA /TYPE=TXT" is standard.
+    // Let's reuse CSV generation but we might need specific formatting for SPSS dates etc if we want to be strict.
+    // simpler to just use the CSV we already have logic for.
+    
+    const allKeys = new Set<string>();
+    data.forEach((row: any) => {
+        Object.keys(row).forEach(k => allKeys.add(k));
+    });
+    const headers = Array.from(allKeys).sort();
+    
+    const csvContent = [
+        headers.join(','),
+        ...data.map((row: any) => headers.map((header: string) => {
+            const val = row[header];
+            if (val === null || val === undefined) return '';
+            const str = String(val);
+             if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        }).join(','))
+    ].join('\n');
+
+    zip.file("data.csv", csvContent);
+
+    // 2. Create SPSS Syntax File (.sps)
+    let syntax = `* SPSS Syntax for Survey ${surveyId}.\n\n`;
+    syntax += `GET DATA\n`;
+    syntax += `  /TYPE=TXT\n`;
+    syntax += `  /FILE="data.csv"\n`;
+    syntax += `  /DELCASE=LINE\n`;
+    syntax += `  /DELIMITERS=","\n`;
+    syntax += `  /QUALIFIER='"\n`; // Double quote qualifier
+    syntax += `  /ARRANGEMENT=DELIMITED\n`;
+    syntax += `  /FIRSTCASE=2\n`; // Skip header row
+    syntax += `  /IMPORTCASE=ALL\n`;
+    syntax += `  /VARIABLES=\n`;
+
+    // Define Variables based on headers
+    // We need to map friendly headers back to technical variable names if possible, but here we just have headers.
+    // This is tricky because headers in CSV are "Q1 [Choice A]", which are not valid SPSS variable names.
+    // We should probably rely on `meta.spss` to map headers relative to variable mapping.
+    // BUT `data` has mapped headers.
+    
+    // Simplification for now: Use generic V1 to Vn mapping or try to sanitize headers to valid variable names.
+    // Better approach: User `meta.spss` to generate variable labels.
+    
+    const varNames: string[] = [];
+    headers.forEach((header, index) => {
+        // Create valid variable name: V_1, V_2 etc. or sanitize header
+        // SPSS vars: max 64 chars, no spaces, starts with letter/substitutes.
+        // Let's use V001, V002... and map them to Labels.
+        const varName = `V${String(index + 1).padStart(3, '0')}`;
+        varNames.push(varName);
+        
+        // Guess format: String mostly
+        syntax += `  ${varName} A255\n`;
+    });
+    syntax += `  .\n\n`;
+
+    syntax += `CACHE.\n`;
+    syntax += `EXECUTE.\n\n`;
+
+    // Variable Labels
+    syntax += `VARIABLE LABELS\n`;
+    headers.forEach((header, index) => {
+        const varName = varNames[index];
+        // Escape quotes in label
+        const label = header.replace(/'/g, "''").replace(/"/g, '""');
+        syntax += `  ${varName} '${label}'\n`;
+    });
+    syntax += `.\n`;
+
+    // Value Labels? 
+    // Since we are exporting "Hydrated" text (Yes/No, Agreed), we don't strictly *need* value labels for the data 
+    // because the data is already labeled. SPSS Value Labels are for numeric codes.
+    // If we wanted codes, we'd need to export Raw Data + Labels. 
+    // Current requirement is just "SPSS Export". The current Hydrated export is fine as string data.
+    // If we have access to metadata, we can add it as comments.
+
+    // If we have `meta.spss`, we can try to add variable level info if we could match headers to variables, 
+    // but headers are already "Question [Answer]".
+    
+    zip.file("syntax.sps", syntax);
+
+    // Generate Zip
+    const content = await zip.generateAsync({ type: "blob" });
+    saveFile(content, `survey-export-${surveyId}-spss.zip`);
+}
+
+function saveFile(blob: Blob, filename: string) {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
 }

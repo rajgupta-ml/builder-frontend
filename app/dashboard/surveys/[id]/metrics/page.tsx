@@ -80,7 +80,7 @@ export default function SurveyMetricsPage() {
             ]);
             setSurvey(surveyData);
             setMetrics(metricsData);
-            setResponses(responsesData);
+            setResponses(Array.isArray(responsesData) ? responsesData : responsesData.data || []);
             setRuntimeJson(workflowData?.runtimeJson || {});
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
@@ -290,6 +290,13 @@ export default function SurveyMetricsPage() {
                                 >
                                     <IconTable size={16} className="text-blue-600" />
                                     Export as Excel
+                                </button>
+                                <button
+                                    onClick={() => surveyResponseApi.exportResponses(id, 'spss')}
+                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                >
+                                    <IconTable size={16} className="text-purple-600" />
+                                    Export as SPSS
                                 </button>
                             </div>
                         </div>
