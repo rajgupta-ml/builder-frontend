@@ -113,6 +113,17 @@ export default function Dashboard() {
                                         {survey.description || "No description provided"}
                                     </p>
 
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Responses</span>
+                                            <span className="text-lg font-black">{survey.metrics?.completed || 0}</span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">IR</span>
+                                            <span className="text-lg font-black text-amber-600">{survey.metrics?.ir?.toFixed(1) || 0}%</span>
+                                        </div>
+                                    </div>
+
                                     <div className="flex items-center justify-between mt-auto pt-4 border-t border-border">
                                         <div className="flex gap-2">
                                             <button

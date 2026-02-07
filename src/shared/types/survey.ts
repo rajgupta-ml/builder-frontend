@@ -11,6 +11,16 @@ export interface Survey {
   overQuotaUrl: string | null;
   redirectUrl: string | null;
   securityTerminateUrl: string | null;
+  metrics?: {
+    clicked: number;
+    completed: number;
+    dropped: number;
+    disqualified: number;
+    overQuota: number;
+    qualityTerminate: number;
+    securityTerminate: number;
+    ir: number;
+  } | null;
 }
 
 export interface SurveyWorkflow {

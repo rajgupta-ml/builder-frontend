@@ -7,11 +7,8 @@ import { surveyResponseApi } from "@/api/surveyResponse";
 import { surveyWorkflowApi } from "@/api/surveyWorkflow";
 import { toast } from "sonner";
 import {
-    IconArrowLeft,
     IconClick,
     IconCheck,
-    IconX,
-    IconUserX,
     IconClock,
     IconChartBar,
     IconDownload,
@@ -19,8 +16,6 @@ import {
     IconRefresh,
     IconChevronLeft,
     IconChevronRight,
-    IconEye,
-    IconSearch,
     IconFilter,
     IconSettings
 } from "@tabler/icons-react";
@@ -50,6 +45,7 @@ interface MetricData {
     overQuota: number;
     qualityTerminate: number;
     securityTerminate: number;
+    ir: number;
 }
 
 export default function SurveyMetricsPage() {
@@ -120,6 +116,9 @@ export default function SurveyMetricsPage() {
         clicked: 0, completed: 0, dropped: 0, disqualified: 0,
         overQuota: 0, qualityTerminate: 0, securityTerminate: 0
     });
+
+    const totalQualifying = totalMetrics.completed + totalMetrics.disqualified;
+    const totalIR = totalQualifying > 0 ? (totalMetrics.completed / totalQualifying) * 100 : 0;
 
     // Calculate Average Completion Time
     const completedResponses = responses.filter(r => r.status === 'COMPLETED' && r.createdAt && r.updatedAt);
@@ -309,7 +308,7 @@ export default function SurveyMetricsPage() {
                 </div>
 
                 {/* Key Metrics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <MetricCard
                         title="Total Traffic"
                         value={safeTotalTraffic}
@@ -327,6 +326,12 @@ export default function SurveyMetricsPage() {
                         value={`${safeTotalTraffic > 0 ? ((totalMetrics.completed / safeTotalTraffic) * 100).toFixed(1) : 0}%`}
                         icon={<IconChartBar size={24} />}
                         color="bg-indigo-500"
+                    />
+                    <MetricCard
+                        title="Incidence Rate (IR)"
+                        value={`${totalIR.toFixed(1)}%`}
+                        icon={<IconChartBar size={24} />}
+                        color="bg-amber-500"
                     />
                     <MetricCard
                         title="Avg Time"
