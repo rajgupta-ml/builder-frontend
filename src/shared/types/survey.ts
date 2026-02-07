@@ -20,6 +20,7 @@ export interface Survey {
     qualityTerminate: number;
     securityTerminate: number;
     ir: number;
+    avgTime?: number;
     modes?: any[];
   } | null;
 }
