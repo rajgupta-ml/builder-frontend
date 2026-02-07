@@ -237,36 +237,7 @@ export default function SurveyMetricsPage() {
         currentPage * itemsPerPage
     );
 
-    const exportToCSV = () => {
-        if (responses.length === 0) return;
 
-        // Flatten responses for CSV
-        const headers = ["ID", "Status", "Outcome", "Mode", "Respondent ID", "Created At", ...questionNodes.map((n: any) => n.data.label)];
-        const csvRows = responses.map(r => [
-            r.id,
-            r.status,
-            r.outcome || 'N/A',
-            r.mode,
-            r.respondentId || 'N/A',
-            new Date(r.createdAt).toLocaleString(),
-            ...questionNodes.map((n: any) => {
-                const answer = r.response?.[n.id]?.answer;
-                const mapped = getDisplayValue(n.id, answer);
-                return mapped || 'N/A';
-            })
-        ]);
-
-        let csvContent = "data:text/csv;charset=utf-8,"
-            + headers.join(",") + "\n"
-            + csvRows.map(e => e.join(",")).join("\n");
-
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `survey_responses_${id}.csv`);
-        document.body.appendChild(link);
-        link.click();
-    };
 
     if (loading) return (
         <div className="min-h-screen flex items-center justify-center bg-background">
@@ -313,13 +284,30 @@ export default function SurveyMetricsPage() {
                         >
                             Open Builder
                         </button>
-                        <button
-                            onClick={exportToCSV}
-                            className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary font-semibold rounded-lg hover:bg-primary/20 transition-all"
-                        >
-                            <IconDownload size={18} />
-                            Export Data
-                        </button>
+                        <div className="relative group">
+                            <button
+                                className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary font-semibold rounded-lg hover:bg-primary/20 transition-all"
+                            >
+                                <IconDownload size={18} />
+                                Export Data
+                            </button>
+                            <div className="absolute right-0 mt-2 w-48 bg-card border border-border shadow-xl rounded-xl p-1 z-50 hidden group-hover:block hover:block animate-in fade-in zoom-in-95 duration-200">
+                                <button
+                                    onClick={() => surveyResponseApi.exportResponses(id, 'csv')}
+                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                >
+                                    <IconTable size={16} className="text-emerald-600" />
+                                    Export as CSV
+                                </button>
+                                <button
+                                    onClick={() => surveyResponseApi.exportResponses(id, 'xlsx')}
+                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                >
+                                    <IconTable size={16} className="text-blue-600" />
+                                    Export as Excel
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
