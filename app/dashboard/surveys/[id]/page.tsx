@@ -98,6 +98,7 @@ function SurveyFlow() {
     const [versions, setVersions] = useState<any[]>([]);
     const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
     const [isReadOnly, setIsReadOnly] = useState(false);
+    const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
 
     // 3. Publish State (Hash-based Change Detection)
     // These hashes are provided by the backend - NO local calculation needed
@@ -117,6 +118,19 @@ function SurveyFlow() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
+
+    const versionDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Handle click outside to close version dropdown
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
+                setIsVersionDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Helper to refresh current hashes (to detect changes in quotas/settings)
     const refreshCurrentHashes = async () => {
@@ -592,52 +606,66 @@ function SurveyFlow() {
                     <div className="w-px h-6 bg-border mx-2" />
 
                     {/* Version History Dropdown */}
-                    <div className="relative group">
-                        <button className="flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-xs font-medium hover:bg-muted transition-all">
+                    <div className="relative" ref={versionDropdownRef}>
+                        <button
+                            onClick={() => setIsVersionDropdownOpen(!isVersionDropdownOpen)}
+                            className={cn(
+                                "flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-xs font-medium hover:bg-muted transition-all",
+                                isVersionDropdownOpen && "bg-muted shadow-inner"
+                            )}
+                        >
                             <IconHistory size={16} className="text-muted-foreground" />
                             <span className="max-w-[100px] truncate">
-                                {selectedVersionId ? `v${versions.find(v => v.id === selectedVersionId)?.version || '?'}` : 'Current Draft'}
+                                {selectedVersionId ? `Version ${versions.find(v => v.id === selectedVersionId)?.version || '?'}` : 'Current Draft'}
                             </span>
                         </button>
 
                         {/* Dropdown Content */}
-                        <div className="absolute top-full right-0 mt-2 w-64 bg-background border border-border rounded-xl shadow-xl overflow-hidden hidden group-hover:block z-60 animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-2 border-b border-border bg-muted/30">
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Version History</p>
-                            </div>
-                            <div className="max-h-64 overflow-y-auto p-1">
-                                <button
-                                    onClick={() => handleVersionSelect(null)}
-                                    className={cn(
-                                        "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between",
-                                        !selectedVersionId ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
-                                    )}
-                                >
-                                    <span>Current Draft</span>
-                                    {!selectedVersionId && <IconCheck size={14} />}
-                                </button>
-
-                                {versions.map((v) => (
+                        {isVersionDropdownOpen && (
+                            <div className="absolute top-full right-0 mt-2 w-64 bg-background border border-border rounded-xl shadow-xl overflow-hidden z-60 animate-in fade-in zoom-in-95 duration-200">
+                                <div className="p-2 border-b border-border bg-muted/30">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Version History</p>
+                                </div>
+                                <div className="max-h-64 overflow-y-auto p-1">
                                     <button
-                                        key={v.id}
-                                        onClick={() => handleVersionSelect(v.id)}
+                                        onClick={() => {
+                                            handleVersionSelect(null);
+                                            setIsVersionDropdownOpen(false);
+                                        }}
                                         className={cn(
-                                            "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between group/item",
-                                            selectedVersionId === v.id ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                            "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between",
+                                            !selectedVersionId ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
                                         )}
                                     >
-                                        <div className="flex flex-col">
-                                            <span className="flex items-center gap-1">
-                                                v{v.version}
-                                                {v.status === 'PUBLISHED' && <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full border border-emerald-500/20">Live</span>}
-                                            </span>
-                                            <span className="text-[10px] opacity-60">{new Date(v.createdAt).toLocaleDateString()}</span>
-                                        </div>
-                                        {selectedVersionId === v.id && <IconCheck size={14} />}
+                                        <span>Current Draft</span>
+                                        {!selectedVersionId && <IconCheck size={14} />}
                                     </button>
-                                ))}
+
+                                    {versions.map((v) => (
+                                        <button
+                                            key={v.id}
+                                            onClick={() => {
+                                                handleVersionSelect(v.id);
+                                                setIsVersionDropdownOpen(false);
+                                            }}
+                                            className={cn(
+                                                "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between group/item",
+                                                selectedVersionId === v.id ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                            )}
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className="flex items-center gap-1 font-semibold">
+                                                    Version {v.version}
+                                                    {v.status === 'PUBLISHED' && <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full border border-emerald-500/20 font-normal">Live</span>}
+                                                </span>
+                                                <span className="text-[10px] opacity-60">{new Date(v.createdAt).toLocaleString()}</span>
+                                            </div>
+                                            {selectedVersionId === v.id && <IconCheck size={14} />}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
 
                     <div className="w-px h-6 bg-border mx-2" />
