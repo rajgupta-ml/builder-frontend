@@ -75,7 +75,7 @@ export const DashboardSidebar = () => {
                     <IconLayoutDashboard className="text-white" size={18} />
                 </div>
                 {!collapsed && (
-                    <span className="font-black text-xl tracking-tighter uppercase italic">SurveyChamp</span>
+                    <span className="font-black text-xl tracking-tighter uppercase italic">Survey Studio</span>
                 )}
             </div>
 
