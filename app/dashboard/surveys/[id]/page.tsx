@@ -256,7 +256,11 @@ function SurveyFlow() {
             setSaveStatus('saving');
             try {
                 const runtimeJson = generateRuntimeJson(nodes, edges);
-                const content = JSON.stringify({ nodes, edges });
+                const contentObj = { nodes, edges };
+                const content = JSON.stringify(contentObj);
+
+                console.log("[Builder] Compiled Runtime JSON:", runtimeJson);
+                console.log("[Builder] Design JSON (Raw):", contentObj);
 
                 const res = await apiClient.post(`/surveys/${surveyId}/element-workflow`, {
                     title: 'Auto Save',
