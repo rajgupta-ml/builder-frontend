@@ -30,19 +30,20 @@ export const surveyResponseApi = {
              return;
         }
 
-        // 1. Define Fixed Headers
-        const fixedHeaders = ['Respondent ID', 'Status', 'Outcome', 'Survey ID'];
+        // 1. Define Fixed Headers (Metrics)
+        const fixedHeaders = ['Respondent ID', 'Date', 'Status', 'Outcome', 'Duration', 'Survey ID'];
 
         // 2. Get Dynamic Headers in Order
         let dynamicHeaders: string[] = [];
         if (meta && meta.orderedHeaders && Array.isArray(meta.orderedHeaders)) {
-            dynamicHeaders = meta.orderedHeaders;
+            // Filter out system headers that were already included in fixedHeaders to prevent duplicates
+            dynamicHeaders = meta.orderedHeaders.filter((h: string) => !fixedHeaders.includes(h));
         } else {
             // Fallback: collect and sort alphabetic
             const allKeys = new Set<string>();
             data.forEach((row: any) => {
                 Object.keys(row).forEach(k => {
-                    if (!fixedHeaders.includes(k) && k !== 'Date') {
+                    if (!fixedHeaders.includes(k)) {
                         allKeys.add(k);
                     }
                 });
@@ -56,13 +57,12 @@ export const surveyResponseApi = {
         
         dynamicHeaders.forEach(h => usedKeys.delete(h));
         fixedHeaders.forEach(h => usedKeys.delete(h));
-        usedKeys.delete('Date'); // Handle Date separately
         
         // Append any remaining unknown keys (e.g. from old versions not in current workflow)
         const remainingKeys = Array.from(usedKeys).sort();
         
         // Final Header Order
-        const headers = [...fixedHeaders, ...dynamicHeaders, ...remainingKeys, 'Date'];
+        const headers = [...fixedHeaders, ...dynamicHeaders, ...remainingKeys];
 
         // 2. Normalize every row to have every header, filling missing with 'N/A'
         const normalizedData = data.map((row: any) => {

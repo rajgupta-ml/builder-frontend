@@ -58,6 +58,7 @@ export default function SurveyMetricsPage() {
     const [survey, setSurvey] = useState<Survey | null>(null);
     const [metrics, setMetrics] = useState<MetricData[]>([]);
     const [responses, setResponses] = useState<any[]>([]);
+    const [orderedHeaders, setOrderedHeaders] = useState<string[]>([]);
     const [runtimeJson, setRuntimeJson] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -81,7 +82,19 @@ export default function SurveyMetricsPage() {
             ]);
             setSurvey(surveyData);
             setMetrics(metricsData);
-            setResponses(Array.isArray(responsesData) ? responsesData : responsesData.data || []);
+            const rData = Array.isArray(responsesData) ? responsesData : responsesData.data || [];
+
+            // Inject duration calculation for frontend display
+            const enrichedResponses = rData.map((r: any) => {
+                const durationSeconds = r.updatedAt && r.createdAt
+                    ? Math.floor((new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 1000)
+                    : 0;
+                const durationStr = durationSeconds > 0 ? `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s` : "N/A";
+                return { ...r, duration: durationStr };
+            });
+
+            setResponses(enrichedResponses);
+            setOrderedHeaders(responsesData.meta?.orderedHeaders || []);
             setRuntimeJson(workflowData?.runtimeJson || {});
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
@@ -150,15 +163,20 @@ export default function SurveyMetricsPage() {
 
     const chartData = [
         { name: 'Completed', value: totalMetrics.completed, color: '#10b981' },
-        { name: 'Dropped', value: totalMetrics.dropped, color: '#ef4444' },
         { name: 'Disqualified', value: totalMetrics.disqualified, color: '#f59e0b' },
+        { name: 'Over Quota', value: totalMetrics.overQuota, color: '#f43f5e' },
         { name: 'Security Term.', value: totalMetrics.securityTerminate, color: '#6366f1' },
         { name: 'Quality Term.', value: totalMetrics.qualityTerminate, color: '#4f46e5' },
-        { name: 'Over Quota', value: totalMetrics.overQuota, color: '#f43f5e' },
+        { name: 'Dropped', value: totalMetrics.dropped, color: '#ef4444' },
     ].filter(d => d.value > 0 || true); // Keep all for debugging or filter as needed
 
-    // Dynamic Columns Identification from Hydrated Data
-    const dynamicHeaders = Array.from(new Set(
+    // Dynamic Columns Identification from Ordered Headers
+    // Filter out standard columns that we handle statically
+    const standardHeaders = ['Respondent ID', 'Date', 'Status', 'Outcome', 'Duration'];
+    const dynamicHeaders = orderedHeaders.filter(h => !standardHeaders.includes(h));
+
+    // Fallback if orderedHeaders is missing
+    const finalDynamicHeaders = dynamicHeaders.length > 0 ? dynamicHeaders : Array.from(new Set(
         responses.flatMap(r => Object.keys(r.hydrated_response || {}))
     )).sort();
 
@@ -305,16 +323,16 @@ export default function SurveyMetricsPage() {
                         color="bg-emerald-500"
                     />
                     <MetricCard
-                        title="Security Term."
-                        value={totalMetrics.securityTerminate}
-                        icon={<IconUserX size={24} />}
-                        color="bg-slate-700"
-                    />
-                    <MetricCard
                         title="Conversion Rate"
                         value={`${safeTotalTraffic > 0 ? ((totalMetrics.completed / safeTotalTraffic) * 100).toFixed(1) : 0}%`}
                         icon={<IconChartBar size={24} />}
                         color="bg-indigo-500"
+                    />
+                    <MetricCard
+                        title="Avg Time"
+                        value={formatTime(avgTimeMs)}
+                        icon={<IconClock size={24} />}
+                        color="bg-slate-600"
                     />
                 </div>
 
@@ -323,8 +341,8 @@ export default function SurveyMetricsPage() {
                     <MiniMetricCard title="Dropped" value={totalMetrics.dropped} color="text-rose-600" />
                     <MiniMetricCard title="Disqualified" value={totalMetrics.disqualified} color="text-amber-600" />
                     <MiniMetricCard title="Over Quota" value={totalMetrics.overQuota} color="text-fuchsia-600" />
+                    <MiniMetricCard title="Security Term." value={totalMetrics.securityTerminate} color="text-slate-700" />
                     <MiniMetricCard title="Qual. Term" value={totalMetrics.qualityTerminate} color="text-indigo-600" />
-                    <MiniMetricCard title="Avg Time" value={formatTime(avgTimeMs)} color="text-slate-600" />
                 </div>
 
                 {/* Charts Area */}
@@ -454,13 +472,14 @@ export default function SurveyMetricsPage() {
                                             />
                                         </div>
                                     </th>
-                                    {dynamicHeaders.map((header: string) => (
+                                    {finalDynamicHeaders.map((header: string) => (
                                         <th key={header} className="px-6 py-4 border-b border-border min-w-[200px]">
                                             <div className="flex flex-col gap-2">
                                                 <span className="truncate max-w-[180px]" title={header}>{header}</span>
                                             </div>
                                         </th>
                                     ))}
+                                    <th className="px-6 py-4 border-b border-border min-w-[100px]">Duration</th>
                                     <th className="px-6 py-4 border-b border-border">Timestamp</th>
                                 </tr>
                             </thead>
@@ -498,7 +517,7 @@ export default function SurveyMetricsPage() {
                                                     {resp.mode}
                                                 </span>
                                             </td>
-                                            {dynamicHeaders.map((header: string) => {
+                                            {finalDynamicHeaders.map((header: string) => {
                                                 const displayValue = resp.hydrated_response?.[header];
 
                                                 return (
@@ -513,6 +532,9 @@ export default function SurveyMetricsPage() {
                                                     </td>
                                                 );
                                             })}
+                                            <td className="px-6 py-4 border-b border-border text-sm font-medium text-muted-foreground">
+                                                {resp.duration}
+                                            </td>
                                             <td className="px-6 py-4 text-xs text-muted-foreground border-b border-border whitespace-nowrap">
                                                 {new Date(resp.createdAt).toLocaleString()}
                                             </td>
