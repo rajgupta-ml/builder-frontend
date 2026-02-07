@@ -57,6 +57,8 @@ export default function SurveyMetricsPage() {
     const [orderedHeaders, setOrderedHeaders] = useState<string[]>([]);
     const [runtimeJson, setRuntimeJson] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [responsesLoading, setResponsesLoading] = useState(true);
+    const [viewMode, setViewMode] = useState<'LIVE' | 'TEST'>('LIVE');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
@@ -70,14 +72,42 @@ export default function SurveyMetricsPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [surveyData, metricsData, responsesData, workflowData] = await Promise.all([
+            // Step 1: Fetch Survey and Workflow (fast)
+            const [surveyData, workflowData] = await Promise.all([
                 surveyApi.getSurvey(id),
-                surveyResponseApi.getMetrics(id),
-                surveyResponseApi.getResponses(id),
                 surveyWorkflowApi.getLatestWorkflowBySurveyId(id)
             ]);
             setSurvey(surveyData);
-            setMetrics(metricsData);
+            setRuntimeJson(workflowData?.runtimeJson || {});
+
+            // Set default view mode based on survey status
+
+            // If the survey has embedded modes metrics, we use them
+            if (surveyData.metrics?.modes) {
+                setMetrics(surveyData.metrics.modes);
+            }
+
+            // Stop global loading so the cards show up
+            setLoading(false);
+
+            // Step 2: Fetch detailed Responses and Mode-specific Metrics if missing or for refresh
+            setResponsesLoading(true);
+            const fetchPromises: Promise<any>[] = [
+                surveyResponseApi.getResponses(id)
+            ];
+
+            // Only fetch metrics if they weren't in the survey object
+            if (!surveyData.metrics?.modes) {
+                fetchPromises.push(surveyResponseApi.getMetrics(id));
+            }
+
+            const results = await Promise.all(fetchPromises);
+            const responsesData = results[0];
+
+            if (results[1]) {
+                setMetrics(results[1]);
+            }
+
             const rData = Array.isArray(responsesData) ? responsesData : responsesData.data || [];
 
             // Inject duration calculation for frontend display
@@ -91,12 +121,12 @@ export default function SurveyMetricsPage() {
 
             setResponses(enrichedResponses);
             setOrderedHeaders(responsesData.meta?.orderedHeaders || []);
-            setRuntimeJson(workflowData?.runtimeJson || {});
         } catch (error) {
             console.error("Failed to fetch dashboard data:", error);
             toast.error("Failed to load metrics");
-        } finally {
             setLoading(false);
+        } finally {
+            setResponsesLoading(false);
         }
     };
 
@@ -104,21 +134,19 @@ export default function SurveyMetricsPage() {
         if (id) fetchData();
     }, [id]);
 
-    const totalMetrics = metrics.reduce((acc, curr) => ({
-        clicked: acc.clicked + curr.clicked,
-        completed: acc.completed + curr.completed,
-        dropped: acc.dropped + curr.dropped,
-        disqualified: acc.disqualified + curr.disqualified,
-        overQuota: acc.overQuota + curr.overQuota,
-        qualityTerminate: acc.qualityTerminate + curr.qualityTerminate,
-        securityTerminate: acc.securityTerminate + curr.securityTerminate,
-    }), {
+    const activeMetrics = metrics.find(m => m.mode === viewMode) || {
+        mode: viewMode,
         clicked: 0, completed: 0, dropped: 0, disqualified: 0,
-        overQuota: 0, qualityTerminate: 0, securityTerminate: 0
-    });
+        overQuota: 0, qualityTerminate: 0, securityTerminate: 0, ir: 0
+    };
 
-    const totalQualifying = totalMetrics.completed + totalMetrics.disqualified;
-    const totalIR = totalQualifying > 0 ? (totalMetrics.completed / totalQualifying) * 100 : 0;
+    const totalMetrics = activeMetrics; // For backward compatibility with variable names below
+
+    const totalIR = totalMetrics.ir > 0 ? totalMetrics.ir : (
+        (totalMetrics.completed + totalMetrics.disqualified) > 0
+            ? (totalMetrics.completed / (totalMetrics.completed + totalMetrics.disqualified)) * 100
+            : 0
+    );
 
     // Calculate Average Completion Time
     const completedResponses = responses.filter(r => r.status === 'COMPLETED' && r.createdAt && r.updatedAt);
@@ -167,7 +195,7 @@ export default function SurveyMetricsPage() {
         { name: 'Security Term.', value: totalMetrics.securityTerminate, color: '#6366f1' },
         { name: 'Quality Term.', value: totalMetrics.qualityTerminate, color: '#4f46e5' },
         { name: 'Dropped', value: totalMetrics.dropped, color: '#ef4444' },
-    ].filter(d => d.value > 0 || true); // Keep all for debugging or filter as needed
+    ];
 
     // Dynamic Columns Identification from Ordered Headers
     // Filter out standard columns that we handle statically
@@ -181,10 +209,12 @@ export default function SurveyMetricsPage() {
 
     // Filter Logic
     const filteredResponses = responses.filter(r => {
+        // Mode filter is primary
+        if (r.mode !== viewMode) return false;
+
         // Check filtering for static columns
         if (filters['respondentId'] && !(r.respondentId || "Anonymous").toLowerCase().includes(filters['respondentId'].toLowerCase())) return false;
         if (filters['status'] && !(r.status || "").toLowerCase().includes(filters['status'].toLowerCase())) return false;
-        if (filters['mode'] && !(r.mode || "").toLowerCase().includes(filters['mode'].toLowerCase())) return false;
 
         return true;
     });
@@ -305,304 +335,332 @@ export default function SurveyMetricsPage() {
                             )}
                         </div>
                     </div>
-                </div>
-
-                {/* Key Metrics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                    <MetricCard
-                        title="Total Traffic"
-                        value={safeTotalTraffic}
-                        icon={<IconClick size={24} />}
-                        color="bg-blue-500"
-                    />
-                    <MetricCard
-                        title="Completions"
-                        value={totalMetrics.completed}
-                        icon={<IconCheck size={24} />}
-                        color="bg-emerald-500"
-                    />
-                    <MetricCard
-                        title="Conversion Rate"
-                        value={`${safeTotalTraffic > 0 ? ((totalMetrics.completed / safeTotalTraffic) * 100).toFixed(1) : 0}%`}
-                        icon={<IconChartBar size={24} />}
-                        color="bg-indigo-500"
-                    />
-                    <MetricCard
-                        title="Incidence Rate (IR)"
-                        value={`${totalIR.toFixed(1)}%`}
-                        icon={<IconChartBar size={24} />}
-                        color="bg-amber-500"
-                    />
-                    <MetricCard
-                        title="Avg Time"
-                        value={formatTime(avgTimeMs)}
-                        icon={<IconClock size={24} />}
-                        color="bg-slate-600"
-                    />
-                </div>
-
-                {/* Secondary Metrics Bar */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    <MiniMetricCard title="Dropped" value={totalMetrics.dropped} color="text-rose-600" />
-                    <MiniMetricCard title="Disqualified" value={totalMetrics.disqualified} color="text-amber-600" />
-                    <MiniMetricCard title="Over Quota" value={totalMetrics.overQuota} color="text-fuchsia-600" />
-                    <MiniMetricCard title="Security Term." value={totalMetrics.securityTerminate} color="text-slate-700" />
-                    <MiniMetricCard title="Qual. Term" value={totalMetrics.qualityTerminate} color="text-indigo-600" />
-                </div>
-
-                {/* Charts Area */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Status Breakdown Bar Chart */}
-                    <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 shadow-sm">
-                        <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                            <IconChartBar size={20} className="text-primary" />
-                            Conversion Funnel logic
-                        </h3>
-                        <div className="h-[300px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
-                                    <XAxis type="number" hide />
-                                    <YAxis
-                                        dataKey="name"
-                                        type="category"
-                                        axisLine={false}
-                                        tickLine={false}
-                                        width={100}
-                                        style={{ fontSize: '12px', fontWeight: 500 }}
-                                    />
-                                    <Tooltip
-                                        cursor={{ fill: '#f8fafc' }}
-                                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
-                                        {chartData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-xl w-fit border border-border">
+                        <button
+                            onClick={() => setViewMode('LIVE')}
+                            className={cn(
+                                "px-6 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wide",
+                                viewMode === 'LIVE' ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-muted"
+                            )}
+                        >
+                            Live Data
+                        </button>
+                        <button
+                            onClick={() => setViewMode('TEST')}
+                            className={cn(
+                                "px-6 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wide",
+                                viewMode === 'TEST' ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-muted"
+                            )}
+                        >
+                            Test Data
+                        </button>
                     </div>
 
-                    {/* Mode Breakdown Pie Chart */}
-                    <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                        <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                            <IconClock size={20} className="text-primary" />
-                            Mode Distribution
-                        </h3>
-                        <div className="h-[300px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={modeData}
-                                        innerRadius={60}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        <Cell fill="#10b981" />
-                                        <Cell fill="#6366f1" />
-                                    </Pie>
-                                    <Tooltip />
-                                </PieChart>
-                            </ResponsiveContainer>
-                            <div className="flex justify-center gap-6 mt-4">
-                                <div className="flex items-center gap-2 text-xs font-medium">
-                                    <div className="w-3 h-3 rounded-full bg-emerald-500" /> Live
-                                </div>
-                                <div className="flex items-center gap-2 text-xs font-medium">
-                                    <div className="w-3 h-3 rounded-full bg-indigo-500" /> Test
+                    {/* Key Metrics Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                        <MetricCard
+                            title="Total Traffic"
+                            value={safeTotalTraffic}
+                            icon={<IconClick size={24} />}
+                            color="bg-blue-500"
+                        />
+                        <MetricCard
+                            title="Completions"
+                            value={totalMetrics.completed}
+                            icon={<IconCheck size={24} />}
+                            color="bg-emerald-500"
+                        />
+                        <MetricCard
+                            title="Conversion Rate"
+                            value={`${safeTotalTraffic > 0 ? ((totalMetrics.completed / safeTotalTraffic) * 100).toFixed(1) : 0}%`}
+                            icon={<IconChartBar size={24} />}
+                            color="bg-indigo-500"
+                        />
+                        <MetricCard
+                            title="Incidence Rate (IR)"
+                            value={`${totalIR.toFixed(1)}%`}
+                            icon={<IconChartBar size={24} />}
+                            color="bg-amber-500"
+                        />
+                        <MetricCard
+                            title="Avg Time"
+                            value={formatTime(avgTimeMs)}
+                            icon={<IconClock size={24} />}
+                            color="bg-slate-600"
+                        />
+                    </div>
+
+                    {/* Secondary Metrics Bar */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        <MiniMetricCard title="Dropped" value={totalMetrics.dropped} color="text-rose-600" />
+                        <MiniMetricCard title="Disqualified" value={totalMetrics.disqualified} color="text-amber-600" />
+                        <MiniMetricCard title="Over Quota" value={totalMetrics.overQuota} color="text-fuchsia-600" />
+                        <MiniMetricCard title="Security Term." value={totalMetrics.securityTerminate} color="text-slate-700" />
+                        <MiniMetricCard title="Qual. Term" value={totalMetrics.qualityTerminate} color="text-indigo-600" />
+                    </div>
+
+                    {/* Charts Area */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Status Breakdown Bar Chart */}
+                        <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 shadow-sm">
+                            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                                <IconChartBar size={20} className="text-primary" />
+                                Conversion Funnel logic
+                            </h3>
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                                        <XAxis type="number" hide />
+                                        <YAxis
+                                            dataKey="name"
+                                            type="category"
+                                            axisLine={false}
+                                            tickLine={false}
+                                            width={100}
+                                            style={{ fontSize: '12px', fontWeight: 500 }}
+                                        />
+                                        <Tooltip
+                                            cursor={{ fill: '#f8fafc' }}
+                                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        />
+                                        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
+                                            {chartData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.color} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Mode Breakdown Pie Chart */}
+                        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+                            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
+                                <IconClock size={20} className="text-primary" />
+                                Mode Distribution
+                            </h3>
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={modeData}
+                                            innerRadius={60}
+                                            outerRadius={80}
+                                            paddingAngle={5}
+                                            dataKey="value"
+                                        >
+                                            <Cell fill="#10b981" />
+                                            <Cell fill="#6366f1" />
+                                        </Pie>
+                                        <Tooltip />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                                <div className="flex justify-center gap-6 mt-4">
+                                    <div className="flex items-center gap-2 text-xs font-medium">
+                                        <div className="w-3 h-3 rounded-full bg-emerald-500" /> Live
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs font-medium">
+                                        <div className="w-3 h-3 rounded-full bg-indigo-500" /> Test
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Recent Responses Table */}
-                <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-                    <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-                        <h3 className="text-lg font-bold flex items-center gap-2">
-                            <IconTable size={20} className="text-primary" />
-                            Recent Responses
-                        </h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left table-auto border-separate border-spacing-0">
-                            <thead>
-                                <tr className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-bold">
-                                    <th className="px-6 py-4 border-b border-border sticky left-0 bg-muted/50 z-20 min-w-[200px]">
-                                        <div className="flex items-center gap-2">
-                                            <span>Respondent</span>
-                                            <FilterPopover
-                                                value={filters['respondentId'] || ''}
-                                                onChange={(v) => handleFilterChange('respondentId', v)}
-                                                type="text"
-                                                placeholder="Search ID..."
-                                            />
-                                        </div>
-                                    </th>
-                                    <th className="px-6 py-4 border-b border-border min-w-[150px]">
-                                        <div className="flex items-center gap-2">
-                                            <span>Status / Outcome</span>
-                                            <FilterPopover
-                                                value={filters['status'] || ''}
-                                                onChange={(v) => handleFilterChange('status', v)}
-                                                type="select"
-                                                options={[
-                                                    { label: 'All', value: '' },
-                                                    { label: 'Completed', value: 'COMPLETED' },
-                                                    { label: 'Dropped', value: 'DROPPED' },
-                                                    { label: 'Disqualified', value: 'DISQUALIFIED' },
-                                                    { label: 'Quality Terminate', value: 'QUALITY_TERMINATE' },
-                                                    { label: 'Security Terminate', value: 'SECURITY_TERMINATE' },
-                                                    { label: 'Over Quota', value: 'OVER_QUOTA' },
-                                                    { label: 'In Progress', value: 'IN_PROGRESS' },
-                                                ]}
-                                            />
-                                        </div>
-                                    </th>
-                                    <th className="px-6 py-4 border-b border-border min-w-[100px]">
-                                        <div className="flex items-center gap-2">
-                                            <span>Mode</span>
-                                            <FilterPopover
-                                                value={filters['mode'] || ''}
-                                                onChange={(v) => handleFilterChange('mode', v)}
-                                                type="select"
-                                                options={[
-                                                    { label: 'All', value: '' },
-                                                    { label: 'Live', value: 'LIVE' },
-                                                    { label: 'Test', value: 'TEST' },
-                                                ]}
-                                            />
-                                        </div>
-                                    </th>
-                                    {finalDynamicHeaders.map((header: string) => (
-                                        <th key={header} className="px-6 py-4 border-b border-border min-w-[200px]">
-                                            <div className="flex flex-col gap-2">
-                                                <span className="truncate max-w-[180px]" title={header}>{header}</span>
-                                            </div>
-                                        </th>
-                                    ))}
-                                    <th className="px-6 py-4 border-b border-border min-w-[100px]">Duration</th>
-                                    <th className="px-6 py-4 border-b border-border">Timestamp</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                                {paginatedResponses.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={5 + dynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground">
-                                            No responses recorded yet.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    paginatedResponses.map((resp) => (
-                                        <tr key={resp.id} className="hover:bg-muted/30 transition-colors group">
-                                            <td className="px-6 py-4 sticky left-0 bg-background group-hover:bg-muted/30 z-10 border-b border-border">
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold text-sm">{resp.respondentId || "Anonymous"}</span>
-                                                    <span className="text-[10px] text-muted-foreground font-mono">{resp.id.split('-')[0]}...</span>
+                    {/* Recent Responses Table */}
+                    <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+                        <div className="px-6 py-5 border-b border-border flex items-center justify-between">
+                            <h3 className="text-lg font-bold flex items-center gap-2">
+                                <IconTable size={20} className="text-primary" />
+                                Recent Responses
+                            </h3>
+                        </div>
+                        {responsesLoading && responses.length === 0 ? (
+                            <div className="p-12 text-center text-muted-foreground bg-muted/10">
+                                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                                Loading responses...
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left table-auto border-separate border-spacing-0">
+                                    <thead>
+                                        <tr className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-bold">
+                                            <th className="px-6 py-4 border-b border-border sticky left-0 bg-muted/50 z-20 min-w-[200px]">
+                                                <div className="flex items-center gap-2">
+                                                    <span>Respondent</span>
+                                                    <FilterPopover
+                                                        value={filters['respondentId'] || ''}
+                                                        onChange={(v) => handleFilterChange('respondentId', v)}
+                                                        type="text"
+                                                        placeholder="Search ID..."
+                                                    />
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4 border-b border-border">
-                                                <div className="flex flex-col gap-1">
-                                                    <StatusBadge status={resp.status} />
-                                                    {resp.outcome && (
-                                                        <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[150px]" title={resp.outcome}>
-                                                            {resp.outcome}
-                                                        </span>
-                                                    )}
+                                            </th>
+                                            <th className="px-6 py-4 border-b border-border min-w-[150px]">
+                                                <div className="flex items-center gap-2">
+                                                    <span>Status / Outcome</span>
+                                                    <FilterPopover
+                                                        value={filters['status'] || ''}
+                                                        onChange={(v) => handleFilterChange('status', v)}
+                                                        type="select"
+                                                        options={[
+                                                            { label: 'All', value: '' },
+                                                            { label: 'Completed', value: 'COMPLETED' },
+                                                            { label: 'Dropped', value: 'DROPPED' },
+                                                            { label: 'Disqualified', value: 'DISQUALIFIED' },
+                                                            { label: 'Quality Terminate', value: 'QUALITY_TERMINATE' },
+                                                            { label: 'Security Terminate', value: 'SECURITY_TERMINATE' },
+                                                            { label: 'Over Quota', value: 'OVER_QUOTA' },
+                                                            { label: 'In Progress', value: 'IN_PROGRESS' },
+                                                        ]}
+                                                    />
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4 border-b border-border">
-                                                <span className={cn(
-                                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                                    resp.mode === 'LIVE' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
-                                                )}>
-                                                    {resp.mode}
-                                                </span>
-                                            </td>
-                                            {finalDynamicHeaders.map((header: string) => {
-                                                const displayValue = resp.hydrated_response?.[header];
-
-                                                return (
-                                                    <td key={header} className="px-6 py-4 border-b border-border">
-                                                        <div className="text-sm font-medium text-foreground line-clamp-2" title={String(displayValue || '')}>
-                                                            {displayValue !== undefined && displayValue !== null && displayValue !== '' && displayValue !== '-' ? (
-                                                                displayValue
-                                                            ) : (
-                                                                <span className="text-muted-foreground italic text-xs">N/A</span>
+                                            </th>
+                                            <th className="px-6 py-4 border-b border-border min-w-[100px]">
+                                                <div className="flex items-center gap-2">
+                                                    <span>Mode</span>
+                                                    <FilterPopover
+                                                        value={filters['mode'] || ''}
+                                                        onChange={(v) => handleFilterChange('mode', v)}
+                                                        type="select"
+                                                        options={[
+                                                            { label: 'All', value: '' },
+                                                            { label: 'Live', value: 'LIVE' },
+                                                            { label: 'Test', value: 'TEST' },
+                                                        ]}
+                                                    />
+                                                </div>
+                                            </th>
+                                            {finalDynamicHeaders.map((header: string) => (
+                                                <th key={header} className="px-6 py-4 border-b border-border min-w-[200px]">
+                                                    <div className="flex flex-col gap-2">
+                                                        <span className="truncate max-w-[180px]" title={header}>{header}</span>
+                                                    </div>
+                                                </th>
+                                            ))}
+                                            <th className="px-6 py-4 border-b border-border min-w-[100px]">Duration</th>
+                                            <th className="px-6 py-4 border-b border-border">Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {paginatedResponses.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5 + dynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground">
+                                                    No responses recorded yet.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            paginatedResponses.map((resp) => (
+                                                <tr key={resp.id} className="hover:bg-muted/30 transition-colors group">
+                                                    <td className="px-6 py-4 sticky left-0 bg-background group-hover:bg-muted/30 z-10 border-b border-border">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-semibold text-sm">{resp.respondentId || "Anonymous"}</span>
+                                                            <span className="text-[10px] text-muted-foreground font-mono">{resp.id.split('-')[0]}...</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 border-b border-border">
+                                                        <div className="flex flex-col gap-1">
+                                                            <StatusBadge status={resp.status} />
+                                                            {resp.outcome && (
+                                                                <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[150px]" title={resp.outcome}>
+                                                                    {resp.outcome}
+                                                                </span>
                                                             )}
                                                         </div>
                                                     </td>
-                                                );
-                                            })}
-                                            <td className="px-6 py-4 border-b border-border text-sm font-medium text-muted-foreground">
-                                                {resp.duration}
-                                            </td>
-                                            <td className="px-6 py-4 text-xs text-muted-foreground border-b border-border whitespace-nowrap">
-                                                {new Date(resp.createdAt).toLocaleString()}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                                    <td className="px-6 py-4 border-b border-border">
+                                                        <span className={cn(
+                                                            "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                                            resp.mode === 'LIVE' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                                                        )}>
+                                                            {resp.mode}
+                                                        </span>
+                                                    </td>
+                                                    {finalDynamicHeaders.map((header: string) => {
+                                                        const displayValue = resp.hydrated_response?.[header];
 
-                    {/* Pagination Controls */}
-                    {totalPages > 1 && (
-                        <div className="px-6 py-4 bg-muted/20 border-t border-border flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
-                                Showing <span className="font-bold text-foreground">{filteredResponses.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to <span className="font-bold text-foreground">{Math.min(currentPage * itemsPerPage, filteredResponses.length)}</span> of <span className="font-bold text-foreground">{filteredResponses.length}</span> responses
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
-                                    className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    <IconChevronLeft size={16} />
-                                </button>
-                                <div className="flex items-center gap-1">
-                                    {[...Array(totalPages)].map((_, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => setCurrentPage(i + 1)}
-                                            className={cn(
-                                                "w-8 h-8 rounded-lg text-xs font-bold transition-all",
-                                                currentPage === i + 1
-                                                    ? "bg-primary text-primary-foreground shadow-md"
-                                                    : "hover:bg-muted text-muted-foreground"
-                                            )}
-                                        >
-                                            {i + 1}
-                                        </button>
-                                    )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
-                                </div>
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
-                                    className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    <IconChevronRight size={16} />
-                                </button>
+                                                        return (
+                                                            <td key={header} className="px-6 py-4 border-b border-border">
+                                                                <div className="text-sm font-medium text-foreground line-clamp-2" title={String(displayValue || '')}>
+                                                                    {displayValue !== undefined && displayValue !== null && displayValue !== '' && displayValue !== '-' ? (
+                                                                        displayValue
+                                                                    ) : (
+                                                                        <span className="text-muted-foreground italic text-xs">N/A</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td className="px-6 py-4 border-b border-border text-sm font-medium text-muted-foreground">
+                                                        {resp.duration}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-xs text-muted-foreground border-b border-border whitespace-nowrap">
+                                                        {new Date(resp.createdAt).toLocaleString()}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+                        )}
 
-            <SurveySettingsModal
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-                surveyId={id}
-            />
-            <SurveyQuotaModal
-                isOpen={isQuotaOpen}
-                onClose={() => setIsQuotaOpen(false)}
-                surveyId={id}
-            />
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div className="px-6 py-4 bg-muted/20 border-t border-border flex items-center justify-between">
+                                <span className="text-xs text-muted-foreground">
+                                    Showing <span className="font-bold text-foreground">{filteredResponses.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to <span className="font-bold text-foreground">{Math.min(currentPage * itemsPerPage, filteredResponses.length)}</span> of <span className="font-bold text-foreground">{filteredResponses.length}</span> responses
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        <IconChevronLeft size={16} />
+                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        {[...Array(totalPages)].map((_, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => setCurrentPage(i + 1)}
+                                                className={cn(
+                                                    "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                                    currentPage === i + 1
+                                                        ? "bg-primary text-primary-foreground shadow-md"
+                                                        : "hover:bg-muted text-muted-foreground"
+                                                )}
+                                            >
+                                                {i + 1}
+                                            </button>
+                                        )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
+                                    </div>
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        <IconChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <SurveySettingsModal
+                    isOpen={isSettingsOpen}
+                    onClose={() => setIsSettingsOpen(false)}
+                    surveyId={id}
+                />
+                <SurveyQuotaModal
+                    isOpen={isQuotaOpen}
+                    onClose={() => setIsQuotaOpen(false)}
+                    surveyId={id}
+                />
+            </div>
         </div>
     );
 }
@@ -719,5 +777,5 @@ function FilterPopover({ value, onChange, type, options, placeholder }: {
                 </>
             )}
         </div>
-    )
+    );
 }
