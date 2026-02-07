@@ -192,12 +192,10 @@ export default function SurveyMetricsPage() {
         return typeof answer === 'object' ? JSON.stringify(answer) : String(answer);
     };
 
-    // Dynamic Columns Identification
-    const questionNodes = runtimeJson
-        ? Object.values(runtimeJson).filter((node: any) =>
-            !['start', 'end', 'branch'].includes(node.type) && node.data?.label
-        )
-        : [];
+    // Dynamic Columns Identification from Hydrated Data
+    const dynamicHeaders = Array.from(new Set(
+        responses.flatMap(r => Object.keys(r.hydrated_response || {}))
+    )).sort();
 
     // Filter Logic
     const filteredResponses = responses.filter(r => {
@@ -205,19 +203,6 @@ export default function SurveyMetricsPage() {
         if (filters['respondentId'] && !(r.respondentId || "Anonymous").toLowerCase().includes(filters['respondentId'].toLowerCase())) return false;
         if (filters['status'] && !(r.status || "").toLowerCase().includes(filters['status'].toLowerCase())) return false;
         if (filters['mode'] && !(r.mode || "").toLowerCase().includes(filters['mode'].toLowerCase())) return false;
-
-        // Check filtering for dynamic question columns
-        // for (const [key, value] of Object.entries(filters)) {
-        //     if (['respondentId', 'status', 'mode'].includes(key)) continue;
-        //     
-        //     // It's a question filter
-        //     const answer = r.response?.[key]?.answer;
-        //     const displayValue = getDisplayValue(key, answer);
-        //     
-        //     if (!String(displayValue || "").toLowerCase().includes(value.toLowerCase())) {
-        //         return false;
-        //     }
-        // }
 
         return true;
     });
@@ -475,10 +460,10 @@ export default function SurveyMetricsPage() {
                                             />
                                         </div>
                                     </th>
-                                    {questionNodes.map((node: any) => (
-                                        <th key={node.id} className="px-6 py-4 border-b border-border min-w-[200px]">
+                                    {dynamicHeaders.map((header: string) => (
+                                        <th key={header} className="px-6 py-4 border-b border-border min-w-[200px]">
                                             <div className="flex flex-col gap-2">
-                                                <span className="truncate max-w-[180px]" title={node.data.label}>{node.data.label}</span>
+                                                <span className="truncate max-w-[180px]" title={header}>{header}</span>
                                             </div>
                                         </th>
                                     ))}
@@ -488,7 +473,7 @@ export default function SurveyMetricsPage() {
                             <tbody className="divide-y divide-border">
                                 {paginatedResponses.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5 + questionNodes.length} className="px-6 py-12 text-center text-muted-foreground">
+                                        <td colSpan={5 + dynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground">
                                             No responses recorded yet.
                                         </td>
                                     </tr>
@@ -519,18 +504,16 @@ export default function SurveyMetricsPage() {
                                                     {resp.mode}
                                                 </span>
                                             </td>
-                                            {questionNodes.map((node: any) => {
-                                                const responseItem = resp.response?.[node.id];
-                                                const answer = responseItem?.answer;
-                                                const displayValue = getDisplayValue(node.id, answer);
+                                            {dynamicHeaders.map((header: string) => {
+                                                const displayValue = resp.hydrated_response?.[header];
 
                                                 return (
-                                                    <td key={node.id} className="px-6 py-4 border-b border-border">
+                                                    <td key={header} className="px-6 py-4 border-b border-border">
                                                         <div className="text-sm font-medium text-foreground line-clamp-2" title={String(displayValue || '')}>
-                                                            {displayValue !== null ? (
+                                                            {displayValue !== undefined && displayValue !== null ? (
                                                                 displayValue
                                                             ) : (
-                                                                <span className="text-muted-foreground italic text-xs">Skipped/Unreached</span>
+                                                                <span className="text-muted-foreground italic text-xs">-</span>
                                                             )}
                                                         </div>
                                                     </td>
