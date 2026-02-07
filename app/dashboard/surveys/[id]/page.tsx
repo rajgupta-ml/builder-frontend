@@ -28,7 +28,7 @@ import { nodeTypes, edgeTypes, getNodeInitialData } from '@/components/nodes';
 import SurveyNodeSidebar from '@/components/SurveyNodeSidebar';
 import PropertiesPanel from '@/components/properties/PropertiesPanel';
 import NodeViewer from '@/components/NodeViewer';
-import { IconCheck, IconAlertCircle, IconLoader2, IconPlayerPlay, IconWorld, IconShare, IconCopy, IconX, IconExternalLink, IconChartBar, IconFilter, IconSettings } from '@tabler/icons-react';
+import { IconCheck, IconAlertCircle, IconLoader2, IconPlayerPlay, IconWorld, IconShare, IconCopy, IconX, IconExternalLink, IconChartBar, IconFilter, IconSettings, IconHistory, IconPlayerPause, IconBan, IconRefresh } from '@tabler/icons-react';
 import { validateWorkflow } from '@/lib/validate-workflow';
 import { toast } from 'sonner';
 import { cn, decompressJson } from '@/lib/utils';
@@ -90,9 +90,14 @@ function SurveyFlow() {
     // 2. Metadata State
     const [workflowId, setWorkflowId] = useState<string | null>(null);
     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'unsaved'>('saved');
-    const [publishStatus, setPublishStatus] = useState<'DRAFT' | 'PUBLISHED'>('DRAFT');
+    const [publishStatus, setPublishStatus] = useState<'DRAFT' | 'PUBLISHED' | 'LIVE' | 'PAUSED' | 'CLOSED'>('DRAFT');
     const [survey, setSurvey] = useState<any>(null);
     const [quotas, setQuotas] = useState<any[]>([]);
+
+    // Versioning State
+    const [versions, setVersions] = useState<any[]>([]);
+    const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+    const [isReadOnly, setIsReadOnly] = useState(false);
 
     // 3. Publish State (Hash-based Change Detection)
     // These hashes are provided by the backend - NO local calculation needed
@@ -133,7 +138,7 @@ function SurveyFlow() {
         : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}?mode=test`;
 
     // Live link only exists/is valid if published
-    const isLive = publishStatus === 'PUBLISHED';
+    const isLive = publishStatus === 'PUBLISHED' || publishStatus === 'LIVE';
     const liveLink = survey?.slug
         ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.slug}`
         : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}`;
@@ -148,6 +153,10 @@ function SurveyFlow() {
                 const surveyRes = await apiClient.get(`/surveys/${surveyId}`);
                 setSurvey(surveyRes.data.data);
                 setPublishStatus(surveyRes.data.data.status);
+
+                // Fetch Versions
+                const versionsRes = await apiClient.get(`/workflows/${surveyId}`);
+                setVersions(versionsRes.data.data || []);
 
                 // Fetch Quotas
                 const quotasRes = await apiClient.get(`/surveys/${surveyId}/quotas`);
@@ -250,7 +259,7 @@ function SurveyFlow() {
 
     // 7. Auto Save
     useEffect(() => {
-        if (saveStatus !== 'unsaved' || !surveyId) return;
+        if (saveStatus !== 'unsaved' || !surveyId || isReadOnly) return;
 
         const timer = setTimeout(async () => {
             setSaveStatus('saving');
@@ -291,7 +300,7 @@ function SurveyFlow() {
         }, 1000); // 1s debounce
 
         return () => clearTimeout(timer);
-    }, [nodes, edges, saveStatus, surveyId]);
+    }, [nodes, edges, saveStatus, surveyId, isReadOnly]);
 
     // Change handlers set unsaved
     const onNodeClick = useCallback((_: React.MouseEvent, node: ReactFlowNode) => {
@@ -308,11 +317,13 @@ function SurveyFlow() {
             isFirstLoad.current = false;
             return;
         }
-        setSaveStatus('unsaved');
-    }, [nodes, edges]);
+        if (!isReadOnly) {
+            setSaveStatus('unsaved');
+        }
+    }, [nodes, edges, isReadOnly]);
 
     // 8. Change Detection (using backend-provided granular hashes)
-    const hasChanges = publishStatus === 'PUBLISHED' &&
+    const hasChanges = (publishStatus === 'PUBLISHED' || publishStatus === 'LIVE') &&
         publishedHashes.runtime !== null &&
         (currentHashes.runtime !== publishedHashes.runtime ||
             currentHashes.quotas !== publishedHashes.quotas ||
@@ -354,7 +365,7 @@ function SurveyFlow() {
                 setPublishedHashes(newHashes);
                 setCurrentHashes(newHashes); // After publish, both hashes match
             }
-            setPublishStatus('PUBLISHED');
+            setPublishStatus('LIVE');
 
             toast.success(hasChanges ? "Live survey updated successfully!" : "Successfully published to LIVE mode!");
         } catch (error: any) {
@@ -386,6 +397,76 @@ function SurveyFlow() {
         }
     };
 
+    const handleVersionSelect = async (vId: string | null) => {
+        setSelectedVersionId(vId);
+        if (vId) {
+            setIsReadOnly(true);
+            try {
+                // Fetch full workflow content for this version
+                const res = await apiClient.get(`/workflows/detail/${vId}`);
+                if (res.data.data) {
+                    const { designJson } = res.data.data;
+
+                    let content = designJson;
+
+                    // Reuse the parsing logic from loadData
+                    let parsedContent: any = null;
+                    try {
+                        const inner = typeof content === 'string' ? JSON.parse(content) : content;
+                        parsedContent = inner;
+                    } catch {
+                        parsedContent = decompressJson(content);
+                    }
+
+                    if (parsedContent && parsedContent.nodes) {
+                        setNodes(parsedContent.nodes);
+                        if (parsedContent.edges) setEdges(parsedContent.edges);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load version", err);
+                toast.error("Failed to load version history");
+            }
+        } else {
+            setIsReadOnly(false);
+            // Reload page to reset to latest draft state cleanly
+            window.location.reload();
+        }
+    };
+
+    const handlePause = async () => {
+        if (!confirm("Are you sure you want to PAUSE this survey? Respondents will see a 'Paused' message.")) return;
+        try {
+            await apiClient.post(`/surveys/${surveyId}/pause`);
+            setPublishStatus('PAUSED');
+            toast.success("Survey Paused");
+        } catch (e) {
+            toast.error("Failed to pause");
+        }
+    };
+
+    const handleClose = async () => {
+        if (!confirm("Are you sure you want to CLOSE this survey? This is permanent/destructive for active sessions.")) return;
+        try {
+            await apiClient.post(`/surveys/${surveyId}/close`);
+            setPublishStatus('CLOSED');
+            toast.success("Survey Closed");
+        } catch (e) {
+            toast.error("Failed to close");
+        }
+    };
+
+    const handleResume = async () => {
+        try {
+            // Re-publishing to LIVE serves as a resume action
+            await apiClient.post(`/surveys/${surveyId}/publish`, { mode: 'LIVE' });
+            setPublishStatus('PUBLISHED');
+            toast.success("Survey Resumed");
+        } catch (e) {
+            toast.error("Failed to resume");
+        }
+    };
+
     return (
         <div className="flex w-full h-screen bg-background overflow-hidden relative">
             <SurveyNodeSidebar />
@@ -396,14 +477,17 @@ function SurveyFlow() {
                     edges={edges}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={onConnect}
+                    onNodesChange={isReadOnly ? undefined : onNodesChange}
+                    onEdgesChange={isReadOnly ? undefined : onEdgesChange}
+                    onConnect={isReadOnly ? undefined : onConnect}
                     onInit={setReactFlowInstance}
                     onNodeClick={onNodeClick}
                     onPaneClick={onPaneClick}
                     defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
                     className="bg-muted/10 px-10"
+                    nodesDraggable={!isReadOnly}
+                    nodesConnectable={!isReadOnly}
+                    elementsSelectable={!isReadOnly}
                 >
                     <Background />
                     <Controls />
@@ -414,7 +498,7 @@ function SurveyFlow() {
                 {/* Top Right Controls & Status */}
                 <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
                     {/* Live Status Badge */}
-                    {publishStatus === 'PUBLISHED' && !hasChanges ? (
+                    {(publishStatus === 'PUBLISHED' || publishStatus === 'LIVE') && !hasChanges ? (
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
@@ -507,14 +591,101 @@ function SurveyFlow() {
 
                     <div className="w-px h-6 bg-border mx-2" />
 
+                    {/* Version History Dropdown */}
+                    <div className="relative group">
+                        <button className="flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-xs font-medium hover:bg-muted transition-all">
+                            <IconHistory size={16} className="text-muted-foreground" />
+                            <span className="max-w-[100px] truncate">
+                                {selectedVersionId ? `v${versions.find(v => v.id === selectedVersionId)?.version || '?'}` : 'Current Draft'}
+                            </span>
+                        </button>
+
+                        {/* Dropdown Content */}
+                        <div className="absolute top-full right-0 mt-2 w-64 bg-background border border-border rounded-xl shadow-xl overflow-hidden hidden group-hover:block z-60 animate-in fade-in zoom-in-95 duration-200">
+                            <div className="p-2 border-b border-border bg-muted/30">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Version History</p>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto p-1">
+                                <button
+                                    onClick={() => handleVersionSelect(null)}
+                                    className={cn(
+                                        "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between",
+                                        !selectedVersionId ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
+                                    )}
+                                >
+                                    <span>Current Draft</span>
+                                    {!selectedVersionId && <IconCheck size={14} />}
+                                </button>
+
+                                {versions.map((v) => (
+                                    <button
+                                        key={v.id}
+                                        onClick={() => handleVersionSelect(v.id)}
+                                        className={cn(
+                                            "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between group/item",
+                                            selectedVersionId === v.id ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        <div className="flex flex-col">
+                                            <span className="flex items-center gap-1">
+                                                v{v.version}
+                                                {v.status === 'PUBLISHED' && <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full border border-emerald-500/20">Live</span>}
+                                            </span>
+                                            <span className="text-[10px] opacity-60">{new Date(v.createdAt).toLocaleDateString()}</span>
+                                        </div>
+                                        {selectedVersionId === v.id && <IconCheck size={14} />}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="w-px h-6 bg-border mx-2" />
+
+                    {/* Status Actions (Pause/Close) */}
+                    {publishStatus !== 'DRAFT' && (
+                        <div className="flex items-center gap-1 mr-2">
+                            {/* Pause/Resume */}
+                            {publishStatus === 'PAUSED' ? (
+                                <button
+                                    onClick={handleResume}
+                                    className="p-2 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 rounded-full border border-amber-500/20 transition-all"
+                                    title="Resume Survey (Set to Live)"
+                                >
+                                    <IconPlayerPlay size={18} />
+                                </button>
+                            ) : publishStatus !== 'CLOSED' ? (
+                                <button
+                                    onClick={handlePause}
+                                    className="p-2 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 rounded-full transition-all"
+                                    title="Pause Survey"
+                                >
+                                    <IconPlayerPause size={18} />
+                                </button>
+                            ) : null}
+
+                            {/* Close */}
+                            {publishStatus !== 'CLOSED' && (
+                                <button
+                                    onClick={handleClose}
+                                    className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-all"
+                                    title="Close Survey (Permanent)"
+                                >
+                                    <IconBan size={18} />
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+
                     {/* Publish Button with Smart States */}
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handlePublishLive}
-                            disabled={isPublishing || (publishStatus === 'PUBLISHED' && !hasChanges)}
+                            disabled={isPublishing || ((publishStatus === 'PUBLISHED' || publishStatus === 'LIVE') && !hasChanges)}
                             className={cn(
                                 "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed",
-                                publishStatus !== 'PUBLISHED'
+                                (publishStatus !== 'PUBLISHED' && publishStatus !== 'LIVE')
                                     ? "bg-primary text-primary-foreground hover:bg-primary/90"
                                     : hasChanges
                                         ? "bg-amber-600 text-white hover:bg-amber-700"
@@ -523,7 +694,7 @@ function SurveyFlow() {
                             title={hasChanges ? "Configuration has changed since last publish" : undefined}
                         >
                             {isPublishing ? <IconLoader2 className="animate-spin" size={14} /> : null}
-                            {publishStatus !== 'PUBLISHED'
+                            {(publishStatus !== 'PUBLISHED' && publishStatus !== 'LIVE')
                                 ? "Publish to Live"
                                 : hasChanges
                                     ? "Update Live"
@@ -592,7 +763,7 @@ function SurveyFlow() {
             )}
 
             {/* Right Sidebar: Properties Panel */}
-            {selectedNodeId && nodes.find(n => n.id === selectedNodeId) && (
+            {selectedNodeId && nodes.find(n => n.id === selectedNodeId) && !isReadOnly && (
                 <PropertiesPanel
                     node={nodes.find(n => n.id === selectedNodeId) || null}
                     nodes={nodes}
