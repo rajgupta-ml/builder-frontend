@@ -1,13 +1,14 @@
 import apiClient from "@/lib/api-client";
-import { Survey, SurveyQuota } from "@/src/shared/types/survey";
+import { Survey, SurveyQuota, Surveys } from "@/src/shared/types/survey";
 
 export const surveyApi = {
   // Done
-  getSurveys: async (): Promise<Survey[]> => {
-    const response = await apiClient.get<{ data: Survey[] }>("/surveys");
+  getSurveys: async (): Promise<Surveys[]> => {
+    const response = await apiClient.get<{ data: Surveys[] }>("/surveys");
     return response.data.data;
   },
 
+  // Done
   getSurvey: async (id: string): Promise<Survey> => {
     const response = await apiClient.get<{ data: Survey }>(`/surveys/${id}`);
     return response.data.data;

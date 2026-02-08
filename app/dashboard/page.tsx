@@ -6,12 +6,12 @@ import { surveyApi } from "@/api/survey";
 import { toast } from "sonner";
 import { IconPlus, IconClipboardList, IconEdit, IconTrash } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "motion/react";
-import { Survey } from "@/src/shared/types/survey";
+import { Surveys } from "@/src/shared/types/survey";
 import NewSurveyModal from "@/components/SurveyModal";
 
 export default function Dashboard() {
     const router = useRouter();
-    const [surveys, setSurveys] = useState<Survey[]>([]);
+    const [surveys, setSurveys] = useState<Surveys[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -95,7 +95,7 @@ export default function Dashboard() {
                                         </div>
 
                                         {/* Status Badge */}
-                                        {survey.latestWorkflow?.status === 'PUBLISHED' ? (
+                                        {survey.status === 'Live' ? (
                                             <span className="px-2.5 py-1 bg-green-500/10 text-green-600 text-[10px] font-bold uppercase tracking-wider rounded-full border border-green-500/20 shadow-sm flex items-center gap-1.5">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                                                 Live
@@ -121,16 +121,6 @@ export default function Dashboard() {
                                         {survey.description || "No description provided"}
                                     </p>
 
-                                    <div className="flex items-center gap-4 mb-6">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Responses</span>
-                                            <span className="text-lg font-black">{survey.metrics?.completed || 0}</span>
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">IR</span>
-                                            <span className="text-lg font-black text-amber-600">{survey.metrics?.ir?.toFixed(1) || 0}%</span>
-                                        </div>
-                                    </div>
 
                                     <div className="flex items-center justify-between mt-auto pt-4 border-t border-border">
                                         <div className="flex gap-2">

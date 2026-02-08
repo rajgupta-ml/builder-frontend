@@ -1,28 +1,21 @@
+export interface Surveys {
+  id: string;
+  name: string;
+  status: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  client : string;
+}
 export interface Survey {
   id: string;
   name: string;
-  description: string | null;
-  client: string;
-  createdAt: string;
-  updatedAt: string;
-  userId: string;
-  latestWorkflow?: { status: "DRAFT" | "PUBLISHED" | null };
+  status: string;
   globalQuota: number | null;
   overQuotaUrl: string | null;
+  client: string; 
   redirectUrl: string | null;
   securityTerminateUrl: string | null;
-  metrics?: {
-    clicked: number;
-    completed: number;
-    dropped: number;
-    disqualified: number;
-    overQuota: number;
-    qualityTerminate: number;
-    securityTerminate: number;
-    ir: number;
-    avgTime?: number;
-    modes?: any[];
-  } | null;
 }
 
 export interface SurveyWorkflow {

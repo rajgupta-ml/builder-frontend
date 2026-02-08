@@ -16,5 +16,14 @@ export const surveyWorkflowApi = {
         }
         
         return data
-    }   
+    },
+    autosaveWorkflow: async (data: { surveyId: string, runtimeJson: any, designJson: any }) => {
+        const response = await apiClient.post(`/workflows/autosave`, data);
+        return response.data.data;
+    },
+
+    createWorkflow: async (data: { surveyId: string, runtimeJson: any, designJson: any }) => {
+        const response = await apiClient.post(`/workflows`, data);
+        return response.data.data;
+    }
 }

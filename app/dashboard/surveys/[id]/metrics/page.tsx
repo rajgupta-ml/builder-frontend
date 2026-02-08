@@ -55,7 +55,6 @@ export default function SurveyMetricsPage() {
     const [metrics, setMetrics] = useState<MetricData[]>([]);
     const [responses, setResponses] = useState<any[]>([]);
     const [orderedHeaders, setOrderedHeaders] = useState<string[]>([]);
-    const [runtimeJson, setRuntimeJson] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [responsesLoading, setResponsesLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'LIVE' | 'TEST'>('LIVE');
@@ -72,44 +71,31 @@ export default function SurveyMetricsPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Step 1: Fetch Survey and Workflow (fast)
-            const [surveyData, workflowData] = await Promise.all([
+
+            const [surveyData, metricsData] = await Promise.all([
                 surveyApi.getSurvey(id),
-                surveyWorkflowApi.getLatestWorkflowBySurveyId(id)
-            ]);
+                surveyResponseApi.getMetrics(id)
+            ])
+
+            if (!surveyData) {
+                toast.error("No survey found for this id");
+                return;
+            }
             setSurvey(surveyData);
-            setRuntimeJson(workflowData?.runtimeJson || {});
 
-            // Set default view mode based on survey status
-
-            // If the survey has embedded modes metrics, we use them
-            if (surveyData.metrics?.modes) {
-                setMetrics(surveyData.metrics.modes);
+            if (metricsData?.modes) {
+                setMetrics(metricsData.modes);
             }
 
-            // Stop global loading so the cards show up
             setLoading(false);
-
-            // Step 2: Fetch detailed Responses and Mode-specific Metrics if missing or for refresh
             setResponsesLoading(true);
             const fetchPromises: Promise<any>[] = [
                 surveyResponseApi.getResponses(id)
             ];
-
-            // Only fetch metrics if they weren't in the survey object
-            if (!surveyData.metrics?.modes) {
-                fetchPromises.push(surveyResponseApi.getMetrics(id));
-            }
-
             const results = await Promise.all(fetchPromises);
             const responsesData = results[0];
 
-            if (results[1]) {
-                setMetrics(results[1]);
-            }
-
             const rData = Array.isArray(responsesData) ? responsesData : responsesData.data || [];
-
             // Inject duration calculation for frontend display
             const enrichedResponses = rData.map((r: any) => {
                 const durationSeconds = r.updatedAt && r.createdAt

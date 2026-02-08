@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import apiClient from '@/lib/api-client';
+import { surveyWorkflowApi } from '@/api/surveyWorkflow';
 import {
     ReactFlow,
     addEdge,
@@ -275,32 +276,40 @@ function SurveyFlow() {
             setSaveStatus('saving');
             try {
                 const runtimeJson = generateRuntimeJson(nodes, edges);
-                const contentObj = { nodes, edges };
-                const content = JSON.stringify(contentObj);
+                const designJson = { nodes, edges };
 
                 console.log("[Builder] Compiled Runtime JSON:", runtimeJson);
-                console.log("[Builder] Design JSON (Raw):", contentObj);
 
-                const res = await apiClient.post(`/surveys/${surveyId}/element-workflow`, {
-                    title: 'Auto Save',
-                    content, // Store raw ReactFlow JSON for Builder
-                    runtimeJson // Store compiled JSON for Runner
+                // Use the dedicated autosave API
+                const data = await surveyWorkflowApi.autosaveWorkflow({
+                    surveyId,
+                    designJson,
+                    runtimeJson
                 });
 
-                setWorkflowId(res.data.data.id);
+                setWorkflowId(data.id);
 
                 // Update status from backend (Crucial for change detection state)
-                if (res.data.data.status) {
-                    setPublishStatus(res.data.data.status);
+                if (data.status) {
+                    setPublishStatus(data.status);
                 }
 
                 // Update hashes from backend response (for change detection)
-                if (res.data.data.currentHashes) {
-                    setCurrentHashes(res.data.data.currentHashes);
-                }
-                if (res.data.data.publishedHashes) {
-                    setPublishedHashes(res.data.data.publishedHashes);
-                }
+                // Note: backend response structure might need mapping if it's different
+                // Assuming backend returns { ...workflow, currentHashes, publishedHashes }
+                // or we might need to fetch them separately if autosave doesn't return them.
+                // Based on previous controller code, 'autosaveWorkflow' returns the workflow object.
+                // The PREVIOUS 'syncElementWorkflow' returned { data: { ...hashes } }.
+                // We might need to adjust or re-fetch hashes if the new 'autosaveWorkflow' doesn't return them.
+
+                // WAIT! The new 'autosaveWorkflow' in controller returns `res.status(200).json({ message: "...", data: workflow });`
+                // It DOES NOT compute and return hashes like `syncElementWorkflow` did.
+                // We should probably rely on the Refetch or update the controller to return hashes.
+                // For now, let's keep it simple and just save. We can re-fetch hashes if needed.
+
+                // ACTUALLY, to keep feature parity with "Change Detection", we need those hashes.
+                // Let's call refreshCurrentHashes() after save.
+                refreshCurrentHashes();
 
                 setSaveStatus('saved');
             } catch (err) {
