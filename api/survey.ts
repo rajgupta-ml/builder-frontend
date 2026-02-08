@@ -2,6 +2,7 @@ import apiClient from "@/lib/api-client";
 import { Survey, SurveyQuota } from "@/src/shared/types/survey";
 
 export const surveyApi = {
+  // Done
   getSurveys: async (): Promise<Survey[]> => {
     const response = await apiClient.get<{ data: Survey[] }>("/surveys");
     return response.data.data;
@@ -12,6 +13,7 @@ export const surveyApi = {
     return response.data.data;
   },
 
+  // Done
   createSurvey: async (data: { name: string; description?: string; client: string }): Promise<Survey> => {
     const response = await apiClient.post<{ data: Survey }>("/surveys", data);
     return response.data.data;
@@ -21,6 +23,7 @@ export const surveyApi = {
     await apiClient.put(`/surveys/${id}`, data);
   },
 
+  // Done
   deleteSurvey: async (id: string): Promise<void> => {
     await apiClient.delete(`/surveys/${id}`);
   },

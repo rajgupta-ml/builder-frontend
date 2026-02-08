@@ -1,5 +1,6 @@
 "use client";
-import React from "react";
+import React, { SubmitEvent, useEffect, useState } from "react";
+import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -11,19 +12,22 @@ import { toast } from "sonner";
 import { LoginSchema, LoginData } from "@/src/shared/common";
 
 export default function LoginForm() {
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [loading, setLoading] = React.useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
   const router = useRouter();
 
-  React.useEffect(() => {
+  useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
       router.replace("/dashboard");
+    } else {
+      setIsChecking(false);
     }
   }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
 
@@ -56,6 +60,15 @@ export default function LoginForm() {
       setLoading(false);
     }
   };
+
+
+  if (isChecking) {
+    return (
+      <div className="flex h-[400px] w-full items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
+        <Spinner className="h-8 w-8 text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="border border-border mx-auto w-full max-w-md rounded-none p-4 md:rounded-2xl md:p-8 bg-card text-card-foreground shadow-sm">

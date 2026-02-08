@@ -1,5 +1,5 @@
 "use client";
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     IconBell,
@@ -16,7 +16,7 @@ export const DashboardHeader = () => {
     const [isModalOpen, setIsModalOpen] = React.useState(false);
     const [user, setUser] = React.useState<any>(null);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const storedUser = localStorage.getItem("user");
         if (storedUser) {
             try {

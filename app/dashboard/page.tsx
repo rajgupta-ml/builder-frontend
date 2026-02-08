@@ -7,11 +7,13 @@ import { toast } from "sonner";
 import { IconPlus, IconClipboardList, IconEdit, IconTrash } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Survey } from "@/src/shared/types/survey";
+import NewSurveyModal from "@/components/SurveyModal";
 
 export default function Dashboard() {
     const router = useRouter();
     const [surveys, setSurveys] = useState<Survey[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
         fetchSurveys();
@@ -33,6 +35,12 @@ export default function Dashboard() {
     return (
         <div className="p-8 md:p-12 relative">
             {/* Page Title */}
+            <NewSurveyModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                onSuccess={() => { }} // Modal handles redirect
+            />
+
             <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
                 <motion.div
                     initial={{ opacity: 0, x: -20 }}
@@ -177,7 +185,7 @@ export default function Dashboard() {
                                 Get started by creating your first survey campaign to gather valuable insights.
                             </p>
                             <button
-                                // onClick={() => setIsModalOpen(true)}
+                                onClick={() => setIsModalOpen(true)}
                                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-secondary text-secondary-foreground font-semibold rounded-full hover:bg-secondary/80 transition-all"
                             >
                                 <IconPlus size={20} />
