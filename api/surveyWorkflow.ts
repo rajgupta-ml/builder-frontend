@@ -25,5 +25,15 @@ export const surveyWorkflowApi = {
     createWorkflow: async (data: { surveyId: string, runtimeJson: any, designJson: any }) => {
         const response = await apiClient.post(`/workflows`, data);
         return response.data.data;
+    },
+
+    getWorkflowsMetadata: async (surveyId: string): Promise<any[]> => {
+        const response = await apiClient.get(`/workflows/${surveyId}/metadata`);
+        return response.data.data || [];
+    },
+
+    getWorkflowById: async (workflowId: string): Promise<any> => {
+        const response = await apiClient.get(`/workflows/detail/${workflowId}`);
+        return response.data.data;
     }
 }

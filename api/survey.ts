@@ -47,5 +47,18 @@ export const surveyApi = {
   toggleQuota: async (id: string, enabled: boolean): Promise<SurveyQuota> => {
       const response = await apiClient.patch<{ data: SurveyQuota }>(`/surveys/quotas/${id}`, { enabled });
       return response.data.data;
-  }
-};
+  },
+  
+    publish: async (surveyId: string, mode: 'LIVE' | 'TEST'): Promise<any> => {
+        const response = await apiClient.post(`/surveys/${surveyId}/publish`, { mode });
+        return response.data;
+    },
+  
+    pause: async (surveyId: string): Promise<void> => {
+        await apiClient.post(`/surveys/${surveyId}/pause`);
+    },
+  
+    close: async (surveyId: string): Promise<void> => {
+        await apiClient.post(`/surveys/${surveyId}/close`);
+    }
+  };
