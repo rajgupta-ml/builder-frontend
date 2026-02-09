@@ -52,21 +52,45 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
     };
 
     const handleSave = async () => {
+        if (!survey) return;
         setSaving(true);
         try {
-            console.log("Survey Settings Modal handleSave called", formData);
-            await surveyApi.updateSurvey(surveyId, {
-                name: survey?.name || "", // Preserve existing name
-                description: survey?.description || "",
-                redirectUrl: formData.redirectUrl || null,
-                overQuotaUrl: formData.overQuotaUrl || null,
-                securityTerminateUrl: formData.securityTerminateUrl || null,
-                globalQuota: formData.globalQuota ? parseInt(formData.globalQuota) : null
-            });
-            toast.success("Settings saved successfully");
-            if (onSave) onSave();
+            const updates: Parameters<typeof surveyApi.updateSurvey>[1] = {};
+
+            // Helper to handle empty string as null for URLs
+            // Note: Zod expects null for cleared fields, not empty strings
+            const getUrlValue = (val: string) => val.trim() === "" ? null : val.trim();
+
+            const newRedirectUrl = getUrlValue(formData.redirectUrl);
+            if (newRedirectUrl !== survey.redirectUrl) {
+                updates.redirectUrl = newRedirectUrl;
+            }
+
+            const newOverQuotaUrl = getUrlValue(formData.overQuotaUrl);
+            if (newOverQuotaUrl !== survey.overQuotaUrl) {
+                updates.overQuotaUrl = newOverQuotaUrl;
+            }
+
+            const newSecurityTerminateUrl = getUrlValue(formData.securityTerminateUrl);
+            if (newSecurityTerminateUrl !== survey.securityTerminateUrl) {
+                updates.securityTerminateUrl = newSecurityTerminateUrl;
+            }
+
+            const newGlobalQuota = formData.globalQuota !== "" ? parseInt(formData.globalQuota) : null;
+            if (newGlobalQuota !== survey.globalQuota) {
+                updates.globalQuota = newGlobalQuota;
+            }
+
+            if (Object.keys(updates).length > 0) {
+                await surveyApi.updateSurvey(surveyId, updates);
+                toast.success("Settings saved successfully");
+                if (onSave) onSave();
+            } else {
+                toast.info("No changes to save");
+            }
             onClose();
         } catch (error) {
+            console.error(error);
             toast.error("Failed to save settings");
         } finally {
             setSaving(false);

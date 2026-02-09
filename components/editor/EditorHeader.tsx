@@ -97,20 +97,24 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
     return (
         <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
             {/* Status Badges */}
-            {hasChanges ? (
+            {isLive && hasChanges ? (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2" title="Changes detected - republish needed">
                     <IconAlertCircle className="text-amber-500" size={14} />
                     <span className="text-amber-600 font-bold text-[10px] tracking-wider uppercase whitespace-nowrap">
                         Out of Sync
                     </span>
                 </div>
-            ) : isLive && (
+            ) : isLive ? (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2">
                     <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                     </span>
                     <span className="text-emerald-600 font-bold text-[10px] tracking-wider uppercase">Live</span>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 backdrop-blur-sm rounded-full shadow-sm mr-2">
+                    <span className="text-blue-600 font-bold text-[10px] tracking-wider uppercase">Draft</span>
                 </div>
             )}
 

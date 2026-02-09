@@ -1,14 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
-import { surveyApi } from "@/api/survey";
-import { SurveyQuota, SurveyWorkflow } from "@/src/shared/types/survey";
+import { quotaApi } from "@/api/quota";
+import { SurveyQuota } from "@/src/shared/types/survey";
 import { surveyWorkflowApi } from "@/api/surveyWorkflow";
 import { toast } from "sonner";
 import { IconPlus, IconTrash, IconToggleLeft, IconToggleRight, IconAlertCircle, IconX, IconSettings } from "@tabler/icons-react";
-import { cn, generateUniqueId } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConditionBuilder } from "../properties/ConditionBuilder";
-import { LogicGroup, getNodeDefinition } from "../nodes/definitions";
+import { LogicGroup } from "../nodes/definitions";
 import { Node } from "@xyflow/react";
 
 interface SurveyQuotaModalProps {
@@ -48,7 +47,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
         setLoading(true);
         try {
             const [quotasData, workflowData] = await Promise.all([
-                surveyApi.getQuotas(surveyId),
+                quotaApi.getQuotas(surveyId),
                 surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId)
             ]);
             setQuotas(quotasData);
@@ -99,7 +98,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
         }
 
         try {
-            const created = await surveyApi.createQuota(surveyId, {
+            const created = await quotaApi.createQuota(surveyId, {
                 rule: newQuota.logic,
                 limit: parseInt(newQuota.limit),
                 enabled: true
@@ -120,7 +119,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
     const handleDelete = async (quotaId: string) => {
         if (!confirm("Are you sure you want to delete this quota?")) return;
         try {
-            await surveyApi.deleteQuota(quotaId);
+            await quotaApi.deleteQuota(quotaId);
             setQuotas(quotas.filter(q => q.id !== quotaId));
             toast.success("Quota deleted");
             if (onSave) onSave();
@@ -131,15 +130,13 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
 
     const handleToggle = async (quotaId: string, currentStatus: boolean) => {
         try {
-            const updated = await surveyApi.toggleQuota(quotaId, !currentStatus);
+            const updated = await quotaApi.toggleQuota(quotaId, !currentStatus);
             setQuotas(quotas.map(q => q.id === quotaId ? updated : q));
             if (onSave) onSave();
         } catch (error) {
             toast.error("Failed to update quota");
         }
     };
-
-    const getNodeLabel = (nodeId: string) => flowNodes.find((n: Node) => n.id === nodeId)?.data?.label || nodeId;
 
     return (
         <AnimatePresence>

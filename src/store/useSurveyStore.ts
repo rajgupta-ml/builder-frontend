@@ -11,6 +11,7 @@ import {
 } from '@xyflow/react';
 import { surveyApi } from '@/api/survey';
 import { surveyWorkflowApi } from '@/api/surveyWorkflow';
+import { quotaApi } from '@/api/quota';
 import { toast } from 'sonner';
 import { Survey, SurveyQuota } from '@/src/shared/types/survey';
 
@@ -111,7 +112,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const [survey, versions, quotas, workflow] = await Promise.all([
                 surveyApi.getSurvey(surveyId),
                 surveyWorkflowApi.getWorkflowsMetadata(surveyId),
-                surveyApi.getQuotas(surveyId),
+                quotaApi.getQuotas(surveyId),
                 surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId)
             ]);
 
@@ -122,10 +123,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 workflowId: workflow?.id || null,
                 nodes: workflow?.designJson?.nodes || [],
                 edges: workflow?.designJson?.edges || [],
-                // Compute hasChanges
-                hasChanges: (survey?.status === 'LIVE' || survey?.status === 'PAUSED') && 
-                            versions.length > 0 && 
-                            versions[0].status === 'DRAFT'
+                hasChanges: versions.length > 0 && versions[0].status === 'DRAFT'
             });
         } catch (err) {
             console.error("Failed to load survey data", err);
@@ -142,9 +140,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             set({ 
                 survey, 
                 versions,
-                hasChanges: (survey?.status === 'LIVE' || survey?.status === 'PAUSED') && 
-                            versions.length > 0 && 
-                            versions[0].status === 'DRAFT'
+                hasChanges: versions.length > 0 && versions[0].status === 'DRAFT'
             });
         } catch (err) {
             console.error("Failed to refresh survey data", err);
@@ -169,9 +165,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 workflowId: data.id, 
                 saveStatus: 'saved',
                 versions,
-                hasChanges: (survey?.status === 'LIVE' || survey?.status === 'PAUSED') && 
-                            versions.length > 0 && 
-                            versions[0].status === 'DRAFT'
+                hasChanges: versions.length > 0 && versions[0].status === 'DRAFT'
             });
         } catch (err) {
             console.error("Save failed", err);

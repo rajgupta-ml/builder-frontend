@@ -1,5 +1,5 @@
 import apiClient from "@/lib/api-client";
-import { Survey, SurveyQuota, Surveys } from "@/src/shared/types/survey";
+import { Survey, Surveys } from "@/src/shared/types/survey";
 
 export const surveyApi = {
   // Done
@@ -29,27 +29,7 @@ export const surveyApi = {
     await apiClient.delete(`/surveys/${id}`);
   },
 
-  // Quota Methods
-  getQuotas: async (surveyId: string): Promise<SurveyQuota[]> => {
-      const response = await apiClient.get<{ data: SurveyQuota[] }>(`/surveys/${surveyId}/quotas`);
-      return response.data.data;
-  },
-
-  createQuota: async (surveyId: string, data: { rule: any; limit: number; enabled?: boolean }): Promise<SurveyQuota> => {
-      const response = await apiClient.post<{ data: SurveyQuota }>(`/surveys/${surveyId}/quotas`, data);
-      return response.data.data;
-  },
-
-  deleteQuota: async (id: string): Promise<void> => {
-      await apiClient.delete(`/surveys/quotas/${id}`);
-  },
-
-  toggleQuota: async (id: string, enabled: boolean): Promise<SurveyQuota> => {
-      const response = await apiClient.patch<{ data: SurveyQuota }>(`/surveys/quotas/${id}`, { enabled });
-      return response.data.data;
-  },
-  
-    publish: async (surveyId: string, mode: 'LIVE' | 'TEST'): Promise<any> => {
+  publish: async (surveyId: string, mode: 'LIVE' | 'TEST'): Promise<any> => {
         const response = await apiClient.post(`/surveys/${surveyId}/publish`, { mode });
         return response.data;
     },
