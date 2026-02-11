@@ -81,7 +81,7 @@ export function EditorCanvas() {
                 className="bg-muted/10 px-10"
                 nodesDraggable={!isReadOnly}
                 nodesConnectable={!isReadOnly}
-                elementsSelectable={!isReadOnly}
+
             >
                 <Background />
                 <Controls />

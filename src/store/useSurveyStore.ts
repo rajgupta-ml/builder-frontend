@@ -165,12 +165,13 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     },
 
     autosave: async (surveyId, runtimeJson) => {
-        const { nodes, edges } = get();
+        const { nodes, edges, workflowId } = get();
         set({ saveStatus: 'saving' });
         try {
             console.log(runtimeJson)
             const data = await surveyWorkflowApi.autosaveWorkflow({
                 surveyId,
+                workflowId,
                 designJson: { nodes, edges },
                 runtimeJson
             });
@@ -267,6 +268,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                     set({
                         nodes: data.designJson.nodes || [],
                         edges: data.designJson.edges || [],
+                        workflowId: data.id,
                         saveStatus: 'saved' // Prevent autosave when viewing version history
                     });
                 }
@@ -282,9 +284,11 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const hydratedNodes = workflow?.runtimeJson 
                 ? hydrateNodeIds(rawNodes, workflow.runtimeJson) 
                 : rawNodes;
+
             set({
                 nodes: hydratedNodes,
                 edges: workflow?.designJson?.edges || [],
+                workflowId: workflow?.id || null,
                 saveStatus: 'saved' // Prevent autosave when returning to latest version
             });
         }

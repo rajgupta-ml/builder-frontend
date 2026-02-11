@@ -17,7 +17,7 @@ export const surveyWorkflowApi = {
         
         return data
     },
-    autosaveWorkflow: async (data: { surveyId: string, runtimeJson: any, designJson: any }) => {
+    autosaveWorkflow: async (data: { surveyId: string, workflowId?: string | null, runtimeJson: any, designJson: any }) => {
         const response = await apiClient.post(`/workflows/autosave`, data);
         return response.data.data;
     },
@@ -34,6 +34,16 @@ export const surveyWorkflowApi = {
 
     getWorkflowById: async (workflowId: string): Promise<any> => {
         const response = await apiClient.get(`/workflows/detail/${workflowId}`);
-        return response.data.data;
+        const data = response.data.data;
+
+        if (data && data.runtimeJson && data.designJson) {
+            return {
+                ...data,
+                runtimeJson: decompressJson(data.runtimeJson),
+                designJson: decompressJson(data.designJson)
+            };
+        }
+        
+        return data;
     }
 }

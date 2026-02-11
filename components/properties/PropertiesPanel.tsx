@@ -8,14 +8,17 @@ import { ConditionBuilder } from "./ConditionBuilder";
 import { StepsBuilder } from "./StepsBuilder";
 import EmojiPicker from "./EmojiPicker";
 
+// ... (imports remain same)
+
 interface PropertiesPanelProps {
     node: Node | null;
     nodes: Node[]; // Full list of nodes needed for logic builder
     onChange: (fieldName: string, value: any) => void;
     onClose: () => void;
+    readOnly?: boolean;
 }
 
-export default function PropertiesPanel({ node, nodes, onChange, onClose }: PropertiesPanelProps) {
+export default function PropertiesPanel({ node, nodes, onChange, onClose, readOnly = false }: PropertiesPanelProps) {
 
     // Get the definition for this node type
     const definition = node ? getNodeDefinition(node.type || "") : null;
@@ -34,6 +37,7 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose }: Prop
                         <definition.icon size={16} />
                     </div>
                     <span className="font-semibold text-sm tracking-tight">{definition.label}</span>
+                    {readOnly && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-md border border-border text-muted-foreground">Read Only</span>}
                 </div>
                 <button onClick={onClose} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors">
                     <IconX size={16} />
@@ -126,6 +130,7 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose }: Prop
                                                     field={field}
                                                     value={node.data[field.name] ?? field.defaultValue}
                                                     onChange={(val) => {
+                                                        if (readOnly) return;
                                                         if (field.name === 'bulkOptions') {
                                                             const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
                                                             if (lines.length > 0) {
@@ -136,6 +141,7 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose }: Prop
                                                         onChange(field.name, val);
                                                     }}
                                                     nodes={nodes}
+                                                    readOnly={readOnly}
                                                 />
 
                                                 {field.helperText && (
@@ -161,7 +167,7 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose }: Prop
                     );
                 })()}
 
-                {/* Debug Info for Developers */}
+                {/* Debug Info */}
                 <div className="mt-8 p-3 rounded-md bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground break-all">
                     ID: {node.id} <br />
                     Type: {node.type}
@@ -172,7 +178,18 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose }: Prop
 }
 
 
-function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField, value: any, onChange: (val: any) => void, nodes: Node[] }) {
+function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: PropertyField, value: any, onChange: (val: any) => void, nodes: Node[], readOnly?: boolean }) {
+    if (readOnly) {
+        // Logic fields and complex builders should be disabled
+        if (['condition', 'stepBuilder', 'emojiOptions'].includes(field.type)) {
+            return (
+                <div className="pointer-events-none opacity-60 grayscale">
+                    <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} readOnly={false} />
+                </div>
+            );
+        }
+    }
+
     switch (field.type) {
         case 'condition':
             return (
@@ -186,20 +203,22 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
             return (
                 <input
                     type="text"
+                    disabled={readOnly}
                     value={value || ""}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={field.placeholder}
-                    className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all"
+                    className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 />
             );
         case 'textarea':
             return (
                 <textarea
+                    disabled={readOnly}
                     value={value || ""}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder={field.placeholder}
                     rows={3}
-                    className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all resize-y"
+                    className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all resize-y disabled:opacity-50 disabled:cursor-not-allowed"
                 />
             );
         case 'fileTextarea':
@@ -224,19 +243,22 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
             return (
                 <div className="space-y-1">
                     <textarea
+                        disabled={readOnly}
                         value={value || ""}
                         onChange={(e) => onChange(e.target.value)}
                         placeholder={field.placeholder}
                         rows={3}
-                        className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all resize-y"
+                        className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all resize-y disabled:opacity-50 disabled:cursor-not-allowed"
                     />
-                    <div className="flex justify-end">
-                        <label className="text-xs flex items-center gap-1 cursor-pointer text-primary hover:underline bg-primary/5 px-2 py-1 rounded-md transition-colors">
-                            <IconFolderPlus size={12} />
-                            <span>Import from .txt</span>
-                            <input type="file" accept=".txt,.csv" className="hidden" onChange={handleFileUpload} />
-                        </label>
-                    </div>
+                    {!readOnly && (
+                        <div className="flex justify-end">
+                            <label className="text-xs flex items-center gap-1 cursor-pointer text-primary hover:underline bg-primary/5 px-2 py-1 rounded-md transition-colors">
+                                <IconFolderPlus size={12} />
+                                <span>Import from .txt</span>
+                                <input type="file" accept=".txt,.csv" className="hidden" onChange={handleFileUpload} />
+                            </label>
+                        </div>
+                    )}
                 </div>
             );
         case 'file':
@@ -269,17 +291,20 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
                     <div className="flex items-center gap-2">
                         <input
                             type="text"
+                            disabled={readOnly}
                             value={value || ""}
                             onChange={(e) => onChange(e.target.value)}
                             placeholder={field.placeholder || "https://..."}
-                            className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all"
+                            className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                     </div>
-                    <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-                        <IconFolderPlus size={20} className="text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground font-medium">Click to Upload File</span>
-                        <input type="file" className="hidden" onChange={handleS3Upload} />
-                    </label>
+                    {!readOnly && (
+                        <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                            <IconFolderPlus size={20} className="text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground font-medium">Click to Upload File</span>
+                            <input type="file" className="hidden" onChange={handleS3Upload} />
+                        </label>
+                    )}
                 </div>
             );
         case 'files':
@@ -320,22 +345,26 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
                         {(value || []).map((url: string, idx: number) => (
                             <div key={idx} className="relative group aspect-square rounded-md overflow-hidden border border-border bg-muted">
                                 <img src={url} className="w-full h-full object-cover" />
-                                <button
-                                    onClick={() => {
-                                        const newFiles = value.filter((_: any, i: number) => i !== idx);
-                                        onChange(newFiles);
-                                    }}
-                                    className="absolute top-1 right-1 p-1 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                                >
-                                    <IconTrash size={12} />
-                                </button>
+                                {!readOnly && (
+                                    <button
+                                        onClick={() => {
+                                            const newFiles = value.filter((_: any, i: number) => i !== idx);
+                                            onChange(newFiles);
+                                        }}
+                                        className="absolute top-1 right-1 p-1 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                    >
+                                        <IconTrash size={12} />
+                                    </button>
+                                )}
                             </div>
                         ))}
-                        <label className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-border rounded-md cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-all text-muted-foreground hover:text-primary">
-                            <IconPlus size={24} />
-                            <span className="text-[10px] font-medium mt-1">Add Image</span>
-                            <input type="file" multiple className="hidden" onChange={handleMultiUpload} accept="image/*" />
-                        </label>
+                        {!readOnly && (
+                            <label className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-border rounded-md cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-all text-muted-foreground hover:text-primary">
+                                <IconPlus size={24} />
+                                <span className="text-[10px] font-medium mt-1">Add Image</span>
+                                <input type="file" multiple className="hidden" onChange={handleMultiUpload} accept="image/*" />
+                            </label>
+                        )}
                     </div>
                 </div>
             );
@@ -343,20 +372,22 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
             return (
                 <input
                     type="number"
+                    disabled={readOnly}
                     value={value || ""}
                     onChange={(e) => onChange(Number(e.target.value))}
                     min={field.min}
                     max={field.max}
-                    className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all"
+                    className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 />
             );
         case 'switch':
             return (
                 <div className="flex items-center gap-2">
                     <button
+                        disabled={readOnly}
                         onClick={() => onChange(!value)}
                         className={cn(
-                            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed",
                             value ? "bg-primary" : "bg-input"
                         )}
                     >
@@ -377,32 +408,37 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
                         <div key={index} className="flex gap-2">
                             <input
                                 type="text"
+                                disabled={readOnly}
                                 value={option.label}
                                 onChange={(e) => {
                                     const newOptions = [...value];
                                     newOptions[index] = { ...newOptions[index], label: e.target.value };
                                     onChange(newOptions);
                                 }}
-                                className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md"
+                                className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                                 placeholder={`Option ${index + 1}`}
                             />
-                            <button
-                                onClick={() => {
-                                    const newOptions = value.filter((_: any, i: number) => i !== index);
-                                    onChange(newOptions);
-                                }}
-                                className="p-2 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                            >
-                                <IconTrash size={14} />
-                            </button>
+                            {!readOnly && (
+                                <button
+                                    onClick={() => {
+                                        const newOptions = value.filter((_: any, i: number) => i !== index);
+                                        onChange(newOptions);
+                                    }}
+                                    className="p-2 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                                >
+                                    <IconTrash size={14} />
+                                </button>
+                            )}
                         </div>
                     ))}
-                    <button
-                        onClick={() => onChange([...(value || []), { label: `Option ${(value?.length || 0) + 1}`, value: `opt${Date.now()}` }])}
-                        className="text-xs text-primary hover:underline"
-                    >
-                        + Add Option
-                    </button>
+                    {!readOnly && (
+                        <button
+                            onClick={() => onChange([...(value || []), { label: `Option ${(value?.length || 0) + 1}`, value: `opt${Date.now()}` }])}
+                            className="text-xs text-primary hover:underline"
+                        >
+                            + Add Option
+                        </button>
+                    )}
                 </div>
             );
         case 'stepBuilder':
@@ -416,9 +452,10 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
             return (
                 <div className="relative">
                     <select
+                        disabled={readOnly}
                         value={value || ""}
                         onChange={(e) => onChange(e.target.value)}
-                        className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all appearance-none"
+                        className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {field.options?.map((opt) => (
                             <option key={opt.value} value={opt.value}>

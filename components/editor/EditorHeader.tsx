@@ -46,7 +46,8 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
         pause,
         close,
         resume,
-        selectVersion
+        selectVersion,
+        isReadOnly
     } = useSurveyStore();
 
     useEffect(() => {
@@ -153,14 +154,16 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
                 </button>
                 <button
                     onClick={() => setIsQuotaOpen(true)}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all"
+                    disabled={isReadOnly}
+                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Traffic Control (Quotas)"
                 >
                     <IconFilter size={18} />
                 </button>
                 <button
                     onClick={() => setIsSettingsOpen(true)}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all"
+                    disabled={isReadOnly}
+                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Settings"
                 >
                     <IconSettings size={18} />
@@ -170,7 +173,8 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
 
                 <button
                     onClick={() => setIsShareOpen(true)}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all"
+                    disabled={isReadOnly}
+                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Share Survey"
                 >
                     <IconShare size={18} />
@@ -180,8 +184,8 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
 
                 <button
                     onClick={handleQuickTest}
-                    disabled={isSyncingTest}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50"
+                    disabled={isSyncingTest || isReadOnly}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isSyncingTest ? (
                         <IconLoader2 className="animate-spin text-blue-500" size={16} />
@@ -259,47 +263,52 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
             <div className="w-px h-6 bg-border mx-2" />
 
             {/* Lifecycle Actions */}
-            {survey?.status !== 'DRAFT' && (
-                <div className="flex items-center gap-1 mr-2">
-                    {survey?.status === 'PAUSED' ? (
-                        <button
-                            onClick={() => resume(surveyId)}
-                            className="p-2 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 rounded-full border border-amber-500/20 transition-all"
-                            title="Resume Survey"
-                        >
-                            <IconPlayerPlay size={18} />
-                        </button>
-                    ) : survey?.status !== 'CLOSED' ? (
-                        <button
-                            onClick={() => pause(surveyId)}
-                            className="p-2 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 rounded-full transition-all"
-                            title="Pause Survey"
-                        >
-                            <IconPlayerPause size={18} />
-                        </button>
-                    ) : null}
+            {
+                survey?.status !== 'DRAFT' && (
+                    <div className="flex items-center gap-1 mr-2">
+                        {survey?.status === 'PAUSED' ? (
+                            <button
+                                onClick={() => resume(surveyId)}
+                                disabled={isReadOnly}
+                                className="p-2 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 rounded-full border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Resume Survey"
+                            >
+                                <IconPlayerPlay size={18} />
+                            </button>
+                        ) : survey?.status !== 'CLOSED' ? (
+                            <button
+                                onClick={() => pause(surveyId)}
+                                disabled={isReadOnly}
+                                className="p-2 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Pause Survey"
+                            >
+                                <IconPlayerPause size={18} />
+                            </button>
+                        ) : null}
 
-                    {survey?.status !== 'CLOSED' && (
-                        <button
-                            onClick={() => {
-                                if (confirm("Are you sure you want to CLOSE this survey?")) {
-                                    close(surveyId);
-                                }
-                            }}
-                            className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-all"
-                            title="Close Survey"
-                        >
-                            <IconBan size={18} />
-                        </button>
-                    )}
-                </div>
-            )}
+                        {survey?.status !== 'CLOSED' && (
+                            <button
+                                onClick={() => {
+                                    if (confirm("Are you sure you want to CLOSE this survey?")) {
+                                        close(surveyId);
+                                    }
+                                }}
+                                disabled={isReadOnly}
+                                className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Close Survey"
+                            >
+                                <IconBan size={18} />
+                            </button>
+                        )}
+                    </div>
+                )
+            }
 
             {/* Publish Button */}
             <div className="flex items-center gap-2">
                 <button
                     onClick={handlePublishLive}
-                    disabled={isPublishing || (isLive && !hasChanges)}
+                    disabled={isPublishing || (isLive && !hasChanges) || isReadOnly}
                     className={cn(
                         "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed",
                         !isLive
@@ -308,7 +317,13 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
                                 ? "bg-amber-600 text-white hover:bg-amber-700"
                                 : "bg-emerald-600 text-white"
                     )}
-                    title={hasChanges ? "Configuration has changed since last publish" : undefined}
+                    title={
+                        isReadOnly
+                            ? "Cannot publish in Read Only mode"
+                            : hasChanges
+                                ? "Configuration has changed since last publish"
+                                : undefined
+                    }
                 >
                     {isPublishing ? <IconLoader2 className="animate-spin" size={14} /> : null}
                     {!isLive

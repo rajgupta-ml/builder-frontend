@@ -90,11 +90,13 @@ function SurveyFlow() {
             />
 
             {/* Right Sidebar: Properties Panel */}
-            {selectedNodeId && nodes.find(n => n.id === selectedNodeId) && !isReadOnly && (
+            {selectedNodeId && nodes.find(n => n.id === selectedNodeId) && (
                 <PropertiesPanel
                     node={nodes.find(n => n.id === selectedNodeId) || null}
                     nodes={nodes}
+                    readOnly={isReadOnly}
                     onChange={(fieldName, value) => {
+                        if (isReadOnly) return;
                         setNodes(nodes.map(n => {
                             if (n.id === selectedNodeId) return { ...n, data: { ...n.data, [fieldName]: value } };
                             return n;
