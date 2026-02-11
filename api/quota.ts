@@ -7,7 +7,7 @@ export const quotaApi = {
     return response.data.data;
   },
 
-  createQuota: async (surveyId: string, data: { rule: any; limit: number; enabled?: boolean }): Promise<SurveyQuota> => {
+  createQuota: async (surveyId: string, data: Omit<SurveyQuota, 'id' | 'createdAt' | 'surveyId'>): Promise<SurveyQuota> => {
     const response = await apiClient.post<{ data: SurveyQuota }>(`/quotas/${surveyId}`, data);
     return response.data.data;
   },
@@ -16,8 +16,8 @@ export const quotaApi = {
     await apiClient.delete(`/quotas/${id}`);
   },
 
-  toggleQuota: async (id: string, enabled: boolean): Promise<SurveyQuota> => {
-    const response = await apiClient.patch<{ data: SurveyQuota }>(`/quotas/${id}`, { enabled });
+  toggleQuota: async (id: string, isActive: boolean): Promise<SurveyQuota> => {
+    const response = await apiClient.patch<{ data: SurveyQuota }>(`/quotas/${id}`, { isActive });
     return response.data.data;
   },
 };

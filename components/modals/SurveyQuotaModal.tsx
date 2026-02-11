@@ -21,14 +21,19 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
     const [quotas, setQuotas] = useState<SurveyQuota[]>([]);
     const [loading, setLoading] = useState(false);
     const [flowNodes, setFlowNodes] = useState<Node[]>([]);
+    const [globalQuota, setGlobalQuota] = useState<number | null>(null);
 
     // Internal Add Form State
     const [isAdding, setIsAdding] = useState(false);
     const [newQuota, setNewQuota] = useState<{
         limit: string;
+        limitType: 'absolute' | 'percentage';
+        limitPercentage: string;
         logic: LogicGroup;
     }>({
         limit: "",
+        limitType: 'absolute',
+        limitPercentage: "",
         logic: {
             id: 'root',
             type: 'group',
@@ -46,11 +51,14 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [quotasData, workflowData] = await Promise.all([
+            const { surveyApi } = await import('@/api/survey');
+            const [quotasData, workflowData, surveyData] = await Promise.all([
                 quotaApi.getQuotas(surveyId),
-                surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId)
+                surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId),
+                surveyApi.getSurvey(surveyId)
             ]);
             setQuotas(quotasData);
+            setGlobalQuota(surveyData.globalQuota);
 
             console.log('[QuotaModal] Workflow Data:', workflowData);
             console.log('[QuotaModal] Runtime JSON type:', typeof workflowData?.runtimeJson);
@@ -92,21 +100,51 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
     };
 
     const handleCreate = async () => {
-        if (!newQuota.limit || newQuota.logic.children.length === 0) {
-            toast.error("Please add at least one condition and set a limit.");
+        // Validation
+        if (newQuota.logic.children.length === 0) {
+            toast.error("Please add at least one condition.");
             return;
+        }
+
+        let finalLimit: number;
+        let limitPercentage: number | undefined;
+
+        if (newQuota.limitType === 'percentage') {
+            if (!newQuota.limitPercentage) {
+                toast.error("Please enter a percentage value.");
+                return;
+            }
+            if (!globalQuota) {
+                toast.error("Please set the Global Quota in survey settings first before using percentage-based quotas.");
+                return;
+            }
+            const percentage = parseFloat(newQuota.limitPercentage);
+            if (percentage <= 0 || percentage > 100) {
+                toast.error("Percentage must be between 0 and 100.");
+                return;
+            }
+            limitPercentage = percentage;
+            finalLimit = Math.round((percentage / 100) * globalQuota);
+        } else {
+            if (!newQuota.limit) {
+                toast.error("Please enter a limit value.");
+                return;
+            }
+            finalLimit = parseInt(newQuota.limit);
         }
 
         try {
             const created = await quotaApi.createQuota(surveyId, {
                 rule: newQuota.logic,
-                limit: parseInt(newQuota.limit),
-                enabled: true
+                limit: finalLimit,
+                isActive: true
             });
             setQuotas([created, ...quotas]);
             setIsAdding(false);
             setNewQuota({
                 limit: "",
+                limitType: 'absolute',
+                limitPercentage: "",
                 logic: { id: 'root', type: 'group', logicType: 'AND', children: [] }
             });
             toast.success("Quota created");
@@ -182,17 +220,60 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                         <div className="bg-muted/30 border border-primary/20 rounded-xl p-4 mb-4 animate-in slide-in-from-top-2">
                                             <div className="flex items-center justify-between mb-4">
                                                 <h4 className="text-sm font-bold text-primary">Target Selection (Complex Rules)</h4>
-                                                <div className="flex items-center gap-3">
-                                                    <label className="text-xs font-semibold">Response Limit:</label>
-                                                    <input
-                                                        type="number"
-                                                        placeholder="Max"
-                                                        className="w-24 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                                                        value={newQuota.limit}
-                                                        onChange={(e) => setNewQuota({ ...newQuota, limit: e.target.value })}
-                                                    />
+
+                                                <div className="flex items-center gap-4">
+                                                    {/* Limit Type Toggle */}
+                                                    <div className="flex bg-background border border-border rounded-lg p-1">
+                                                        <button
+                                                            onClick={() => setNewQuota({ ...newQuota, limitType: 'absolute' })}
+                                                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${newQuota.limitType === 'absolute' ? 'bg-primary text-white shadow-sm' : 'hover:bg-muted text-muted-foreground'}`}
+                                                        >
+                                                            Absolute
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setNewQuota({ ...newQuota, limitType: 'percentage' })}
+                                                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${newQuota.limitType === 'percentage' ? 'bg-primary text-white shadow-sm' : 'hover:bg-muted text-muted-foreground'}`}
+                                                        >
+                                                            Percentage
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Input Fields */}
+                                                    <div className="flex items-center gap-2">
+                                                        <label className="text-xs font-semibold">
+                                                            {newQuota.limitType === 'absolute' ? 'Max Responses:' : 'Percentage of Global:'}
+                                                        </label>
+
+                                                        {newQuota.limitType === 'absolute' ? (
+                                                            <input
+                                                                type="number"
+                                                                placeholder="e.g. 100"
+                                                                className="w-24 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                                                value={newQuota.limit}
+                                                                onChange={(e) => setNewQuota({ ...newQuota, limit: e.target.value })}
+                                                            />
+                                                        ) : (
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="number"
+                                                                    placeholder="50"
+                                                                    className="w-24 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 pr-8"
+                                                                    value={newQuota.limitPercentage}
+                                                                    onChange={(e) => setNewQuota({ ...newQuota, limitPercentage: e.target.value })}
+                                                                />
+                                                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">%</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
+
+                                            {newQuota.limitType === 'percentage' && globalQuota === null && (
+                                                <div className="mb-4 text-xs text-amber-600 bg-amber-50 border border-amber-200 p-2 rounded-md flex items-center gap-2">
+                                                    <IconAlertCircle size={14} />
+                                                    Warning: Global Quota is not set. You must set a global quota in settings before saving.
+                                                </div>
+                                            )}
 
                                             <div className="bg-background border border-border rounded-xl p-2 min-h-[150px]">
                                                 <ConditionBuilder
@@ -234,16 +315,18 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                                         </div>
                                                         <div className="flex items-center gap-4 text-xs font-bold">
                                                             <span className="text-muted-foreground">MAX LIMIT:</span>
-                                                            <span className="text-primary bg-primary/5 px-2 py-0.5 rounded-md border border-primary/10">{quota.limit.toLocaleString()} Responses</span>
+                                                            <span className="text-primary bg-primary/5 px-2 py-0.5 rounded-md border border-primary/10">
+                                                                {quota.limit.toLocaleString()} Responses
+                                                            </span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-4 pl-6 border-l border-border ml-6">
                                                         <button
-                                                            onClick={() => handleToggle(quota.id, quota.enabled)}
+                                                            onClick={() => handleToggle(quota.id, quota.isActive)}
                                                             className="transition-all active:scale-95"
-                                                            title={quota.enabled ? "Deactivate" : "Activate"}
+                                                            title={quota.isActive ? "Deactivate" : "Activate"}
                                                         >
-                                                            {quota.enabled ? <IconToggleRight size={32} className="text-emerald-500" /> : <IconToggleLeft size={32} className="text-muted-foreground/50" />}
+                                                            {quota.isActive ? <IconToggleRight size={32} className="text-emerald-500" /> : <IconToggleLeft size={32} className="text-muted-foreground/50" />}
                                                         </button>
                                                         <button
                                                             onClick={() => handleDelete(quota.id)}

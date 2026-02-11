@@ -33,7 +33,7 @@ export interface SurveyQuota {
     surveyId: string;
     rule: any; // Can be LogicGroup or a simple rule object
     limit: number;
-    enabled: boolean;
+    isActive: boolean;
     createdAt: string;
 }
 
