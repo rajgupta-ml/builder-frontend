@@ -4,7 +4,6 @@ import { surveyApi } from "@/api/survey";
 import { Survey } from "@/src/shared/types/survey";
 import { toast } from "sonner";
 import { IconDeviceFloppy, IconExternalLink, IconAlertTriangle, IconX } from "@tabler/icons-react";
-import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SurveySettingsModalProps {

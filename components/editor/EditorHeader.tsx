@@ -318,12 +318,6 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
                             : "Live ✓"
                     }
                 </button>
-
-                {hasChanges && (
-                    <div className="text-[10px] text-amber-600 font-medium">
-                        Changes detected
-                    </div>
-                )}
             </div>
         </div>
     );

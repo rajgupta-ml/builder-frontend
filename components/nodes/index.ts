@@ -6,6 +6,8 @@ import { StartNode, EndNode } from './StructuralNodes';
 import RatingNode from './RatingNode';
 import RankingNode from './RankingNode';
 import SliderNode from './SliderNode';
+import PlainTextNode from './PlainTextNode';
+import EmojiRatingNode from './EmojiRatingNode';
 import BranchNode from './BranchNode';
 import ConsentNode from './ConsentNode';
 import MultiInputNode from './MultiInputNode';
@@ -26,6 +28,8 @@ const componentMap: Record<string, React.ComponentType<any>> = {
     dropdown: ChoiceNode,
     rating: RatingNode,
     slider: SliderNode,
+    plainText: PlainTextNode,
+    emojiRating: EmojiRatingNode,
     ranking: RankingNode,
     consent: ConsentNode,
     multiInput: MultiInputNode,

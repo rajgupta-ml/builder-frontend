@@ -1,7 +1,7 @@
-import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers } from '@tabler/icons-react';
+import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle } from '@tabler/icons-react';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
-export type PropertyType = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'color' | 'options' | 'condition' | 'stepBuilder' | 'fileTextarea' | 'file' | 'files';
+export type PropertyType = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'color' | 'options' | 'condition' | 'stepBuilder' | 'fileTextarea' | 'file' | 'files' | 'emojiOptions';
 
 export interface PropertyField {
     name: string;
@@ -13,6 +13,8 @@ export interface PropertyField {
     options?: { label: string, value: string }[]; // For select type
     onBulkAdd?: (options: { label: string, value: string }[]) => void;
     visible?: (data: any) => boolean;
+    min?: number;
+    max?: number;
 }
 
 export interface NodeDefinition {
@@ -36,9 +38,9 @@ export const CATEGORY_CONFIG: Record<NodeCategory, { label: string, icon: React.
 
 // Common properties used across multiple nodes
 const commonProperties: PropertyField[] = [
-    { name: 'label', label: 'Field Label', type: 'text', placeholder: 'e.g., What is your name?', defaultValue: 'New Question' },
+    { name: 'label', label: 'Field Label', type: 'text', placeholder: 'e.g., What is your name?' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Helper text for the user', defaultValue: '' },
-    { name: 'condition', label: 'Logic Applied To This Node', type: 'condition', defaultValue: { logicType: 'AND', rules: [] }, helperText: 'Define when this node should be shown (Skip Logic)' },
+    { name: 'condition', label: 'Logic Applied To This Node', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] }, helperText: 'Define when this node should be shown (Skip Logic)' },
 ];
 
 export const NODE_DEFINITIONS: NodeDefinition[] = [
@@ -70,10 +72,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 name: 'fields', 
                 label: 'Input Fields', 
                 type: 'options', // Re-using options for now: label = Field Label, value = Field Type (text, email, number) 
-                defaultValue: [
-                    { label: 'First Name', value: 'text' }, 
-                    { label: 'Last Name', value: 'text' }
-                ],
+                defaultValue: [],
                 helperText: 'Value column represents input type (text, number, email)'
             }
         ]
@@ -118,10 +117,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'choice',
         properties: [
             ...commonProperties,
-            { name: 'options', label: 'Options', type: 'options', defaultValue: [{ label: 'Option 1', value: 'opt1' }, { label: 'Option 2', value: 'opt2' }] },
+            { name: 'options', label: 'Options', type: 'options', defaultValue: [] },
             { name: 'bulkOptions', label: 'Bulk Add (one per line)', type: 'textarea', placeholder: 'Option A\nOption B\nOption C...', helperText: 'Paste a list to replace all options above' },
             { name: 'allowOther', label: 'Allow "Other" Option', type: 'switch', defaultValue: false },
-            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', defaultValue: 'Other (Please specify)', helperText: 'Label for the open-ended option' }
+            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', placeholder: 'Other (Please specify)', helperText: 'Label for the open-ended option' },
+            { name: 'allowNone', label: 'Allow "None of these"', type: 'switch', defaultValue: false },
+            { name: 'noneLabel', label: '"None" Label', type: 'text', placeholder: 'None of these', visible: (data: any) => data.allowNone },
+            { name: 'randomizeOptions', label: 'Randomize Options', type: 'switch', defaultValue: false, helperText: 'Shuffle options for every viewer' }
         ]
     },
     { 
@@ -132,7 +134,17 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'choice',
         properties: [
             ...commonProperties,
-            { name: 'options', label: 'Items to Rank', type: 'options', defaultValue: [{ label: 'Item A', value: 'a' }, { label: 'Item B', value: 'b' }, { label: 'Item C', value: 'c' }] }
+            { name: 'options', label: 'Items to Rank', type: 'options', defaultValue: [] },
+            { 
+                name: 'displayMode', 
+                label: 'Display Mode', 
+                type: 'select', 
+                options: [
+                    { label: 'Drag and Drop', value: 'drag' },
+                    { label: 'Select Rank', value: 'select' }
+                ],
+                defaultValue: 'drag' 
+            }
         ]
     },
     { 
@@ -142,9 +154,9 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         icon: IconCheckbox,
         category: 'choice',
         properties: [
-            { name: 'label', label: 'Title', type: 'text', defaultValue: 'Terms of Service' },
-            { name: 'description', label: 'Terms Text', type: 'textarea', defaultValue: 'I agree to the terms and conditions...' },
-            { name: 'checkboxLabel', label: 'Checkbox Label', type: 'text', defaultValue: 'I agree' },
+            { name: 'label', label: 'Title', type: 'text', placeholder: 'Terms of Service' },
+            { name: 'description', label: 'Terms Text', type: 'textarea', placeholder: 'I agree to the terms and conditions...' },
+            { name: 'checkboxLabel', label: 'Checkbox Label', type: 'text', placeholder: 'I agree' },
         ]
     },
     { 
@@ -155,11 +167,14 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'choice',
         properties: [
             ...commonProperties,
-            { name: 'options', label: 'Options', type: 'options', defaultValue: [{ label: 'Option 1', value: 'opt1' }, { label: 'Option 2', value: 'opt2' }] },
+            { name: 'options', label: 'Options', type: 'options', defaultValue: [] },
             { name: 'bulkOptions', label: 'Bulk Add (one per line)', type: 'textarea', placeholder: 'Option A\nOption B\nOption C...', helperText: 'Paste a list to replace all options above' },
             { name: 'maxChoices', label: 'Maximum Choices', type: 'number', helperText: 'Limit how many options a user can select. Leave empty for no limit.', defaultValue: 0 },
             { name: 'allowOther', label: 'Allow "Other" Option', type: 'switch', defaultValue: false },
-            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', defaultValue: 'Other (Please specify)' }
+            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', placeholder: 'Other (Please specify)' },
+            { name: 'allowNone', label: 'Allow "None of these"', type: 'switch', defaultValue: false },
+            { name: 'noneLabel', label: '"None" Label', type: 'text', placeholder: 'None of these', visible: (data: any) => data.allowNone },
+            { name: 'randomizeOptions', label: 'Randomize Options', type: 'switch', defaultValue: false, helperText: 'Shuffle options for every viewer' }
         ]
     },
     { 
@@ -170,8 +185,8 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'choice',
         properties: [
             ...commonProperties,
-            { name: 'placeholder', label: 'Placeholder Text', type: 'text', defaultValue: 'Select an option...' },
-            { name: 'options', label: 'Options', type: 'options', defaultValue: [{ label: 'Option 1', value: 'opt1' }, { label: 'Option 2', value: 'opt2' }] },
+            { name: 'placeholder', label: 'Placeholder Text', type: 'text', placeholder: 'Select an option...' },
+            { name: 'options', label: 'Options', type: 'options', defaultValue: [] },
             { name: 'bulkOptions', label: 'Bulk Add (one per line)', type: 'textarea', placeholder: 'Option A\nOption B\nOption C...', helperText: 'Paste a list to replace all options above' },
             { name: 'searchable', label: 'Searchable', type: 'switch', defaultValue: true },
         ]
@@ -184,7 +199,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'choice',
         properties: [
             ...commonProperties,
-            { name: 'items', label: 'Questions/Items', type: 'options', defaultValue: [{ label: 'Question 1', value: 'q1' }] },
+            { name: 'items', label: 'Questions/Items', type: 'options', defaultValue: [] },
             { name: 'maxRating', label: 'Max Stars', type: 'number', defaultValue: 5 }
         ]
     },
@@ -198,7 +213,8 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
             ...commonProperties,
             { name: 'min', label: 'Minimum', type: 'number', defaultValue: 0 },
             { name: 'max', label: 'Maximum', type: 'number', defaultValue: 100 },
-            { name: 'step', label: 'Step', type: 'number', defaultValue: 1 }
+            { name: 'step', label: 'Step', type: 'number', defaultValue: 1, min: 0 },
+            { name: 'startValue', label: 'Start Value', type: 'number', defaultValue: 0, helperText: 'Initial value of the slider' }
         ]
     },
 
@@ -210,7 +226,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         icon: IconArrowMerge, // IconPlayerPlay
         category: 'flow',
         properties: [
-            { name: 'welcomeMessage', label: 'Welcome Message', type: 'textarea', placeholder: 'e.g., Welcome to our survey! Click below to start.', defaultValue: 'Welcome! Please click the button below to start the survey.' }
+            { name: 'welcomeMessage', label: 'Welcome Message', type: 'textarea', placeholder: 'e.g., Welcome to our survey! Click below to start.' }
         ] // No properties for Start usually
     },
 
@@ -222,7 +238,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         icon: IconArrowMerge, 
         category: 'logic',
         properties: [
-            { name: 'condition', label: 'Logic Rule', type: 'condition', defaultValue: { id: 'root', logicType: 'AND', children: [] } }
+            { name: 'condition', label: 'Logic Rule', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } }
         ]
     },
     { 
@@ -232,7 +248,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         icon: IconForbid, 
         category: 'flow',
         properties: [
-            { name: 'message', label: 'Thank You Message', type: 'textarea', defaultValue: 'Thank you for completing the survey!' },
+            { name: 'message', label: 'Thank You Message', type: 'textarea', placeholder: 'Thank you for completing the survey!' },
             { name: 'redirectUrl', label: 'Redirect URL', type: 'text', placeholder: 'https://...' },
             { 
                 name: 'outcome', 
@@ -276,7 +292,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 name: 'questionLabel', 
                 label: 'Question Text', 
                 type: 'text', 
-                defaultValue: 'What did you think about this?',
+                placeholder: 'What did you think about this?',
                 visible: (data) => data.interactionType !== 'none'
             },
             { 
@@ -284,15 +300,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Slider Config (Min-Max)', 
                 type: 'text', 
                 placeholder: '0-10', 
-                defaultValue: '0-10', 
-                helperText: 'Format: 0-10',
                 visible: (data) => data.interactionType === 'slider'
             },
             { 
                 name: 'choices', 
                 label: 'Choices', 
                 type: 'options', 
-                defaultValue: [{ label: 'Option 1', value: '1' }],
+                defaultValue: [],
                 visible: (data) => data.interactionType === 'choice'
             }
         ]
@@ -322,7 +336,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 name: 'questionLabel', 
                 label: 'Question Text', 
                 type: 'text', 
-                defaultValue: 'What did you think about this?',
+                placeholder: 'What did you think about this?',
                 visible: (data) => data.interactionType !== 'none'
             },
             { 
@@ -330,14 +344,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Slider Config (Min-Max)', 
                 type: 'text', 
                 placeholder: '0-10', 
-                defaultValue: '0-10',
                 visible: (data) => data.interactionType === 'slider'
             },
             { 
                 name: 'choices', 
                 label: 'Choices', 
                 type: 'options', 
-                defaultValue: [{ label: 'Option 1', value: '1' }],
+                defaultValue: [],
                 visible: (data) => data.interactionType === 'choice'
             }
         ]
@@ -367,7 +380,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 name: 'questionLabel', 
                 label: 'Question Text', 
                 type: 'text', 
-                defaultValue: 'What did you think about this?',
+                placeholder: 'What did you think about this?',
                 visible: (data) => data.interactionType !== 'none'
             },
             { 
@@ -375,14 +388,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Slider Config (Min-Max)', 
                 type: 'text', 
                 placeholder: '0-10', 
-                defaultValue: '0-10',
                 visible: (data) => data.interactionType === 'slider'
             },
             { 
                 name: 'choices', 
                 label: 'Choices', 
                 type: 'options', 
-                defaultValue: [{ label: 'Option 1', value: '1' }],
+                defaultValue: [],
                 visible: (data) => data.interactionType === 'choice'
             }
         ]
@@ -408,8 +420,8 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'choice',
         properties: [
             ...commonProperties,
-            { name: 'rows', label: 'Rows (Questions)', type: 'options', defaultValue: [{ label: 'Performance', value: 'p' }, { label: 'Design', value: 'd' }] },
-            { name: 'columns', label: 'Columns (Options)', type: 'options', defaultValue: [{ label: 'Poor', value: '1' }, { label: 'Great', value: '5' }] },
+            { name: 'rows', label: 'Rows (Questions)', type: 'options', defaultValue: [] },
+            { name: 'columns', label: 'Columns (Options)', type: 'options', defaultValue: [] },
             { name: 'multiple', label: 'Allow Multiple', type: 'switch', defaultValue: false }
         ]
     },
@@ -421,7 +433,43 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'choice',
         properties: [
             ...commonProperties,
-            { name: 'steps', label: 'Steps', type: 'stepBuilder', defaultValue: [{ id: 's1', title: 'Step 1', options: [{ label: 'Option A', value: 'optA' }] }] }
+            { name: 'steps', label: 'Steps', type: 'stepBuilder', defaultValue: [] }
+        ]
+    },
+    // New Nodes
+    {
+        type: 'plainText',
+        label: 'Info / Text',
+        description: 'Display text with a continue button',
+        icon: IconInfoCircle,
+        category: 'media',
+        properties: [
+            { name: 'label', label: 'Field Label', type: 'text', placeholder: 'Info Screen' },
+            { name: 'description', label: 'Content', type: 'textarea', placeholder: 'Enter your message here...', defaultValue: '' },
+            { name: 'buttonLabel', label: 'Button Label', type: 'text', defaultValue: 'Continue' },
+            { name: 'condition', label: 'Logic Rule', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } }
+        ]
+    },
+    {
+        type: 'emojiRating',
+        label: 'Emoji Rating',
+        description: 'Rate using emojis',
+        icon: IconMoodSmile,
+        category: 'choice',
+        properties: [
+            ...commonProperties,
+            { 
+                name: 'options', 
+                label: 'Emojis', 
+                type: 'emojiOptions', 
+                defaultValue: [
+                    { label: 'Angry', value: '😠' },
+                    { label: 'Sad', value: '🙁' },
+                    { label: 'Neutral', value: '😐' },
+                    { label: 'Happy', value: '🙂' },
+                    { label: 'Love', value: '😍' }
+                ] 
+            }
         ]
     },
 ];
@@ -438,7 +486,7 @@ export interface LogicRule {
 }
 
 export interface LogicGroup {
-    id: string;
+    id?: string;
     type: 'group';
     logicType: 'AND' | 'OR'; 
     children: LogicItem[];

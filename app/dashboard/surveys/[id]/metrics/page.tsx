@@ -38,15 +38,17 @@ import { SurveyQuotaModal } from "@/components/modals/SurveyQuotaModal";
 
 interface MetricData {
     mode: string;
-    clicked: number;
-    completed: number;
+    views: number;
+    starts: number;
+    completes: number;
     dropped: number;
     disqualified: number;
     overQuota: number;
-    qualityTerminate: number;
     securityTerminate: number;
     ir: number;
+    avgTime: number;
 }
+
 
 export default function SurveyMetricsPage() {
     const { id } = useParams() as { id: string };
@@ -105,6 +107,9 @@ export default function SurveyMetricsPage() {
                 return { ...r, duration: durationStr };
             });
 
+
+            console.log(metricsData)
+
             setResponses(enrichedResponses);
             setOrderedHeaders(responsesData.meta?.orderedHeaders || []);
         } catch (error) {
@@ -122,15 +127,15 @@ export default function SurveyMetricsPage() {
 
     const activeMetrics = metrics.find(m => m.mode === viewMode) || {
         mode: viewMode,
-        clicked: 0, completed: 0, dropped: 0, disqualified: 0,
-        overQuota: 0, qualityTerminate: 0, securityTerminate: 0, ir: 0
+        views: 0, starts: 0, completes: 0, dropped: 0, disqualified: 0,
+        overQuota: 0, qualityTerminate: 0, securityTerminate: 0, ir: 0, avgTime: 0
     };
 
     const totalMetrics = activeMetrics; // For backward compatibility with variable names below
 
     const totalIR = totalMetrics.ir > 0 ? totalMetrics.ir : (
-        (totalMetrics.completed + totalMetrics.disqualified) > 0
-            ? (totalMetrics.completed / (totalMetrics.completed + totalMetrics.disqualified)) * 100
+        (totalMetrics.completes + totalMetrics.disqualified) > 0
+            ? (totalMetrics.completes / (totalMetrics.completes + totalMetrics.disqualified)) * 100
             : 0
     );
 
@@ -152,17 +157,19 @@ export default function SurveyMetricsPage() {
         return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
     };
 
-    // Fix: If clicked is 0, Total Traffic should at least be the sum of all terminal states
+    // Fix: If views is 0, Total Traffic should at least be the sum of all terminal states
     const safeTotalTraffic = Math.max(
-        totalMetrics.clicked,
-        totalMetrics.completed + totalMetrics.dropped + totalMetrics.disqualified + totalMetrics.overQuota + totalMetrics.qualityTerminate + totalMetrics.securityTerminate
+        totalMetrics.views || 0,
+        totalMetrics.completes + totalMetrics.dropped + totalMetrics.disqualified + totalMetrics.overQuota + totalMetrics.securityTerminate
     );
 
-    // Fix: Mode Distribution should use total responses per mode if clicked is missing
+
+
+    // Fix: Mode Distribution should use total responses per mode if views is missing
     const getModeTotal = (mode: string) => {
         const m = metrics.find(met => met.mode === mode);
         if (!m) return 0;
-        return Math.max(m.clicked, m.completed + m.dropped + m.disqualified + m.overQuota + m.qualityTerminate + m.securityTerminate);
+        return Math.max(m.views || 0, m.completes + m.dropped + m.disqualified + m.overQuota + m.securityTerminate);
     };
 
     const modeData = [
@@ -170,28 +177,27 @@ export default function SurveyMetricsPage() {
         { name: 'Test', value: getModeTotal('TEST') }
     ];
 
-    const completionRate = totalMetrics.clicked > 0
-        ? ((totalMetrics.completed / totalMetrics.clicked) * 100).toFixed(1)
+    const completionRate = safeTotalTraffic > 0
+        ? ((totalMetrics.completes / safeTotalTraffic) * 100).toFixed(1)
         : "0";
 
     const chartData = [
-        { name: 'Completed', value: totalMetrics.completed, color: '#10b981' },
+        { name: 'Completed', value: totalMetrics.completes, color: '#10b981' },
         { name: 'Disqualified', value: totalMetrics.disqualified, color: '#f59e0b' },
         { name: 'Over Quota', value: totalMetrics.overQuota, color: '#f43f5e' },
         { name: 'Security Term.', value: totalMetrics.securityTerminate, color: '#6366f1' },
-        { name: 'Quality Term.', value: totalMetrics.qualityTerminate, color: '#4f46e5' },
         { name: 'Dropped', value: totalMetrics.dropped, color: '#ef4444' },
     ];
 
     // Dynamic Columns Identification from Ordered Headers
     // Filter out standard columns that we handle statically
-    const standardHeaders = ['Respondent ID', 'Date', 'Status', 'Outcome', 'Duration'];
+    const standardHeaders = ['Respondent ID', 'Date', 'Status', 'Outcome', 'Duration', 'id', 'mode', 'updatedAt', 'createdAt', 'respondentId', 'status', 'outcome', 'Response ID', 'Submitted At', 'Version', 'Survey Name'];
     const dynamicHeaders = orderedHeaders.filter(h => !standardHeaders.includes(h));
 
     // Fallback if orderedHeaders is missing
     const finalDynamicHeaders = dynamicHeaders.length > 0 ? dynamicHeaders : Array.from(new Set(
-        responses.flatMap(r => Object.keys(r.hydrated_response || {}))
-    )).sort();
+        responses.flatMap(r => Object.keys(r))
+    )).filter(k => !standardHeaders.includes(k)).sort();
 
     // Filter Logic
     const filteredResponses = responses.filter(r => {
@@ -354,13 +360,13 @@ export default function SurveyMetricsPage() {
                 />
                 <MetricCard
                     title="Completions"
-                    value={totalMetrics.completed}
+                    value={totalMetrics.completes}
                     icon={<IconCheck size={24} />}
                     color="bg-emerald-500"
                 />
                 <MetricCard
                     title="Conversion Rate"
-                    value={`${safeTotalTraffic > 0 ? ((totalMetrics.completed / safeTotalTraffic) * 100).toFixed(1) : 0}%`}
+                    value={`${safeTotalTraffic > 0 ? ((totalMetrics.completes / safeTotalTraffic) * 100).toFixed(1) : 0}%`}
                     icon={<IconChartBar size={24} />}
                     color="bg-indigo-500"
                 />
@@ -384,7 +390,6 @@ export default function SurveyMetricsPage() {
                 <MiniMetricCard title="Disqualified" value={totalMetrics.disqualified} color="text-amber-600" />
                 <MiniMetricCard title="Over Quota" value={totalMetrics.overQuota} color="text-fuchsia-600" />
                 <MiniMetricCard title="Security Term." value={totalMetrics.securityTerminate} color="text-slate-700" />
-                <MiniMetricCard title="Qual. Term" value={totalMetrics.qualityTerminate} color="text-indigo-600" />
             </div>
 
             {/* Charts Area */}
@@ -566,7 +571,7 @@ export default function SurveyMetricsPage() {
                                                 </span>
                                             </td>
                                             {finalDynamicHeaders.map((header: string) => {
-                                                const displayValue = resp.hydrated_response?.[header];
+                                                const displayValue = resp[header];
 
                                                 return (
                                                     <td key={header} className="px-6 py-4 border-b border-border">

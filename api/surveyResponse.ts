@@ -18,75 +18,53 @@ export const surveyResponseApi = {
     },
 
     exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode: 'LIVE' | 'TEST' = 'LIVE') => {
-        const response = await apiClient.get(`/responses/export/${surveyId}`, {
-            params: { format: 'json', mode } // Always fetch JSON
-        });
-        
-        const { data, meta } = response.data;
-
-        if (!data || data.length === 0) {
-             alert("No data available to export.");
-             return;
-        }
-
-        // 1. Define Fixed Headers (Metrics)
-        const fixedHeaders = ['Respondent ID', 'Date', 'Status', 'Outcome', 'Duration', 'Survey ID'];
-
-        // 2. Get Dynamic Headers in Order
-        let dynamicHeaders: string[] = [];
-        if (meta && meta.orderedHeaders && Array.isArray(meta.orderedHeaders)) {
-            // Filter out system headers that were already included in fixedHeaders to prevent duplicates
-            dynamicHeaders = meta.orderedHeaders.filter((h: string) => !fixedHeaders.includes(h));
-        } else {
-            // Fallback: collect and sort alphabetic
-            const allKeys = new Set<string>();
-            data.forEach((row: any) => {
-                Object.keys(row).forEach(k => {
-                    if (!fixedHeaders.includes(k)) {
-                        allKeys.add(k);
-                    }
-                });
+        try {
+            const response = await apiClient.get(`/responses/export/${surveyId}`, {
+                params: { format, mode },
+                responseType: 'blob'
             });
-            dynamicHeaders = Array.from(allKeys).sort();
-        }
-        
-        // 3. Ensure all dynamic headers used in data are included (capture any drift/missing)
-        const usedKeys = new Set<string>();
-        data.forEach((row: any) => Object.keys(row).forEach(k => usedKeys.add(k)));
-        
-        dynamicHeaders.forEach(h => usedKeys.delete(h));
-        fixedHeaders.forEach(h => usedKeys.delete(h));
-        
-        // Append any remaining unknown keys (e.g. from old versions not in current workflow)
-        const remainingKeys = Array.from(usedKeys).sort();
-        
-        // Final Header Order
-        const headers = [...fixedHeaders, ...dynamicHeaders, ...remainingKeys];
-
-        // 2. Normalize every row to have every header, filling missing with 'N/A'
-        const normalizedData = data.map((row: any) => {
-            const newRow: any = {};
             
-            // Inject Survey ID if not present
-            if (!row['Survey ID']) row['Survey ID'] = surveyId;
+            // Generate filename based on format
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            let extension = format === 'spss' ? 'sps' : format;
+            const filename = `survey-export-${surveyId}-${mode}-${timestamp}.${extension}`;
+            
+            // Use the saveFile utility (or create a new one inline if we want to avoid import issues)
+            // Reusing the existing saveFile logic via a helper if imported, 
+            // but since we are replacing the whole function blocks, let's just inline the download logic 
+            // or we need to export saveFile from export-utils if it's not exported.
+            // Wait, saveFile is not exported in export-utils.ts, only downloadCSV etc are.
+            // Let's create a local helper or rely on the fact that existing code imported downloadCSV/XLSX.
+            
+            /* 
+               Step 125 shows: import { downloadCSV, downloadXLSX, downloadSPSS } from "../lib/export-utils";
+               Step 126 shows: saveFile is NOT exported.
+               
+               So I will implement the download trigger here directly.
+            */
+            
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Try to get filename from content-disposition
+            const contentDisposition = response.headers['content-disposition'];
+            let finalFilename = filename;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch && filenameMatch.length === 2)
+                    finalFilename = filenameMatch[1];
+            }
+            
+            link.setAttribute('download', finalFilename);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+            window.URL.revokeObjectURL(url);
 
-            headers.forEach(header => {
-                const val = row[header];
-                if (val === null || val === undefined || val === '' || val === '-') {
-                    newRow[header] = 'N/A';
-                } else {
-                    newRow[header] = val;
-                }
-            });
-            return newRow;
-        });
-
-        if (format === 'csv') {
-            downloadCSV(normalizedData, headers, surveyId);
-        } else if (format === 'xlsx') {
-            downloadXLSX(normalizedData, surveyId);
-        } else if (format === 'spss') {
-            await downloadSPSS(normalizedData, headers, meta, surveyId);
+        } catch (error) {
+            console.error("Export failed", error);
+            alert("Failed to export responses. Please try again.");
         }
     }
 }

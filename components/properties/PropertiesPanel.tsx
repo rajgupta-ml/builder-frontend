@@ -6,6 +6,7 @@ import { IconX, IconFolderPlus, IconTrash, IconPlus } from "@tabler/icons-react"
 import { cn } from "@/lib/utils";
 import { ConditionBuilder } from "./ConditionBuilder";
 import { StepsBuilder } from "./StepsBuilder";
+import EmojiPicker from "./EmojiPicker";
 
 interface PropertiesPanelProps {
     node: Node | null;
@@ -270,6 +271,8 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
                     type="number"
                     value={value || ""}
                     onChange={(e) => onChange(Number(e.target.value))}
+                    min={field.min}
+                    max={field.max}
                     className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all"
                 />
             );
@@ -356,6 +359,13 @@ function FieldRenderer({ field, value, onChange, nodes }: { field: PropertyField
                         </svg>
                     </div>
                 </div>
+            );
+        case 'emojiOptions':
+            return (
+                <EmojiPicker
+                    value={value || []}
+                    onChange={onChange}
+                />
             );
         default:
             return <div className="text-xs text-destructive">Unsupported field type: {field.type}</div>;

@@ -14,6 +14,7 @@ import { surveyWorkflowApi } from '@/api/surveyWorkflow';
 import { quotaApi } from '@/api/quota';
 import { toast } from 'sonner';
 import { Survey, SurveyQuota } from '@/src/shared/types/survey';
+import { hydrateNodeIds } from '@/lib/hydrateNodeIds';
 
 interface SurveyState {
     // ReactFlow state
@@ -116,14 +117,26 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId)
             ]);
 
+            const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
+            
+            console.log(`[SurveyStore] Load Data - Latest Version: ${versions[0]?.version}, Status: ${versions[0]?.status}, hasDbChanges: ${hasDbChanges}`);
+
+            // Hydrate design nodes with stable IDs from runtimeJson
+            // so generateRuntimeJson won't regenerate UUIDs on autosave
+            const rawNodes = workflow?.designJson?.nodes || [];
+            const hydratedNodes = workflow?.runtimeJson 
+                ? hydrateNodeIds(rawNodes, workflow.runtimeJson) 
+                : rawNodes;
+
             set({
                 survey,
                 versions,
                 quotas,
                 workflowId: workflow?.id || null,
-                nodes: workflow?.designJson?.nodes || [],
+                nodes: hydratedNodes,
                 edges: workflow?.designJson?.edges || [],
-                hasChanges: versions.length > 0 && versions[0].status === 'DRAFT'
+                hasChanges: hasDbChanges,
+                saveStatus: 'saved' // Prevent autosave from triggering on initial load
             });
         } catch (err) {
             console.error("Failed to load survey data", err);
@@ -137,10 +150,14 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 surveyApi.getSurvey(surveyId),
                 surveyWorkflowApi.getWorkflowsMetadata(surveyId)
             ]);
+            
+            const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
+            console.log(`[SurveyStore] Refresh Data - Latest Version: ${versions[0]?.version}, Status: ${versions[0]?.status}, hasDbChanges: ${hasDbChanges}`);
+
             set({ 
                 survey, 
                 versions,
-                hasChanges: versions.length > 0 && versions[0].status === 'DRAFT'
+                hasChanges: hasDbChanges
             });
         } catch (err) {
             console.error("Failed to refresh survey data", err);
@@ -151,6 +168,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
         const { nodes, edges } = get();
         set({ saveStatus: 'saving' });
         try {
+            console.log(runtimeJson)
             const data = await surveyWorkflowApi.autosaveWorkflow({
                 surveyId,
                 designJson: { nodes, edges },
@@ -161,11 +179,14 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const versions = await surveyWorkflowApi.getWorkflowsMetadata(surveyId);
             const survey = get().survey;
 
+            const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
+            console.log(`[SurveyStore] Autosave - Latest Version: ${versions[0]?.version}, Status: ${versions[0]?.status}, hasDbChanges: ${hasDbChanges}`);
+
             set({ 
                 workflowId: data.id, 
                 saveStatus: 'saved',
                 versions,
-                hasChanges: versions.length > 0 && versions[0].status === 'DRAFT'
+                hasChanges: hasDbChanges
             });
         } catch (err) {
             console.error("Save failed", err);
@@ -245,7 +266,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 if (data && data.designJson) {
                     set({
                         nodes: data.designJson.nodes || [],
-                        edges: data.designJson.edges || []
+                        edges: data.designJson.edges || [],
+                        saveStatus: 'saved' // Prevent autosave when viewing version history
                     });
                 }
             } catch (err) {
@@ -256,9 +278,14 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             set({ isReadOnly: false });
             // Instead of reload, we should re-fetch current latest
             const workflow = await surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId);
+            const rawNodes = workflow?.designJson?.nodes || [];
+            const hydratedNodes = workflow?.runtimeJson 
+                ? hydrateNodeIds(rawNodes, workflow.runtimeJson) 
+                : rawNodes;
             set({
-                nodes: workflow?.designJson?.nodes || [],
-                edges: workflow?.designJson?.edges || []
+                nodes: hydratedNodes,
+                edges: workflow?.designJson?.edges || [],
+                saveStatus: 'saved' // Prevent autosave when returning to latest version
             });
         }
     }

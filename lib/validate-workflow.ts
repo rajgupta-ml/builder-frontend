@@ -127,15 +127,37 @@ export const validateWorkflow = (nodes: Node[], edges: Edge[]): { isValid: boole
             };
             if (condition) collectFields(condition);
 
-            const nodeIndex = topoOrder.indexOf(node.id);
+            // Causal Ordering: Referenced fields must be strictly reachable ancestors
+            // A topological sort index comparison (fieldNodeIndex >= nodeIndex) is inherently flawed for this check
+            // because two parallel branches could be topologically ordered arbitrarily, yet one doesn't depend on the other.
+            //
+            // Instead, we verify that the referenced 'fieldId' can actually reach this 'branch' node.
+            // If there is NO path from fieldId -> branch, then the branch cannot possibly know the answer.
+            
             referencedFields.forEach(fieldId => {
-                const fieldNodeIndex = topoOrder.indexOf(fieldId);
-                // If fieldId is not in topoOrder or appears after/at current node, it's a violation
-                // (Note: fieldId should ideally be an ancestor in all paths, but topo sort is a good baseline)
-                if (fieldNodeIndex === -1 || fieldNodeIndex >= nodeIndex) {
+                // Check if there is a path from fieldId to the current branch node
+                const isReachable = () => {
+                   const seen = new Set<string>();
+                   const stack = [fieldId];
+                   while(stack.length > 0) {
+                       const u = stack.pop()!;
+                       if(u === node.id) return true;
+                       if(!seen.has(u)) {
+                           seen.add(u);
+                           // adj is defined in scope above, use it to traverse forward
+                           if(adj[u]) {
+                               adj[u].forEach(v => stack.push(v));
+                           }
+                       }
+                   }
+                   return false;
+                };
+
+                if (!isReachable()) {
+                    const fieldLabel = nodes.find(n => n.id === fieldId)?.data?.label || fieldId;
                     errors.push({ 
                         type: 'error', 
-                        message: `Branch depends on question '${fieldId}' which is not guaranteed to be answered before this branch.`, 
+                        message: `Branch depends on question '${fieldLabel}', but that question is not connected to this branch.`, 
                         nodeId: node.id 
                     });
                 }

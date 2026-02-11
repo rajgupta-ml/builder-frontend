@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Node } from '@xyflow/react';
 import { getNodeDefinition, LogicGroup, LogicItem, LogicRule } from '@/components/nodes/definitions';
-import { IconTrash, IconPlus, IconVariable, IconTypography, IconFolderPlus } from '@tabler/icons-react';
+import { IconTrash, IconPlus, IconVariable, IconTypography, IconFolderPlus, IconX } from '@tabler/icons-react';
 import { cn, generateUniqueId } from '@/lib/utils';
 
 // Simple ID generator to avoid external dependencies for U
@@ -14,7 +14,7 @@ interface ConditionBuilderProps {
     nodes: Node[];
 }
 
-const OPERATORS = [
+const ALL_OPERATORS = [
     { label: 'Equals', value: 'equals' },
     { label: 'Does not equal', value: 'not_equals' },
     { label: 'Contains', value: 'contains' },
@@ -26,6 +26,79 @@ const OPERATORS = [
     { label: 'Is Between', value: 'is_between' },
     { label: 'In Range List', value: 'in_range' },
 ];
+
+// Map node types to their relevant operators for better UX
+const OPERATORS_BY_NODE_TYPE: Record<string, string[]> = {
+    // Choice-based: match by selection
+    singleChoice: ['equals', 'not_equals', 'is_set', 'is_empty'],
+    multipleChoice: ['contains', 'not_contains', 'equals', 'not_equals', 'is_set', 'is_empty'],
+    dropdown: ['equals', 'not_equals', 'is_set', 'is_empty'],
+    ranking: ['equals', 'not_equals', 'is_set', 'is_empty'],
+    consent: ['equals', 'not_equals', 'is_set', 'is_empty'],
+    emojiRating: ['equals', 'not_equals', 'is_set', 'is_empty'],
+    cascadingChoice: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
+    matrixChoice: ['equals', 'not_equals', 'is_set', 'is_empty'],
+
+    // Numeric: comparison operators
+    numberInput: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
+    slider: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
+    rating: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
+
+    // Text-based: string operators
+    textInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
+    emailInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
+
+    // Zip code: specialized for range lists
+    zipCodeInput: ['equals', 'not_equals', 'contains', 'not_contains', 'in_range', 'is_set', 'is_empty'],
+
+    // Date: comparison
+    datePicker: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
+};
+
+const getOperatorsForNodeType = (nodeType?: string): typeof ALL_OPERATORS => {
+    if (!nodeType || !OPERATORS_BY_NODE_TYPE[nodeType]) return ALL_OPERATORS;
+    const allowed = OPERATORS_BY_NODE_TYPE[nodeType];
+    return ALL_OPERATORS.filter(op => allowed.includes(op.value));
+};
+
+const NUMERIC_NODE_TYPES = ['numberInput', 'slider', 'rating', 'emojiRating'];
+const isNumericNodeType = (nodeType?: string) => nodeType ? NUMERIC_NODE_TYPES.includes(nodeType) : false;
+
+const getValuePlaceholder = (nodeType?: string, operator?: string): string => {
+    switch (nodeType) {
+        case 'zipCodeInput':
+            if (operator === 'contains') return 'e.g. 110 (prefix match)';
+            if (operator === 'not_contains') return 'e.g. 110 (exclude prefix)';
+            return 'e.g. 110001';
+        case 'numberInput':
+        case 'slider':
+            return 'e.g. 50';
+        case 'rating':
+            return 'e.g. 3';
+        case 'emailInput':
+            if (operator === 'contains') return 'e.g. @gmail.com';
+            return 'e.g. user@example.com';
+        case 'textInput':
+            if (operator === 'contains') return 'Text to search for...';
+            return 'Enter value...';
+        case 'datePicker':
+            return 'YYYY-MM-DD';
+        default:
+            return 'Value...';
+    }
+};
+
+const getInRangePlaceholder = (nodeType?: string): string => {
+    switch (nodeType) {
+        case 'zipCodeInput':
+            return '10001-10099, 20001, 30001-30050';
+        case 'numberInput':
+        case 'slider':
+            return '1-50, 75, 100-200';
+        default:
+            return '1-100, 200, 300...';
+    }
+};
 
 export const ConditionBuilder = ({ value, onChange, nodes }: ConditionBuilderProps) => {
     // Determine valid nodes for logic
@@ -197,6 +270,9 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove }: {
 const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
     rule: LogicRule, onUpdate: (r: LogicRule) => void, onRemove: () => void, validQuestions: Node[]
 }) => {
+    // Local state for the tag input in 'in_range' mode
+    const [tagInput, setTagInput] = React.useState('');
+
     // Logic for rendering inputs (same as before but adapted)
     const selectedQuestion = validQuestions.find(n => n.id === rule.field);
 
@@ -213,6 +289,12 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                 questionOptions.push({
                     label: selectedQuestion.data.otherLabel || 'Other',
                     value: 'other' // We will use 'other' as the value for the "Other" selection
+                });
+            }
+            if (selectedQuestion.data.allowNone) {
+                questionOptions.push({
+                    label: selectedQuestion.data.noneLabel || 'None of these',
+                    value: 'none'
                 });
             }
         }
@@ -243,7 +325,19 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
             <select
                 className="flex-1 min-w-[100px] text-[10px] p-1.5 rounded border border-input bg-card h-7"
                 value={rule.field}
-                onChange={(e) => onUpdate({ ...rule, field: e.target.value, subField: '' })}
+                onChange={(e) => {
+                    const newFieldId = e.target.value;
+                    const newQuestion = validQuestions.find(n => n.id === newFieldId);
+                    const allowedOps = getOperatorsForNodeType(newQuestion?.type as string);
+                    const currentOpValid = allowedOps.some(op => op.value === rule.operator);
+                    onUpdate({
+                        ...rule,
+                        field: newFieldId,
+                        subField: '',
+                        operator: currentOpValid ? rule.operator : allowedOps[0]?.value || 'equals',
+                        value: ''
+                    });
+                }}
             >
                 <option value="">Field...</option>
                 {validQuestions.map(n => (
@@ -267,13 +361,13 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                 </select>
             )}
 
-            {/* Operator */}
+            {/* Operator — filtered by selected question type */}
             <select
                 className="w-[70px] shrink-0 text-[10px] p-1.5 rounded border border-input bg-card h-7"
                 value={rule.operator}
                 onChange={(e) => onUpdate({ ...rule, operator: e.target.value })}
             >
-                {OPERATORS.map(op => (
+                {getOperatorsForNodeType(selectedQuestion?.type as string).map(op => (
                     <option key={op.value} value={op.value}>{op.label}</option>
                 ))}
             </select>
@@ -289,15 +383,15 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                     {rule.operator === 'is_between' ? (
                         <div className="flex gap-1 w-full">
                             <input
-                                type="text"
+                                type={isNumericNodeType(selectedQuestion?.type) ? 'number' : 'text'}
                                 className="w-1/2 text-[10px] p-1.5 rounded border border-input bg-card h-7"
                                 placeholder="Min"
-                                value={typeof rule.value === 'object' ? rule.value.min : rule.value} // Fallback if switched from string
+                                value={typeof rule.value === 'object' ? rule.value.min : rule.value}
                                 onChange={(e) => onUpdate({ ...rule, value: { ...(typeof rule.value === 'object' ? rule.value : {}), min: e.target.value } })}
                             />
-                            <span className="text-[10px] self-center text-muted-foreground">-</span>
+                            <span className="text-[10px] self-center text-muted-foreground">–</span>
                             <input
-                                type="text"
+                                type={isNumericNodeType(selectedQuestion?.type) ? 'number' : 'text'}
                                 className="w-1/2 text-[10px] p-1.5 rounded border border-input bg-card h-7"
                                 placeholder="Max"
                                 value={typeof rule.value === 'object' ? rule.value.max : ''}
@@ -305,27 +399,102 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                             />
                         </div>
                     ) : rule.operator === 'in_range' ? (
-                        /* IN RANGE: Textarea + File Upload */
-                        <div className="flex gap-1 w-full items-start min-w-0">
-                            <textarea
-                                className="flex-1 text-[10px] p-1.5 rounded border border-input bg-card min-h-[28px] h-7 focus:h-20 transition-all resize-y"
-                                placeholder="1-100, 200, 300..."
-                                value={typeof rule.value === 'string' ? rule.value : ''}
-                                onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
-                            />
-                            <label className="shrink-0 cursor-pointer p-1.5 rounded border border-dashed border-input hover:border-primary hover:bg-primary/5 text-muted-foreground hover:text-primary transition-colors h-7 w-7 flex items-center justify-center" title="Import from .txt">
-                                <IconFolderPlus size={12} />
-                                <input type="file" accept=".txt,.csv" className="hidden" onChange={handleFileUpload} />
-                            </label>
+                        /* IN RANGE: Multi-value Tag Input + File Upload */
+                        <div className="flex flex-col gap-1 w-full">
+                            <div
+                                className="flex flex-wrap gap-1 p-1.5 rounded border border-input bg-card min-h-[32px] focus-within:ring-1 focus-within:ring-ring transition-all items-center"
+                                onClick={() => document.getElementById(`tag-input-${rule.id}`)?.focus()}
+                            >
+                                {/* Existing Tags */}
+                                {rule.value && typeof rule.value === 'string' && rule.value.split(',').map((tag: string, i: number) => {
+                                    const t = tag.trim();
+                                    if (!t) return null;
+                                    return (
+                                        <div key={i} className="flex items-center gap-1 bg-primary/10 text-primary text-[9px] px-1.5 py-0.5 rounded-full border border-primary/20">
+                                            <span>{t}</span>
+                                            <button
+                                                className="hover:text-destructive"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const newTags = rule.value.split(',').map((s: string) => s.trim()).filter((_: any, idx: number) => idx !== i);
+                                                    onUpdate({ ...rule, value: newTags.join(',') });
+                                                }}
+                                            >
+                                                <IconX size={10} />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Input Field */}
+                                <input
+                                    id={`tag-input-${rule.id}`}
+                                    type="text"
+                                    className="flex-1 min-w-[60px] text-[10px] bg-transparent outline-none h-5"
+                                    placeholder={(!rule.value || rule.value.length === 0) ? getInRangePlaceholder(selectedQuestion?.type).split(',')[0] + '...' : ''}
+                                    value={tagInput}
+                                    onChange={(e) => setTagInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (['Enter', ','].includes(e.key)) {
+                                            e.preventDefault();
+                                            const val = tagInput.trim().replace(/,$/, '');
+                                            if (val) {
+                                                const current = rule.value ? rule.value.split(',') : [];
+                                                const newVal = [...current, val].filter(Boolean).join(',');
+                                                onUpdate({ ...rule, value: newVal });
+                                                setTagInput('');
+                                            }
+                                        } else if (e.key === 'Backspace' && !tagInput) {
+                                            // Make removing the last tag easier
+                                            const current = rule.value ? rule.value.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+                                            if (current.length > 0) {
+                                                current.pop();
+                                                onUpdate({ ...rule, value: current.join(',') });
+                                            }
+                                        }
+                                    }}
+                                    onBlur={() => {
+                                        if (tagInput.trim()) {
+                                            const val = tagInput.trim();
+                                            const current = rule.value ? rule.value.split(',') : [];
+                                            const newVal = [...current, val].filter(Boolean).join(',');
+                                            onUpdate({ ...rule, value: newVal });
+                                            setTagInput('');
+                                        }
+                                    }}
+                                    onPaste={(e) => {
+                                        e.preventDefault();
+                                        const paste = e.clipboardData.getData('text');
+                                        if (paste) {
+                                            const newTags = paste.split(/[\n,]+/).map(t => t.trim()).filter(Boolean);
+                                            if (newTags.length > 0) {
+                                                const current = rule.value ? rule.value.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+                                                const merged = Array.from(new Set([...current, ...newTags])).join(',');
+                                                onUpdate({ ...rule, value: merged });
+                                                setTagInput('');
+                                            }
+                                        }
+                                    }}
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-2 justify-between px-1">
+                                <span className="text-[9px] text-muted-foreground italic">Type and press Enter</span>
+                                <label className="cursor-pointer text-[9px] flex items-center gap-1 text-primary hover:underline transition-colors" title="Import from .txt or .csv">
+                                    <IconFolderPlus size={12} />
+                                    <span>Import List</span>
+                                    <input type="file" accept=".txt,.csv" className="hidden" onChange={handleFileUpload} />
+                                </label>
+                            </div>
                         </div>
                     ) : (
-                        /* STANDARD: Single Input / Select */
+                        /* STANDARD: Select from options OR text/number input */
                         <>
                             <div className="flex gap-1 items-center w-full">
                                 <button
                                     className="shrink-0 p-1 rounded border border-input hover:bg-muted text-muted-foreground h-7 w-7 flex items-center justify-center"
                                     onClick={() => onUpdate({ ...rule, valueType: rule.valueType === 'static' ? 'variable' : 'static', value: '' })}
-                                    title="Toggle Value Type"
+                                    title={rule.valueType === 'static' ? 'Switch to compare with another question' : 'Switch to static value'}
                                 >
                                     {rule.valueType === 'static' ? <IconTypography size={12} /> : <IconVariable size={12} />}
                                 </button>
@@ -336,34 +505,32 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                                         value={rule.value}
                                         onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
                                     >
-                                        <option value="">Target...</option>
+                                        <option value="">Compare with...</option>
                                         {validQuestions.filter(n => n.id !== rule.field).map(n => (
                                             <option key={n.id} value={n.id}>{String(n.data.label || n.id)}</option>
                                         ))}
                                     </select>
+                                ) : questionOptions.length > 0 ? (
+                                    <select
+                                        className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                        value={rule.value}
+                                        onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
+                                    >
+                                        <option value="">Select option...</option>
+                                        {questionOptions.map((opt: any, i: number) => (
+                                            <option key={i} value={opt.value ?? opt.label}>
+                                                {opt.label || opt.value}
+                                            </option>
+                                        ))}
+                                    </select>
                                 ) : (
-                                    questionOptions.length > 0 ? (
-                                        <select
-                                            className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
-                                            value={rule.value}
-                                            onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
-                                        >
-                                            <option value="">Select...</option>
-                                            {questionOptions.map((opt: any, i: number) => (
-                                                <option key={i} value={opt.value ?? opt.label}>
-                                                    {opt.label || opt.value}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    ) : (
-                                        <input
-                                            type="text"
-                                            className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
-                                            placeholder="Value..."
-                                            value={rule.value}
-                                            onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
-                                        />
-                                    )
+                                    <input
+                                        type={isNumericNodeType(selectedQuestion?.type) ? 'number' : 'text'}
+                                        className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                        placeholder={getValuePlaceholder(selectedQuestion?.type, rule.operator)}
+                                        value={rule.value}
+                                        onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
+                                    />
                                 )}
                             </div>
                         </>
