@@ -41,7 +41,7 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose }: Prop
             </div>
 
             {/* Form Fields */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 {(() => {
                     // Pre-calculate data with defaults for consistent visibility checks
                     const dataWithDefaults = { ...node.data };
@@ -51,40 +51,114 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose }: Prop
                         }
                     });
 
-                    return definition.properties.map((field) => {
-                        // Visibility Check
-                        if (field.visible && field.visible(dataWithDefaults) === false) {
-                            return null;
-                        }
+                    // Group properties by category
+                    const basicFields = ['label', 'description'];
+                    const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps'];
+                    const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices'];
+                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel'];
+                    const logicFields = ['condition'];
+
+                    const groupedProperties = {
+                        basic: definition.properties.filter(p => basicFields.includes(p.name)),
+                        options: definition.properties.filter(p => optionFields.includes(p.name)),
+                        choice: definition.properties.filter(p => choiceFields.includes(p.name)),
+                        advanced: definition.properties.filter(p => advancedFields.includes(p.name)),
+                        logic: definition.properties.filter(p => logicFields.includes(p.name)),
+                        other: definition.properties.filter(p =>
+                            !basicFields.includes(p.name) &&
+                            !optionFields.includes(p.name) &&
+                            !choiceFields.includes(p.name) &&
+                            !advancedFields.includes(p.name) &&
+                            !logicFields.includes(p.name)
+                        )
+                    };
+
+                    const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({
+                        'Basic Settings': true,
+                        'Options': false,
+                        'Choice Settings': false,
+                        'Advanced': false,
+                        'Logic': false,
+                        'Other': false
+                    });
+
+                    const toggleSection = (title: string) => {
+                        setExpandedSections(prev => ({ ...prev, [title]: !prev[title] }));
+                    };
+
+                    const renderSection = (title: string, fields: PropertyField[]) => {
+                        const visibleFields = fields.filter(field =>
+                            !field.visible || field.visible(dataWithDefaults) !== false
+                        );
+
+                        if (visibleFields.length === 0) return null;
+
+                        const isExpanded = expandedSections[title];
 
                         return (
-                            <div key={field.name} className="space-y-1.5">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                    {field.label}
-                                </label>
+                            <div key={title} className="border border-border rounded-lg overflow-hidden bg-card">
+                                <button
+                                    onClick={() => toggleSection(title)}
+                                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors"
+                                >
+                                    <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                                        {title}
+                                    </h3>
+                                    <svg
+                                        className={cn("w-4 h-4 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
 
-                                <FieldRenderer
-                                    field={field}
-                                    value={node.data[field.name] ?? field.defaultValue}
-                                    onChange={(val) => {
-                                        if (field.name === 'bulkOptions') {
-                                            const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                                            if (lines.length > 0) {
-                                                const newOptions = lines.map((l, i) => ({ label: l, value: `opt${Date.now()}_${i}` }));
-                                                onChange('options', newOptions);
-                                            }
-                                        }
-                                        onChange(field.name, val);
-                                    }}
-                                    nodes={nodes}
-                                />
+                                {isExpanded && (
+                                    <div className="px-3 pb-3 pt-1 space-y-3 border-t border-border bg-background">
+                                        {visibleFields.map((field) => (
+                                            <div key={field.name} className="space-y-1.5">
+                                                <label className="text-xs font-medium text-foreground">
+                                                    {field.label}
+                                                </label>
 
-                                {field.helperText && (
-                                    <p className="text-[10px] text-muted-foreground">{field.helperText}</p>
+                                                <FieldRenderer
+                                                    field={field}
+                                                    value={node.data[field.name] ?? field.defaultValue}
+                                                    onChange={(val) => {
+                                                        if (field.name === 'bulkOptions') {
+                                                            const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                                                            if (lines.length > 0) {
+                                                                const newOptions = lines.map((l, i) => ({ label: l, value: `opt${Date.now()}_${i}` }));
+                                                                onChange('options', newOptions);
+                                                            }
+                                                        }
+                                                        onChange(field.name, val);
+                                                    }}
+                                                    nodes={nodes}
+                                                />
+
+                                                {field.helperText && (
+                                                    <p className="text-[10px] text-muted-foreground italic">{field.helperText}</p>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         );
-                    });
+                    };
+
+                    return (
+                        <>
+                            {renderSection('Basic Settings', groupedProperties.basic)}
+                            {renderSection('Options', groupedProperties.options)}
+                            {renderSection('Choice Settings', groupedProperties.choice)}
+                            {renderSection('Advanced', groupedProperties.advanced)}
+                            {renderSection('Logic', groupedProperties.logic)}
+                            {renderSection('Other', groupedProperties.other)}
+                        </>
+                    );
                 })()}
 
                 {/* Debug Info for Developers */}
