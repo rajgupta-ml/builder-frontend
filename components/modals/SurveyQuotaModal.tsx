@@ -4,7 +4,7 @@ import { quotaApi } from "@/api/quota";
 import { SurveyQuota } from "@/src/shared/types/survey";
 import { surveyWorkflowApi } from "@/api/surveyWorkflow";
 import { toast } from "sonner";
-import { IconPlus, IconTrash, IconToggleLeft, IconToggleRight, IconAlertCircle, IconX, IconSettings } from "@tabler/icons-react";
+import { IconPlus, IconTrash, IconToggleLeft, IconToggleRight, IconAlertCircle, IconX, IconPencil } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConditionBuilder } from "../properties/ConditionBuilder";
 import { LogicGroup } from "../nodes/definitions";
@@ -348,9 +348,6 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                                 <div key={quota.id} className="flex items-center justify-between p-5 bg-card border border-border rounded-2xl hover:shadow-md transition-all group">
                                                     <div className="flex-1 space-y-2">
                                                         <div className="flex items-center gap-2">
-                                                            <div className="bg-primary/10 text-primary p-1.5 rounded-lg cursor-pointer hover:bg-primary/20 transition-colors" onClick={() => handleEdit(quota)}>
-                                                                <IconSettings size={18} />
-                                                            </div>
                                                             <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">{quota.name || 'Complex Quota Rule'}</p>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-xl border border-border/50">
@@ -366,6 +363,13 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-4 pl-6 border-l border-border ml-6">
+                                                        <button
+                                                            onClick={() => handleEdit(quota)}
+                                                            className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+                                                            title="Edit Rule"
+                                                        >
+                                                            <IconPencil size={20} />
+                                                        </button>
                                                         <button
                                                             onClick={() => handleToggle(quota.id, quota.isActive)}
                                                             className="transition-all active:scale-95"

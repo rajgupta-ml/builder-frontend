@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { SurveySettingsModal } from "@/components/modals/SurveySettingsModal";
 import { SurveyQuotaModal } from "@/components/modals/SurveyQuotaModal";
+import { ReconcileResponseModal } from "@/components/modals/ReconcileResponseModal";
 
 interface MetricData {
     mode: string;
@@ -63,6 +64,7 @@ export default function SurveyMetricsPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isReconcileOpen, setIsReconcileOpen] = useState(false);
 
     // Pagination State
     // Pagination & Search State
@@ -228,6 +230,7 @@ export default function SurveyMetricsPage() {
 
 
 
+
     if (loading) return (
         <div className="min-h-screen flex items-center justify-center bg-background">
             <div className="flex flex-col items-center gap-4">
@@ -246,6 +249,12 @@ export default function SurveyMetricsPage() {
                     <p className="mt-2 text-muted-foreground font-medium">{survey?.client} • Performance Overview</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsReconcileOpen(true)}
+                        className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all shadow-sm"
+                    >
+                        Reconcile
+                    </button>
                     <button
                         onClick={fetchData}
                         className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
@@ -479,7 +488,7 @@ export default function SurveyMetricsPage() {
                         <table className="w-full text-left table-auto border-separate border-spacing-0">
                             <thead>
                                 <tr className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-bold">
-                                    <th className="px-6 py-4 border-b border-border sticky left-0 bg-muted/50 z-20 min-w-[200px]">
+                                    <th className="px-6 py-4 border-b border-border z-20 min-w-[200px]">
                                         <div className="flex items-center gap-2">
                                             <span>Respondent</span>
                                             <FilterPopover
@@ -546,7 +555,7 @@ export default function SurveyMetricsPage() {
                                 ) : (
                                     paginatedResponses.map((resp) => (
                                         <tr key={resp.id} className="hover:bg-muted/30 transition-colors group">
-                                            <td className="px-6 py-4 sticky left-0 bg-background group-hover:bg-muted/30 z-10 border-b border-border">
+                                            <td className="px-6 py-4 border-b border-border">
                                                 <div className="flex flex-col">
                                                     <span className="font-semibold text-sm">{resp.respondentId || "Anonymous"}</span>
                                                     <span className="text-[10px] text-muted-foreground font-mono">{resp.id.split('-')[0]}...</span>
@@ -650,6 +659,14 @@ export default function SurveyMetricsPage() {
                 isOpen={isQuotaOpen}
                 onClose={() => setIsQuotaOpen(false)}
                 surveyId={id}
+            />
+            <ReconcileResponseModal
+                isOpen={isReconcileOpen}
+                onClose={() => setIsReconcileOpen(false)}
+                surveyId={id}
+                onSuccess={() => {
+                    fetchData();
+                }}
             />
         </div>
     );

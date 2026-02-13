@@ -2,26 +2,48 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import pako from 'pako';
 
-export function decompressJson(base64Data: string) {
-    if (!base64Data) return null;
-    try {
+export function decompressJson(data: any) {
+    if (!data) return null;
 
-        let binaryString = base64Data;
-        try {
-            binaryString = atob(base64Data);
-        } catch {
-            // Ignore error, assume data is already binary string
+    try {
+        let bytes: Uint8Array;
+
+        // Handle case where data is an object like {0: 31, 1: 139, ...}
+        if (typeof data === 'object' && !Array.isArray(data) && !(data instanceof Uint8Array)) {
+            const values = Object.values(data);
+             // Verify if it looks like byte data
+             if (values.length > 0 && typeof values[0] === 'number') {
+                 bytes = new Uint8Array(values as number[]);
+             } else {
+                 throw new Error("Invalid object format for decompression");
+             }
+        } else if (data instanceof Uint8Array) {
+             bytes = data;
+        } else if (typeof data === 'string') {
+             try {
+                const binaryString = atob(data);
+                const len = binaryString.length;
+                bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+             } catch {
+                // assume it's already a binary string
+                const len = data.length;
+                bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = data.charCodeAt(i);
+                }
+             }
+        } else {
+             throw new Error("Unsupported data type for decompression");
         }
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
+
         const decompressed = pako.ungzip(bytes, { to: 'string' });
         return JSON.parse(decompressed);
     } catch (e) {
         console.error("Decompression failed", e);
-        return null;
+        return null; // Return null instead of throwing to prevent crashing UI
     }
 }
 
