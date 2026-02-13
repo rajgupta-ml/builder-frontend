@@ -5,7 +5,13 @@ import pako from 'pako';
 export function decompressJson(base64Data: string) {
     if (!base64Data) return null;
     try {
-        const binaryString = atob(base64Data);
+
+        let binaryString = base64Data;
+        try {
+            binaryString = atob(base64Data);
+        } catch {
+            // Ignore error, assume data is already binary string
+        }
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
         for (let i = 0; i < len; i++) {

@@ -31,6 +31,7 @@ export interface SurveyWorkflow {
 export interface SurveyQuota {
     id: string;
     surveyId: string;
+    name?: string;
     rule: any; // Can be LogicGroup or a simple rule object
     limit: number;
     isActive: boolean;

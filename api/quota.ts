@@ -20,4 +20,9 @@ export const quotaApi = {
     const response = await apiClient.patch<{ data: SurveyQuota }>(`/quotas/${id}`, { isActive });
     return response.data.data;
   },
+
+  updateQuota: async (id: string, data: Partial<Omit<SurveyQuota, 'id' | 'createdAt' | 'surveyId'>>): Promise<SurveyQuota> => {
+    const response = await apiClient.put<{ data: SurveyQuota }>(`/quotas/${id}`, data);
+    return response.data.data;
+  },
 };

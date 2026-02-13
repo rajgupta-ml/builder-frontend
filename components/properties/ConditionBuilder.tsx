@@ -8,10 +8,25 @@ import { cn, generateUniqueId } from '@/lib/utils';
 // Refactored to use lib/utils
 // const generateId = () => ...
 
+type FieldKeyMode = 'nodeId' | 'technicalId';
+type OptionKeyMode = 'value' | 'exportId';
+
 interface ConditionBuilderProps {
     value: LogicGroup;
     onChange: (val: LogicGroup) => void;
     nodes: Node[];
+    /**
+     * Controls which identifier is written into rule.field
+     * - 'nodeId' (default): uses the ReactFlow node id
+     * - 'technicalId': uses node.data.technicalId/exportId fallback
+     */
+    fieldKeyMode?: FieldKeyMode;
+    /**
+     * Controls which identifier is written into rule.value for choice options
+     * - 'value' (default): uses option.value
+     * - 'exportId': uses option.exportId/value fallback
+     */
+    optionKeyMode?: OptionKeyMode;
 }
 
 const ALL_OPERATORS = [
@@ -64,6 +79,32 @@ const getOperatorsForNodeType = (nodeType?: string): typeof ALL_OPERATORS => {
 const NUMERIC_NODE_TYPES = ['numberInput', 'slider', 'rating', 'emojiRating'];
 const isNumericNodeType = (nodeType?: string) => nodeType ? NUMERIC_NODE_TYPES.includes(nodeType) : false;
 
+const getQuestionKey = (node: Node, mode: FieldKeyMode): string => {
+    if (mode === 'technicalId') {
+        const data: any = node.data || {};
+        return data.technicalId || data.exportId || node.id;
+    }
+    return node.id;
+};
+
+const findQuestionByKey = (nodes: Node[], key: string, mode: FieldKeyMode): Node | undefined => {
+    if (!key) return undefined;
+    if (mode === 'technicalId') {
+        return nodes.find(n => {
+            const data: any = n.data || {};
+            return data.technicalId === key || data.exportId === key || n.id === key;
+        });
+    }
+    return nodes.find(n => n.id === key);
+};
+
+const getOptionKey = (opt: any, mode: OptionKeyMode): string => {
+    if (mode === 'exportId') {
+        return opt.exportId || opt.value || opt.label;
+    }
+    return opt.value ?? opt.label;
+};
+
 const getValuePlaceholder = (nodeType?: string, operator?: string): string => {
     switch (nodeType) {
         case 'zipCodeInput':
@@ -100,7 +141,7 @@ const getInRangePlaceholder = (nodeType?: string): string => {
     }
 };
 
-export const ConditionBuilder = ({ value, onChange, nodes }: ConditionBuilderProps) => {
+export const ConditionBuilder = ({ value, onChange, nodes, fieldKeyMode = 'nodeId', optionKeyMode = 'value' }: ConditionBuilderProps) => {
     // Determine valid nodes for logic
     const validQuestions = useMemo(() => {
         return nodes.filter(n => {
@@ -128,6 +169,8 @@ export const ConditionBuilder = ({ value, onChange, nodes }: ConditionBuilderPro
                 group={rootGroup}
                 onChange={handleUpdate}
                 validQuestions={validQuestions}
+                fieldKeyMode={fieldKeyMode}
+                optionKeyMode={optionKeyMode}
                 isRoot={true}
                 onRemove={() => { }} // Root cannot be removed
             />
@@ -136,12 +179,14 @@ export const ConditionBuilder = ({ value, onChange, nodes }: ConditionBuilderPro
 };
 
 // Recursive Group Component
-const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove }: {
+const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKeyMode, optionKeyMode }: {
     group: LogicGroup,
     onChange: (g: LogicGroup) => void,
     validQuestions: Node[],
     isRoot?: boolean,
-    onRemove: () => void
+    onRemove: () => void,
+    fieldKeyMode: FieldKeyMode,
+    optionKeyMode: OptionKeyMode
 }) => {
 
     const updateSelf = (updates: Partial<LogicGroup>) => {
@@ -233,6 +278,8 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove }: {
                                     group={child}
                                     onChange={(g) => updateChild(index, g)}
                                     validQuestions={validQuestions}
+                                    fieldKeyMode={fieldKeyMode}
+                                    optionKeyMode={optionKeyMode}
                                     onRemove={() => removeChild(index)}
                                 />
                             ) : (
@@ -241,6 +288,8 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove }: {
                                     onUpdate={(r) => updateChild(index, r)}
                                     onRemove={() => removeChild(index)}
                                     validQuestions={validQuestions}
+                                    fieldKeyMode={fieldKeyMode}
+                                    optionKeyMode={optionKeyMode}
                                 />
                             )}
                         </div>
@@ -267,14 +316,22 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove }: {
     );
 };
 
-const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
-    rule: LogicRule, onUpdate: (r: LogicRule) => void, onRemove: () => void, validQuestions: Node[]
+const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, optionKeyMode }: {
+    rule: LogicRule;
+    onUpdate: (r: LogicRule) => void;
+    onRemove: () => void;
+    validQuestions: Node[];
+    fieldKeyMode: FieldKeyMode;
+    optionKeyMode: OptionKeyMode;
 }) => {
     // Local state for the tag input in 'in_range' mode
     const [tagInput, setTagInput] = React.useState('');
 
     // Logic for rendering inputs (same as before but adapted)
-    const selectedQuestion = validQuestions.find(n => n.id === rule.field);
+    const selectedQuestion = useMemo(
+        () => findQuestionByKey(validQuestions, rule.field, fieldKeyMode),
+        [validQuestions, rule.field, fieldKeyMode]
+    );
 
     let questionOptions: any[] = [];
     if (selectedQuestion) {
@@ -327,7 +384,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                 value={rule.field}
                 onChange={(e) => {
                     const newFieldId = e.target.value;
-                    const newQuestion = validQuestions.find(n => n.id === newFieldId);
+                    const newQuestion = findQuestionByKey(validQuestions, newFieldId, fieldKeyMode);
                     const allowedOps = getOperatorsForNodeType(newQuestion?.type as string);
                     const currentOpValid = allowedOps.some(op => op.value === rule.operator);
                     onUpdate({
@@ -341,7 +398,12 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
             >
                 <option value="">Field...</option>
                 {validQuestions.map(n => (
-                    <option key={n.id} value={n.id}>{String(n.data.label || n.id)}</option>
+                    <option
+                        key={getQuestionKey(n, fieldKeyMode)}
+                        value={getQuestionKey(n, fieldKeyMode)}
+                    >
+                        {String((n.data as any)?.label || n.id)}
+                    </option>
                 ))}
             </select>
 
@@ -506,9 +568,16 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                                         onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
                                     >
                                         <option value="">Compare with...</option>
-                                        {validQuestions.filter(n => n.id !== rule.field).map(n => (
-                                            <option key={n.id} value={n.id}>{String(n.data.label || n.id)}</option>
-                                        ))}
+                                        {validQuestions
+                                            .filter(n => getQuestionKey(n, fieldKeyMode) !== rule.field)
+                                            .map(n => (
+                                                <option
+                                                    key={getQuestionKey(n, fieldKeyMode)}
+                                                    value={getQuestionKey(n, fieldKeyMode)}
+                                                >
+                                                    {String((n.data as any)?.label || n.id)}
+                                                </option>
+                                            ))}
                                     </select>
                                 ) : questionOptions.length > 0 ? (
                                     <select
@@ -518,7 +587,10 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions }: {
                                     >
                                         <option value="">Select option...</option>
                                         {questionOptions.map((opt: any, i: number) => (
-                                            <option key={i} value={opt.value ?? opt.label}>
+                                            <option
+                                                key={i}
+                                                value={getOptionKey(opt, optionKeyMode)}
+                                            >
                                                 {opt.label || opt.value}
                                             </option>
                                         ))}

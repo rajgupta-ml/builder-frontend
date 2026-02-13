@@ -25,12 +25,15 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
 
     // Internal Add Form State
     const [isAdding, setIsAdding] = useState(false);
+    const [editingQuotaId, setEditingQuotaId] = useState<string | null>(null);
     const [newQuota, setNewQuota] = useState<{
+        name: string;
         limit: string;
         limitType: 'absolute' | 'percentage';
         limitPercentage: string;
         logic: LogicGroup;
     }>({
+        name: "",
         limit: "",
         limitType: 'absolute',
         limitPercentage: "",
@@ -99,15 +102,30 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
         }
     };
 
-    const handleCreate = async () => {
+    const handleEdit = (quota: SurveyQuota) => {
+        setEditingQuotaId(quota.id);
+        setNewQuota({
+            name: quota.name || "",
+            limit: quota.limit.toString(),
+            limitType: 'absolute', // Defaulting to absolute as we don't persist the type
+            limitPercentage: "",
+            logic: quota.rule as LogicGroup
+        });
+        setIsAdding(true);
+    };
+
+    const handleCreateOrUpdate = async () => {
         // Validation
+        if (!newQuota.name.trim()) {
+            toast.error("Please enter a quota name.");
+            return;
+        }
         if (newQuota.logic.children.length === 0) {
             toast.error("Please add at least one condition.");
             return;
         }
 
         let finalLimit: number;
-        let limitPercentage: number | undefined;
 
         if (newQuota.limitType === 'percentage') {
             if (!newQuota.limitPercentage) {
@@ -123,7 +141,6 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                 toast.error("Percentage must be between 0 and 100.");
                 return;
             }
-            limitPercentage = percentage;
             finalLimit = Math.round((percentage / 100) * globalQuota);
         } else {
             if (!newQuota.limit) {
@@ -134,23 +151,39 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
         }
 
         try {
-            const created = await quotaApi.createQuota(surveyId, {
-                rule: newQuota.logic,
-                limit: finalLimit,
-                isActive: true
-            });
-            setQuotas([created, ...quotas]);
+            if (editingQuotaId) {
+                const updated = await quotaApi.updateQuota(editingQuotaId, {
+                    rule: newQuota.logic,
+                    limit: finalLimit,
+                    name: newQuota.name
+                });
+                setQuotas(quotas.map(q => q.id === editingQuotaId ? updated : q));
+                toast.success("Quota updated");
+            } else {
+                const created = await quotaApi.createQuota(surveyId, {
+                    rule: newQuota.logic,
+                    limit: finalLimit,
+                    isActive: true, // Default to active
+                    name: newQuota.name
+                });
+                setQuotas([created, ...quotas]);
+                toast.success("Quota created");
+            }
+
             setIsAdding(false);
+            setEditingQuotaId(null);
             setNewQuota({
+                name: "",
                 limit: "",
                 limitType: 'absolute',
                 limitPercentage: "",
                 logic: { id: 'root', type: 'group', logicType: 'AND', children: [] }
             });
-            toast.success("Quota created");
+
             if (onSave) onSave();
         } catch (error) {
-            toast.error("Failed to create quota");
+            console.error(error);
+            toast.error(editingQuotaId ? "Failed to update quota" : "Failed to create quota");
         }
     };
 
@@ -218,52 +251,60 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                     {/* Add Form */}
                                     {isAdding && (
                                         <div className="bg-muted/30 border border-primary/20 rounded-xl p-4 mb-4 animate-in slide-in-from-top-2">
-                                            <div className="flex items-center justify-between mb-4">
-                                                <h4 className="text-sm font-bold text-primary">Target Selection (Complex Rules)</h4>
+                                            <div className="flex items-center justify-between mb-4 gap-4">
+                                                <div className="flex-1">
+                                                    <label className="text-xs font-semibold block mb-1">Quota Name</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. Female 18-24"
+                                                        className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                                        value={newQuota.name}
+                                                        onChange={(e) => setNewQuota({ ...newQuota, name: e.target.value })}
+                                                    />
+                                                </div>
 
-                                                <div className="flex items-center gap-4">
-                                                    {/* Limit Type Toggle */}
-                                                    <div className="flex bg-background border border-border rounded-lg p-1">
-                                                        <button
-                                                            onClick={() => setNewQuota({ ...newQuota, limitType: 'absolute' })}
-                                                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${newQuota.limitType === 'absolute' ? 'bg-primary text-white shadow-sm' : 'hover:bg-muted text-muted-foreground'}`}
-                                                        >
-                                                            Absolute
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setNewQuota({ ...newQuota, limitType: 'percentage' })}
-                                                            className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${newQuota.limitType === 'percentage' ? 'bg-primary text-white shadow-sm' : 'hover:bg-muted text-muted-foreground'}`}
-                                                        >
-                                                            Percentage
-                                                        </button>
-                                                    </div>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <label className="text-xs font-semibold">&nbsp;</label>
+                                                    <div className="flex items-center gap-4">
+                                                        {/* Limit Type Toggle */}
+                                                        <div className="flex bg-background border border-border rounded-lg p-1">
+                                                            <button
+                                                                onClick={() => setNewQuota({ ...newQuota, limitType: 'absolute' })}
+                                                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${newQuota.limitType === 'absolute' ? 'bg-primary text-white shadow-sm' : 'hover:bg-muted text-muted-foreground'}`}
+                                                            >
+                                                                Absolute
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setNewQuota({ ...newQuota, limitType: 'percentage' })}
+                                                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${newQuota.limitType === 'percentage' ? 'bg-primary text-white shadow-sm' : 'hover:bg-muted text-muted-foreground'}`}
+                                                            >
+                                                                Percentage
+                                                            </button>
+                                                        </div>
 
-                                                    {/* Input Fields */}
-                                                    <div className="flex items-center gap-2">
-                                                        <label className="text-xs font-semibold">
-                                                            {newQuota.limitType === 'absolute' ? 'Max Responses:' : 'Percentage of Global:'}
-                                                        </label>
-
-                                                        {newQuota.limitType === 'absolute' ? (
-                                                            <input
-                                                                type="number"
-                                                                placeholder="e.g. 100"
-                                                                className="w-24 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                                                                value={newQuota.limit}
-                                                                onChange={(e) => setNewQuota({ ...newQuota, limit: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <div className="relative">
+                                                        {/* Input Fields */}
+                                                        <div className="flex items-center gap-2">
+                                                            {newQuota.limitType === 'absolute' ? (
                                                                 <input
                                                                     type="number"
-                                                                    placeholder="50"
-                                                                    className="w-24 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 pr-8"
-                                                                    value={newQuota.limitPercentage}
-                                                                    onChange={(e) => setNewQuota({ ...newQuota, limitPercentage: e.target.value })}
+                                                                    placeholder="e.g. 100"
+                                                                    className="w-24 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                                                    value={newQuota.limit}
+                                                                    onChange={(e) => setNewQuota({ ...newQuota, limit: e.target.value })}
                                                                 />
-                                                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">%</span>
-                                                            </div>
-                                                        )}
+                                                            ) : (
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type="number"
+                                                                        placeholder="50"
+                                                                        className="w-24 bg-background border border-border rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 pr-8"
+                                                                        value={newQuota.limitPercentage}
+                                                                        onChange={(e) => setNewQuota({ ...newQuota, limitPercentage: e.target.value })}
+                                                                    />
+                                                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">%</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -280,12 +321,16 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                                     nodes={flowNodes}
                                                     value={newQuota.logic}
                                                     onChange={(logic) => setNewQuota({ ...newQuota, logic })}
+                                                    fieldKeyMode="technicalId"
+                                                    optionKeyMode="exportId"
                                                 />
                                             </div>
 
                                             <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border/50">
-                                                <button onClick={() => setIsAdding(false)} className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-lg transition-colors">Cancel</button>
-                                                <button onClick={handleCreate} className="px-6 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 shadow-md shadow-primary/20">Save Quota Rule</button>
+                                                <button onClick={() => { setIsAdding(false); setEditingQuotaId(null); }} className="px-4 py-2 text-sm font-medium hover:bg-muted rounded-lg transition-colors">Cancel</button>
+                                                <button onClick={handleCreateOrUpdate} className="px-6 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary/90 shadow-md shadow-primary/20">
+                                                    {editingQuotaId ? "Update Quota Rule" : "Save Quota Rule"}
+                                                </button>
                                             </div>
                                         </div>
                                     )}
@@ -303,10 +348,10 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                                 <div key={quota.id} className="flex items-center justify-between p-5 bg-card border border-border rounded-2xl hover:shadow-md transition-all group">
                                                     <div className="flex-1 space-y-2">
                                                         <div className="flex items-center gap-2">
-                                                            <div className="bg-primary/10 text-primary p-1.5 rounded-lg">
+                                                            <div className="bg-primary/10 text-primary p-1.5 rounded-lg cursor-pointer hover:bg-primary/20 transition-colors" onClick={() => handleEdit(quota)}>
                                                                 <IconSettings size={18} />
                                                             </div>
-                                                            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Complex Quota Rule</p>
+                                                            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">{quota.name || 'Complex Quota Rule'}</p>
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-xl border border-border/50">
                                                             <p className="text-sm font-medium leading-relaxed">
@@ -371,27 +416,106 @@ function summarizeRule(item: any, nodes: Node[]): React.ReactNode {
         );
     }
 
-    const node = nodes.find(n => n.id === item.field);
-    const label = node?.data?.label || item.field || 'Question';
+    // Deep search for the node and label corresponding to the field
+    let node: Node | undefined;
+    let foundLabel: string | undefined;
+
+    for (const n of nodes) {
+        const data: any = n.data || {};
+
+        // 1. Check Main Node (Technical ID, Export ID, Node ID)
+        if ((data.technicalId && data.technicalId === item.field) ||
+            (data.exportId && data.exportId === item.field) ||
+            n.id === item.field ||
+            (data.id && data.id === item.field)) {
+            node = n;
+            foundLabel = data.label || data.question || data.title;
+            break;
+        }
+
+        // 2. Check Matrix Rows (Field often refers to a generic Row ID in some schemas, or specific Row ExportID)
+        if (Array.isArray(data.rows)) {
+            const row = data.rows.find((r: any) => r.exportId === item.field || r.id === item.field || r.value === item.field);
+            if (row) {
+                node = n;
+                foundLabel = `${data.label || 'Matrix'} - ${row.label}`;
+                break;
+            }
+        }
+
+        // 3. Check Rating Items
+        if (Array.isArray(data.items)) {
+            const rItem = data.items.find((i: any) => i.exportId === item.field || i.id === item.field || i.value === item.field);
+            if (rItem) {
+                node = n;
+                if (data.items.length > 1) {
+                    foundLabel = `${data.label} - ${rItem.label}`;
+                } else {
+                    foundLabel = data.label || rItem.label;
+                }
+                break;
+            }
+        }
+
+        // 4. Check Multi-Input Fields
+        if (Array.isArray(data.fields)) {
+            const field = data.fields.find((f: any) => f.exportId === item.field || f.id === item.field);
+            if (field) {
+                node = n;
+                foundLabel = `${data.label} - ${field.label}`;
+                break;
+            }
+        }
+    }
+
+    // Logging to debug if node is found
+    if (!node) {
+        // console.warn('[QuotaModal] Node Not Found:', item.field);
+        // console.log('Debug Nodes:', nodes.map(n => ({ id: n.id, tech: (n.data as any)?.technicalId })));
+    }
+
+    const label = foundLabel || node?.data?.label || node?.data?.question || node?.data?.title || item.field || 'Question';
 
     // Resolve value label if possible
     let displayValue = item.value;
-    if (node && typeof item.value === 'string') {
-        const options = (node.data?.options as any[]) || [];
-        const opt = options.find((o: any) => o.value === item.value);
-        if (opt) displayValue = opt.label;
+
+    if (node && (typeof item.value === 'string' || typeof item.value === 'number')) {
+        const data: any = node.data || {};
+        let foundOption: any = null;
+
+        // Check options (Choice, Dropdown, Ranking)
+        if (Array.isArray(data.options)) {
+            foundOption = data.options.find((o: any) => o.exportId === item.value || o.id === item.value || o.value === item.value);
+        }
+
+        // Check items (Rating)
+        if (!foundOption && Array.isArray(data.items)) {
+            foundOption = data.items.find((i: any) => i.exportId === item.value || i.id === item.value || i.value === item.value);
+        }
+
+        // Check rows (Matrix)
+        if (!foundOption && Array.isArray(data.rows)) {
+            foundOption = data.rows.find((r: any) => r.exportId === item.value || r.id === item.value || r.value === item.value);
+        }
+
+        if (foundOption) {
+            displayValue = foundOption.label || foundOption.text || foundOption.title || displayValue;
+        }
     } else if (typeof item.value === 'object' && item.value !== null) {
         if (item.operator === 'is_between') {
             displayValue = `${item.value.min} to ${item.value.max}`;
         } else {
+            // For other complex values, try to display meaningfully
             displayValue = JSON.stringify(item.value);
         }
     }
 
+    const operatorDisplay = item.operator ? item.operator.replace(/_/g, ' ') : 'EQUALS';
+
     return (
         <span className="text-sm">
             <span className="font-bold text-foreground/70">{label}</span>
-            <span className="mx-1.5 text-primary opacity-60 font-mono text-xs uppercase">{item.operator.replace('_', ' ')}</span>
+            <span className="mx-1.5 text-primary opacity-60 font-mono text-xs uppercase">{operatorDisplay}</span>
             <span className="font-black text-primary">"{displayValue}"</span>
         </span>
     );
