@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Node } from '@xyflow/react';
-import { getNodeDefinition, LogicGroup, LogicItem, LogicRule } from '@/components/nodes/definitions';
+import { getNodeDefinition, LogicGroup, LogicItem, LogicRule, POSTAL_CODE_COUNTRIES } from '@/components/nodes/definitions';
 import { IconTrash, IconPlus, IconVariable, IconTypography, IconFolderPlus, IconX } from '@tabler/icons-react';
 import { cn, generateUniqueId } from '@/lib/utils';
 
@@ -40,6 +40,7 @@ const ALL_OPERATORS = [
     { label: 'Is Empty', value: 'is_empty' },
     { label: 'Is Between', value: 'is_between' },
     { label: 'In Range List', value: 'in_range' },
+    { label: 'is valid postal code for', value: 'is_postal_code' },
 ];
 
 // Map node types to their relevant operators for better UX
@@ -64,7 +65,7 @@ const OPERATORS_BY_NODE_TYPE: Record<string, string[]> = {
     emailInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
 
     // Zip code: specialized for range lists
-    zipCodeInput: ['equals', 'not_equals', 'contains', 'not_contains', 'in_range', 'is_set', 'is_empty'],
+    zipCodeInput: ['equals', 'not_equals', 'contains', 'not_contains', 'in_range', 'is_postal_code', 'is_set', 'is_empty'],
 
     // Date: comparison
     datePicker: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
@@ -584,6 +585,19 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                                     {String((n.data as any)?.label || n.id)}
                                                 </option>
                                             ))}
+                                    </select>
+                                ) : rule.operator === 'is_postal_code' ? (
+                                    <select
+                                        className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                        value={rule.value}
+                                        onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
+                                    >
+                                        <option value="">Select country...</option>
+                                        {POSTAL_CODE_COUNTRIES.map((country: any) => (
+                                            <option key={country.value} value={country.value}>
+                                                {country.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 ) : questionOptions.length > 0 ? (
                                     <select

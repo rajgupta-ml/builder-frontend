@@ -487,6 +487,59 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     },
 ];
 
+export const EU_COUNTRY_CODES = [
+    'UK', 'IE', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'CH', 'AT', 'PT', 'DK', 'NO', 'SE', 'FI', 'PL', 'CZ', 'SK', 'HU'
+];
+
+export const POSTAL_CODE_COUNTRIES = [
+    { label: 'US or EU', value: 'US_EU' },
+    { label: 'United States', value: 'US' },
+    { label: 'United Kingdom', value: 'UK' },
+    { label: 'Canada', value: 'CA' },
+    { label: 'Mexico', value: 'MX' },
+    { label: 'Brazil', value: 'BR' },
+    { label: 'Argentina', value: 'AR' },
+    { label: 'Ireland', value: 'IE' },
+    { label: 'France', value: 'FR' },
+    { label: 'Germany', value: 'DE' },
+    { label: 'Spain', value: 'ES' },
+    { label: 'Italy', value: 'IT' },
+    { label: 'Netherlands', value: 'NL' },
+    { label: 'Belgium', value: 'BE' },
+    { label: 'Switzerland', value: 'CH' },
+    { label: 'Austria', value: 'AT' },
+    { label: 'Portugal', value: 'PT' },
+    { label: 'Denmark', value: 'DK' },
+    { label: 'Norway', value: 'NO' },
+    { label: 'Sweden', value: 'SE' },
+    { label: 'Finland', value: 'FI' },
+    { label: 'Poland', value: 'PL' },
+    { label: 'Czech Republic', value: 'CZ' },
+    { label: 'Slovakia', value: 'SK' },
+    { label: 'Hungary', value: 'HU' },
+    { label: 'Japan', value: 'JP' },
+    { label: 'China', value: 'CN' },
+    { label: 'South Korea', value: 'KR' },
+    { label: 'India', value: 'IN' },
+    { label: 'Thailand', value: 'TH' },
+    { label: 'Singapore', value: 'SG' },
+    { label: 'Malaysia', value: 'MY' },
+    { label: 'Philippines', value: 'PH' },
+    { label: 'Indonesia', value: 'ID' },
+    { label: 'Australia', value: 'AU' },
+    { label: 'New Zealand', value: 'NZ' },
+    { label: 'South Africa', value: 'ZA' },
+    { label: 'Nigeria', value: 'NG' },
+    { label: 'Egypt', value: 'EG' },
+    { label: 'Kenya', value: 'KE' },
+    { label: 'United Arab Emirates', value: 'AE' },
+    { label: 'Saudi Arabia', value: 'SA' },
+    { label: 'Israel', value: 'IL' },
+    { label: 'Russia', value: 'RU' },
+    { label: 'Ukraine', value: 'UA' },
+    { label: 'Turkey', value: 'TR' }
+];
+
 // Recursive Logic Types
 export interface LogicRule {
     id: string; 
