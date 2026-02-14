@@ -60,7 +60,7 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
                     const basicFields = ['label', 'description', 'questionLabel', 'url', 'urls'];
                     const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps'];
                     const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices'];
-                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel'];
+                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords'];
                     const logicFields = ['condition'];
 
                     const groupedProperties = {

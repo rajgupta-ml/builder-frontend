@@ -54,7 +54,11 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         properties: [
             ...commonProperties,
             { name: 'placeholder', label: 'Placeholder', type: 'text', placeholder: 'e.g., Type here...', defaultValue: '' },
-            { name: 'longAnswer', label: 'Long Answer (Multi-line)', type: 'switch', defaultValue: false }
+            { name: 'longAnswer', label: 'Long Answer (Multi-line)', type: 'switch', defaultValue: false },
+            { name: 'minChars', label: 'Min Characters', type: 'number', helperText: 'Requires at least this many characters.', defaultValue: 0 },
+            { name: 'maxChars', label: 'Max Characters', type: 'number', helperText: 'Limits total characters. 0 or empty for no limit.', defaultValue: 0 },
+            { name: 'minWords', label: 'Min Words', type: 'number', helperText: 'Requires at least this many words.', defaultValue: 0 },
+            { name: 'maxWords', label: 'Max Words', type: 'number', helperText: 'Limits total words. 0 or empty for no limit.', defaultValue: 0 }
         ]
     },
     {
@@ -74,11 +78,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 type: 'options', // Re-using options for now: label = Field Label, value = Field Type (text, email, number) 
                 defaultValue: [],
                 helperText: 'Value column represents input type (text, number, email)'
-            }
+            },
+            { name: 'minChars', label: 'Min Characters', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 },
+            { name: 'maxChars', label: 'Max Characters', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 },
+            { name: 'minWords', label: 'Min Words', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 },
+            { name: 'maxWords', label: 'Max Words', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 }
         ]
     },
-
-    // ... (Number, Email, Date stay same)
     { 
         type: 'numberInput', 
         label: 'Number', 
@@ -107,8 +113,6 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'input',
         properties: [...commonProperties]
     },
-
-    // Choices
     { 
         type: 'singleChoice', 
         label: 'Single Choice', 
