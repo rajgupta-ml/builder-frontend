@@ -2,11 +2,12 @@ import React from "react";
 import { useReactFlow, Node } from "@xyflow/react";
 import apiClient from "@/lib/api-client";
 import { getNodeDefinition, PropertyField } from "@/components/nodes/definitions";
-import { IconX, IconFolderPlus, IconTrash, IconPlus } from "@tabler/icons-react";
+import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { ConditionBuilder } from "./ConditionBuilder";
 import { StepsBuilder } from "./StepsBuilder";
 import EmojiPicker from "./EmojiPicker";
+import { MediaPreview } from "../nodes/MediaPreview";
 
 // ... (imports remain same)
 
@@ -56,7 +57,7 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
                     });
 
                     // Group properties by category
-                    const basicFields = ['label', 'description'];
+                    const basicFields = ['label', 'description', 'questionLabel', 'url', 'urls'];
                     const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps'];
                     const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices'];
                     const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel'];
@@ -272,14 +273,15 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                         fileType: file.type
                     });
 
-                    const { uploadUrl, publicUrl } = res.data;
+                    const { uploadUrl, key } = res.data;
                     const upload = await fetch(uploadUrl, {
                         method: 'PUT',
                         body: file,
                         headers: { 'Content-Type': file.type }
                     });
                     if (!upload.ok) throw new Error("Failed to upload file to S3");
-                    onChange(publicUrl);
+                    // Save ONLY the storage key, not the public URL
+                    onChange(key);
                 } catch (err) {
                     console.error("Upload failed", err);
                     alert("Upload failed. Check console for details.");
@@ -294,7 +296,7 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                             disabled={readOnly}
                             value={value || ""}
                             onChange={(e) => onChange(e.target.value)}
-                            placeholder={field.placeholder || "https://..."}
+                            placeholder={field.placeholder || "Storage key..."}
                             className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                     </div>
@@ -312,7 +314,7 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                 const files = e.target.files;
                 if (!files || files.length === 0) return;
 
-                const uploadedUrls = [...(value || [])];
+                const uploadedKeys = [...(value || [])];
 
                 // 1. Get Presigned URLs and upload each
                 for (let i = 0; i < files.length; i++) {
@@ -323,7 +325,7 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                             fileType: file.type
                         });
 
-                        const { uploadUrl, publicUrl } = res.data;
+                        const { uploadUrl, key } = res.data;
 
                         await fetch(uploadUrl, {
                             method: 'PUT',
@@ -331,20 +333,20 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                             headers: { 'Content-Type': file.type }
                         });
 
-                        uploadedUrls.push(publicUrl);
+                        uploadedKeys.push(key);
                     } catch (err) {
                         console.error("Upload failed for file:", file.name, err);
                     }
                 }
-                onChange(uploadedUrls);
+                onChange(uploadedKeys);
             };
 
             return (
                 <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2">
-                        {(value || []).map((url: string, idx: number) => (
+                        {(value || []).map((storageKey: string, idx: number) => (
                             <div key={idx} className="relative group aspect-square rounded-md overflow-hidden border border-border bg-muted">
-                                <img src={url} className="w-full h-full object-cover" />
+                                <MediaPreview storageKey={storageKey} type="image" className="w-full h-full" />
                                 {!readOnly && (
                                     <button
                                         onClick={() => {
@@ -405,29 +407,98 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
             return (
                 <div className="space-y-2">
                     {(value || []).map((option: any, index: number) => (
-                        <div key={index} className="flex gap-2">
-                            <input
-                                type="text"
-                                disabled={readOnly}
-                                value={option.label}
-                                onChange={(e) => {
-                                    const newOptions = [...value];
-                                    newOptions[index] = { ...newOptions[index], label: e.target.value };
-                                    onChange(newOptions);
-                                }}
-                                className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                placeholder={`Option ${index + 1}`}
-                            />
-                            {!readOnly && (
-                                <button
-                                    onClick={() => {
-                                        const newOptions = value.filter((_: any, i: number) => i !== index);
+                        <div key={index} className="flex flex-col gap-2 p-2 border rounded-md bg-muted/5">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    disabled={readOnly}
+                                    value={option.label}
+                                    onChange={(e) => {
+                                        const newOptions = [...value];
+                                        newOptions[index] = { ...newOptions[index], label: e.target.value };
                                         onChange(newOptions);
                                     }}
-                                    className="p-2 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                                >
-                                    <IconTrash size={14} />
-                                </button>
+                                    className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                    placeholder={`Option ${index + 1}`}
+                                />
+                                {!readOnly && (
+                                    <button
+                                        onClick={() => {
+                                            const newOptions = value.filter((_: any, i: number) => i !== index);
+                                            onChange(newOptions);
+                                        }}
+                                        className="p-2 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                                    >
+                                        <IconTrash size={14} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {!readOnly && (
+                                <div className="flex flex-col gap-2 p-2 border border-dashed rounded-md bg-muted/20">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => {
+                                                const input = document.createElement('input');
+                                                input.type = 'file';
+                                                input.accept = 'image/*';
+                                                input.onchange = async (e) => {
+                                                    const file = (e.target as HTMLInputElement).files?.[0];
+                                                    if (!file) return;
+
+                                                    try {
+                                                        const res = await apiClient.post('/storage/upload-url', {
+                                                            filename: file.name,
+                                                            fileType: file.type
+                                                        });
+                                                        const { uploadUrl, key } = res.data;
+
+                                                        const upload = await fetch(uploadUrl, {
+                                                            method: 'PUT',
+                                                            body: file,
+                                                            headers: { 'Content-Type': file.type }
+                                                        });
+
+                                                        if (!upload.ok) throw new Error("Failed to upload image");
+
+                                                        const newOptions = [...value];
+                                                        newOptions[index] = { ...newOptions[index], imageUrl: key };
+                                                        onChange(newOptions);
+                                                    } catch (err) {
+                                                        console.error("Upload failed", err);
+                                                        alert("Upload failed. Please try again.");
+                                                    }
+                                                };
+                                                input.click();
+                                            }}
+                                            className="flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
+                                        >
+                                            <IconPhoto size={12} />
+                                            {option.imageUrl ? "Change Image" : "Add Image"}
+                                        </button>
+                                        {option.imageUrl && (
+                                            <button
+                                                onClick={() => {
+                                                    const newOptions = [...value];
+                                                    const updatedOption = { ...newOptions[index] };
+                                                    delete updatedOption.imageUrl;
+                                                    newOptions[index] = updatedOption;
+                                                    onChange(newOptions);
+                                                }}
+                                                className="text-[10px] text-muted-foreground hover:text-destructive"
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                    {option.imageUrl && (
+                                        <MediaPreview
+                                            storageKey={option.imageUrl}
+                                            type="image"
+                                            className="w-full h-20 rounded-sm"
+                                        />
+                                    )}
+                                </div>
                             )}
                         </div>
                     ))}
@@ -440,13 +511,6 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                         </button>
                     )}
                 </div>
-            );
-        case 'stepBuilder':
-            return (
-                <StepsBuilder
-                    value={value || []}
-                    onChange={onChange}
-                />
             );
         case 'select':
             return (

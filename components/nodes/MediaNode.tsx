@@ -3,6 +3,7 @@ import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconPhoto } from '@tabler/icons-react';
 import { cn } from "@/lib/utils";
+import { MediaPreview } from './MediaPreview';
 
 const MediaNode = (props: NodeProps<any>) => {
     const { url, urls, alt } = props.data;
@@ -10,14 +11,13 @@ const MediaNode = (props: NodeProps<any>) => {
 
     const renderContent = () => {
         if (nodeType === 'video' && url) {
-            return <video src={url} className="w-full h-full object-cover" controls muted />;
+            return <MediaPreview storageKey={url} type="video" className="w-full h-full" />;
         }
 
         if (nodeType === 'audio' && url) {
             return (
                 <div className="flex flex-col items-center gap-1 text-primary">
-                    <IconPhoto size={32} className="opacity-80" />
-                    <span className="text-[8px] font-bold uppercase tracking-tighter">Audio Stream</span>
+                    <MediaPreview storageKey={url} type="audio" className="w-full h-full" />
                 </div>
             );
         }
@@ -30,12 +30,12 @@ const MediaNode = (props: NodeProps<any>) => {
                     images.length === 1 ? "grid-cols-1" : "grid-cols-2"
                 )}>
                     {images.slice(0, 4).map((img: string, i: number) => (
-                        <img
+                        <MediaPreview
                             key={i}
-                            src={img}
-                            alt={alt}
+                            storageKey={img}
+                            type="image"
                             className={cn(
-                                "w-full h-full object-cover",
+                                "w-full h-full",
                                 images.length === 3 && i === 0 ? "row-span-2" : ""
                             )}
                         />
@@ -66,8 +66,15 @@ const MediaNode = (props: NodeProps<any>) => {
             color="bg-indigo-500"
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="aspect-video w-full bg-muted rounded-md overflow-hidden flex items-center justify-center border border-border relative">
-                {renderContent()}
+            <div className="flex gap-2">
+                <div className="aspect-video w-full bg-muted rounded-md overflow-hidden flex items-center justify-center border border-border relative">
+                    {renderContent()}
+                </div>
+                {props.data.questionLabel && (
+                    <p className="text-xs font-medium text-center px-1 pb-1 text-foreground/80 line-clamp-2">
+                        {props.data.questionLabel}
+                    </p>
+                )}
             </div>
         </BaseNode>
     );

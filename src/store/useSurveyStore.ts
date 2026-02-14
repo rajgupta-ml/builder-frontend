@@ -75,7 +75,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     selectedVersionId: null,
     hasChanges: false,
 
-    setNodes: (nodes) => set({ nodes }),
+    setNodes: (nodes) => set({ nodes, saveStatus: 'unsaved' }),
     setEdges: (edges) => set({ edges }),
 
     onNodesChange: (changes) => {

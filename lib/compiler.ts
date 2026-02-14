@@ -16,7 +16,7 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         }
 
         // Add stable IDs to options (for choice-based questions)
-        if (["singleChoice", "multipleChoice", "dropdown", "ranking"].includes(node.type as string)) {
+        if (["singleChoice", "multipleChoice", "dropdown", "ranking", "emojiRating"].includes(node.type as string)) {
             if (nodeData.options && Array.isArray(nodeData.options)) {
                 nodeData.options = nodeData.options.map((opt: any) => ({
                     ...opt,
@@ -25,8 +25,18 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             }
         }
 
-        // Add stable IDs to rating items
-        if (node.type === "rating" && nodeData.items && Array.isArray(nodeData.items)) {
+        // Handle choices in media nodes (image, video, audio)
+        if (["image", "video", "audio"].includes(node.type as string)) {
+            if (nodeData.choices && Array.isArray(nodeData.choices)) {
+                nodeData.choices = nodeData.choices.map((opt: any) => ({
+                    ...opt,
+                    exportId: opt.exportId || uuidv4()
+                }));
+            }
+        }
+
+        // Add stable IDs to rating and slider items
+        if (["rating", "slider"].includes(node.type as string) && nodeData.items && Array.isArray(nodeData.items)) {
             nodeData.items = nodeData.items.map((item: any) => ({
                 ...item,
                 exportId: item.exportId || uuidv4()

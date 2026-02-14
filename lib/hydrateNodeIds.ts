@@ -68,6 +68,14 @@ export function hydrateNodeIds(
             }));
         }
 
+        // Copy exportIds for media node choices
+        if (runtimeData.choices && Array.isArray(nodeData.choices)) {
+            nodeData.choices = (nodeData.choices as any[]).map((opt: any, i: number) => ({
+                ...opt,
+                exportId: runtimeData.choices[i]?.exportId || opt.exportId
+            }));
+        }
+
         return { ...node, data: nodeData };
     });
 }

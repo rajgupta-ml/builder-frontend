@@ -407,17 +407,23 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                 ))}
             </select>
 
-            {/* Subfield if Matrix */}
-            {selectedQuestion?.type === 'matrixChoice' && (
+            {/* Subfield if Matrix, Slider, Rating, or MultiInput */}
+            {(selectedQuestion?.type === 'matrixChoice' || selectedQuestion?.type === 'slider' || selectedQuestion?.type === 'rating' || selectedQuestion?.type === 'multiInput') && (
                 <select
                     className="flex-1 min-w-[100px] text-[10px] p-1.5 rounded border border-input bg-card h-7"
                     value={rule.subField || ''}
                     onChange={(e) => onUpdate({ ...rule, subField: e.target.value })}
                 >
-                    <option value="">Row...</option>
-                    {(selectedQuestion.data.rows as any[] || []).map((row: any, i: number) => (
-                        <option key={i} value={row.value ?? row.label}>
-                            {row.label}
+                    <option value="">
+                        {selectedQuestion.type === 'matrixChoice' ? 'Row...' :
+                            selectedQuestion.type === 'multiInput' ? 'Field...' : 'Item...'}
+                    </option>
+                    {(selectedQuestion.type === 'multiInput'
+                        ? (selectedQuestion.data.fields as any[] || [])
+                        : (selectedQuestion.data.items as any[] || selectedQuestion.data.rows as any[] || [])
+                    ).map((sub: any, i: number) => (
+                        <option key={i} value={getOptionKey(sub, optionKeyMode)}>
+                            {sub.label || sub.text || sub.id}
                         </option>
                     ))}
                 </select>

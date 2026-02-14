@@ -205,16 +205,17 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     },
     {
         type: 'slider',
-        label: 'Slider',
-        description: 'Select a value from a range',
+        label: 'Slider / Scale',
+        description: 'Rate multiple items on a scale',
         icon: IconNumbers,
         category: 'choice',
         properties: [
             ...commonProperties,
+            { name: 'items', label: 'Items to Rate', type: 'options', defaultValue: [] },
             { name: 'min', label: 'Minimum', type: 'number', defaultValue: 0 },
-            { name: 'max', label: 'Maximum', type: 'number', defaultValue: 100 },
+            { name: 'max', label: 'Maximum', type: 'number', defaultValue: 10 },
             { name: 'step', label: 'Step', type: 'number', defaultValue: 1, min: 0 },
-            { name: 'startValue', label: 'Start Value', type: 'number', defaultValue: 0, helperText: 'Initial value of the slider' }
+            { name: 'startValue', label: 'Start Value', type: 'number', defaultValue: 5, helperText: 'Initial value of the sliders' }
         ]
     },
 
@@ -290,10 +291,9 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
             },
             { 
                 name: 'questionLabel', 
-                label: 'Question Text', 
+                label: 'Question / Text', 
                 type: 'text', 
-                placeholder: 'What did you think about this?',
-                visible: (data) => data.interactionType !== 'none'
+                placeholder: 'Type your text here...',
             },
             { 
                 name: 'sliderConfig', 
@@ -334,10 +334,9 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
             },
             { 
                 name: 'questionLabel', 
-                label: 'Question Text', 
+                label: 'Question / Text', 
                 type: 'text', 
-                placeholder: 'What did you think about this?',
-                visible: (data) => data.interactionType !== 'none'
+                placeholder: 'Type your text here...',
             },
             { 
                 name: 'sliderConfig', 
@@ -378,10 +377,9 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
             },
             { 
                 name: 'questionLabel', 
-                label: 'Question Text', 
+                label: 'Question / Text', 
                 type: 'text', 
-                placeholder: 'What did you think about this?',
-                visible: (data) => data.interactionType !== 'none'
+                placeholder: 'Type your text here...',
             },
             { 
                 name: 'sliderConfig', 
