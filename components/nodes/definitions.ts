@@ -1,4 +1,4 @@
-import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle } from '@tabler/icons-react';
+import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
 export type PropertyType = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'color' | 'options' | 'condition' | 'stepBuilder' | 'fileTextarea' | 'file' | 'files' | 'emojiOptions';
@@ -59,6 +59,17 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
             { name: 'maxChars', label: 'Max Characters', type: 'number', helperText: 'Limits total characters. 0 or empty for no limit.', defaultValue: 0 },
             { name: 'minWords', label: 'Min Words', type: 'number', helperText: 'Requires at least this many words.', defaultValue: 0 },
             { name: 'maxWords', label: 'Max Words', type: 'number', helperText: 'Limits total words. 0 or empty for no limit.', defaultValue: 0 }
+        ]
+    },
+    {
+        type: 'captcha',
+        label: 'Captcha',
+        description: 'Verify the user is human using Turnstile',
+        icon: IconShieldLock,
+        category: 'input',
+        properties: [
+            ...commonProperties,
+            { name: 'sitekey', label: 'Turnstile Site Key', type: 'text', placeholder: '1x00000000000000000000AA', helperText: 'Your Cloudflare Turnstile Site Key' }
         ]
     },
     {

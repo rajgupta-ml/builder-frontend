@@ -14,6 +14,7 @@ import MultiInputNode from './MultiInputNode';
 import ZipCodeInputNode from './ZipCodeInputNode';
 import MatrixChoiceNode from './MatrixChoiceNode';
 import CascadingChoiceNode from './CascadingChoiceNode';
+import CaptchaNode from './CaptchaNode';
 import { NODE_DEFINITIONS } from './definitions';
 
 // Map of Component Implementations
@@ -45,6 +46,7 @@ const componentMap: Record<string, React.ComponentType<any>> = {
     zipCodeInput: ZipCodeInputNode,
     matrixChoice: MatrixChoiceNode,
     cascadingChoice: CascadingChoiceNode,
+    captcha: CaptchaNode,
 };
 
 export const nodeTypes: NodeTypes = componentMap;
