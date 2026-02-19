@@ -1,6 +1,7 @@
 "use client"
 import { IconX, IconPlayerPlay, IconCopy, IconExternalLink, IconWorld, IconAlertCircle } from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { safeOpenExternal } from '@/lib/safe-format';
 
 interface ShareModalProps {
     isOpen: boolean;
@@ -16,6 +17,12 @@ export function ShareModal({ isOpen, onClose, testLink, liveLink, isLive }: Shar
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         toast.success("Link copied!");
+    };
+
+    const openLink = (url: string) => {
+        if (!safeOpenExternal(url)) {
+            toast.error("Invalid link. Please check URL configuration.");
+        }
     };
 
     return (
@@ -40,7 +47,7 @@ export function ShareModal({ isOpen, onClose, testLink, liveLink, isLive }: Shar
                             <button onClick={() => copyToClipboard(testLink)} className="p-2 bg-background border border-border hover:bg-muted rounded-lg">
                                 <IconCopy size={18} />
                             </button>
-                            <button onClick={() => window.open(testLink, '_blank')} className="p-2 bg-background border border-border hover:bg-muted rounded-lg">
+                            <button onClick={() => openLink(testLink)} className="p-2 bg-background border border-border hover:bg-muted rounded-lg">
                                 <IconExternalLink size={18} />
                             </button>
                         </div>
@@ -55,7 +62,7 @@ export function ShareModal({ isOpen, onClose, testLink, liveLink, isLive }: Shar
                                 <button onClick={() => copyToClipboard(liveLink)} className="p-2 bg-background border border-border hover:bg-muted rounded-lg">
                                     <IconCopy size={18} />
                                 </button>
-                                <button onClick={() => window.open(liveLink, '_blank')} className="p-2 bg-background border border-border hover:bg-muted rounded-lg">
+                                <button onClick={() => openLink(liveLink)} className="p-2 bg-background border border-border hover:bg-muted rounded-lg">
                                     <IconExternalLink size={18} />
                                 </button>
                             </div>

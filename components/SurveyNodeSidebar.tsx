@@ -25,7 +25,11 @@ const nodeCategories = Object.keys(CATEGORY_CONFIG).map((catKey) => {
     };
 }).filter(cat => cat.items.length > 0);
 
-export default function SurveyNodeSidebar() {
+interface SurveyNodeSidebarProps {
+    confirmNavigation?: () => boolean;
+}
+
+export default function SurveyNodeSidebar({ confirmNavigation = () => true }: SurveyNodeSidebarProps) {
     const router = useRouter();
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -71,7 +75,11 @@ export default function SurveyNodeSidebar() {
                 {/* Left Group: Back + Logo */}
                 <div className={cn("flex items-center gap-3", isCollapsed && "flex-col")}>
                     <button
-                        onClick={() => router.push('/dashboard')}
+                        onClick={() => {
+                            if (confirmNavigation()) {
+                                router.push('/dashboard');
+                            }
+                        }}
                         className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                         title="Back to Dashboard"
                     >

@@ -1,18 +1,42 @@
 import apiClient from "@/lib/api-client";
 import { Survey, Surveys } from "@/src/shared/types/survey";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { z } from "zod";
+import { reportError } from "@/lib/error-reporter";
+
+type RequestOptions = {
+  signal?: AbortSignal;
+};
 
 export const surveyApi = {
   // Done
-  getSurveys: async (): Promise<Surveys[]> => {
-    const response = await apiClient.get<{ data: Surveys[] }>("/surveys");
-    return response.data.data;
+  getSurveys: async (options?: RequestOptions): Promise<Surveys[]> => {
+    const response = await apiClient.get<{ data: Surveys[] }>("/surveys", options);
+    const parsed = z.object({ data: z.array(z.unknown()) }).safeParse(response.data);
+    if (!parsed.success) {
+      reportError({
+        kind: "api",
+        message: "Invalid surveys response shape",
+        details: { endpoint: "/surveys" },
+      });
+      return [];
+    }
+    return parsed.data.data as Surveys[];
   },
 
   // Done
-  getSurvey: async (id: string): Promise<Survey> => {
-    const response = await apiClient.get<{ data: Survey }>(`/surveys/${id}`);
-    return response.data.data;
+  getSurvey: async (id: string, options?: RequestOptions): Promise<Survey> => {
+    const response = await apiClient.get<{ data: Survey }>(`/surveys/${id}`, options);
+    const parsed = z.object({ data: z.record(z.unknown()) }).safeParse(response.data);
+    if (!parsed.success) {
+      reportError({
+        kind: "api",
+        message: "Invalid survey response shape",
+        details: { endpoint: `/surveys/${id}`, surveyId: id },
+      });
+      throw new Error("Invalid survey payload");
+    }
+    return parsed.data.data as unknown as Survey;
   },
 
   // Done

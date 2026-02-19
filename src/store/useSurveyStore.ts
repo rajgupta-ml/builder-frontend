@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Survey, SurveyQuota } from '@/src/shared/types/survey';
 import { hydrateNodeIds } from '@/lib/hydrateNodeIds';
 import { toUserMessage } from '@/lib/api-error';
+import { reportApiError } from '@/lib/error-reporter';
 
 interface SurveyState {
     // ReactFlow state
@@ -39,6 +40,7 @@ interface SurveyState {
     // Computed
     hasChanges: boolean;
     loadRequestId: number;
+    loadError: string | null;
     autosaveInFlight: boolean;
     autosavePending: boolean;
     autosavePendingRuntimeJson: any | null;
@@ -81,6 +83,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     selectedVersionId: null,
     hasChanges: false,
     loadRequestId: 0,
+    loadError: null,
     autosaveInFlight: false,
     autosavePending: false,
     autosavePendingRuntimeJson: null,
@@ -121,7 +124,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
 
     loadSurveyData: async (surveyId) => {
         const requestId = get().loadRequestId + 1;
-        set({ loadRequestId: requestId });
+        set({ loadRequestId: requestId, loadError: null });
         try {
             const [survey, versions, quotas, workflow] = await Promise.all([
                 surveyApi.getSurvey(surveyId),
@@ -151,19 +154,23 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 nodes: hydratedNodes,
                 edges: workflow?.designJson?.edges || [],
                 hasChanges: hasDbChanges,
+                loadError: null,
                 saveStatus: 'saved' // Prevent autosave from triggering on initial load
             });
         } catch (err) {
             console.error("Failed to load survey data", err);
             if (get().loadRequestId === requestId) {
-                toast.error(toUserMessage(err, "Failed to load survey data"));
+                const message = toUserMessage(err, "Failed to load survey data");
+                set({ loadError: message });
+                toast.error(message);
             }
+            reportApiError(err, { location: "useSurveyStore.loadSurveyData", surveyId });
         }
     },
 
     refreshSurveyData: async (surveyId) => {
         const requestId = get().loadRequestId + 1;
-        set({ loadRequestId: requestId });
+        set({ loadRequestId: requestId, loadError: null });
         try {
             const [survey, versions] = await Promise.all([
                 surveyApi.getSurvey(surveyId),
@@ -178,6 +185,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             set({ 
                 survey, 
                 versions,
+                loadError: null,
                 hasChanges: hasDbChanges
             });
         } catch (err) {
@@ -185,6 +193,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             if (get().loadRequestId === requestId) {
                 toast.error(toUserMessage(err, "Failed to refresh survey data"));
             }
+            reportApiError(err, { location: "useSurveyStore.refreshSurveyData", surveyId });
         }
     },
 
@@ -234,6 +243,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             if (get().autosaveRequestSeq === requestSeq) {
                 set({ saveStatus: 'error' });
             }
+            reportApiError(err, { location: "useSurveyStore.autosave", surveyId });
         } finally {
             const hasPending = get().autosavePending;
             const pendingRuntimeJson = get().autosavePendingRuntimeJson;
@@ -272,6 +282,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
         } catch (error) {
             console.error("Publish failed", error);
             toast.error(toUserMessage(error, "Failed to publish survey"));
+            reportApiError(error, { location: "useSurveyStore.publish", surveyId, mode });
         } finally {
             if (mode === 'LIVE') set({ isPublishing: false });
             else set({ isSyncingTest: false });
@@ -286,6 +297,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             toast.success("Survey Paused");
         } catch (error) {
             toast.error(toUserMessage(error, "Failed to pause"));
+            reportApiError(error, { location: "useSurveyStore.pause", surveyId });
         }
     },
 
@@ -297,6 +309,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             toast.success("Survey Closed");
         } catch (error) {
             toast.error(toUserMessage(error, "Failed to close"));
+            reportApiError(error, { location: "useSurveyStore.close", surveyId });
         }
     },
 
@@ -308,6 +321,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             toast.success("Survey Resumed");
         } catch (error) {
             toast.error(toUserMessage(error, "Failed to resume"));
+            reportApiError(error, { location: "useSurveyStore.resume", surveyId });
         }
     },
 
@@ -328,6 +342,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             } catch (err) {
                 console.error("Failed to load version", err);
                 toast.error("Failed to load version history");
+                reportApiError(err, { location: "useSurveyStore.selectVersion.version", surveyId, versionId });
             }
         } else {
             set({ isReadOnly: false });
@@ -348,6 +363,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             } catch (error) {
                 console.error("Failed to load latest version", error);
                 toast.error(toUserMessage(error, "Failed to load latest version"));
+                reportApiError(error, { location: "useSurveyStore.selectVersion.latest", surveyId });
             }
         }
     }

@@ -1,0 +1,71 @@
+import { parseApiError } from "@/lib/api-error";
+
+export type FrontendErrorKind =
+  | "runtime"
+  | "unhandled_rejection"
+  | "api"
+  | "auth"
+  | "store";
+
+export interface FrontendErrorEvent {
+  kind: FrontendErrorKind;
+  message: string;
+  stack?: string;
+  route?: string;
+  status?: number;
+  code?: string;
+  requestId?: string;
+  details?: Record<string, unknown>;
+}
+
+const AXIOM_DATASET = process.env.NEXT_PUBLIC_AXIOM_DATASET;
+const AXIOM_TOKEN = process.env.NEXT_PUBLIC_AXIOM_TOKEN;
+const APP_ENV = process.env.NEXT_PUBLIC_APP_ENV || process.env.NODE_ENV || "development";
+
+const AXIOM_INGEST_URL = AXIOM_DATASET
+  ? `https://api.axiom.co/v1/datasets/${AXIOM_DATASET}/ingest`
+  : null;
+
+const getRoute = () => {
+  if (typeof window === "undefined") return undefined;
+  return window.location.pathname;
+};
+
+export const reportError = (event: FrontendErrorEvent) => {
+  if (!AXIOM_INGEST_URL || !AXIOM_TOKEN) return;
+
+  const payload = {
+    ts: new Date().toISOString(),
+    env: APP_ENV,
+    ...event,
+    route: event.route || getRoute(),
+  };
+
+  void fetch(AXIOM_INGEST_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${AXIOM_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify([payload]),
+    keepalive: true,
+  }).catch(() => {
+    // Never throw from telemetry.
+  });
+};
+
+export const reportApiError = (
+  error: unknown,
+  details?: Record<string, unknown>
+) => {
+  const parsed = parseApiError(error);
+  reportError({
+    kind: "api",
+    message: parsed.detail || "API request failed",
+    status: parsed.status,
+    code: parsed.code,
+    requestId: parsed.requestId,
+    details,
+  });
+};
+

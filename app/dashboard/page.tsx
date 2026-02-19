@@ -8,26 +8,38 @@ import { IconPlus, IconClipboardList, IconEdit, IconTrash } from "@tabler/icons-
 import { motion, AnimatePresence } from "motion/react";
 import { Surveys } from "@/src/shared/types/survey";
 import NewSurveyModal from "@/components/SurveyModal";
+import { toUserMessage } from "@/lib/api-error";
 
 export default function Dashboard() {
     const router = useRouter();
     const [surveys, setSurveys] = useState<Surveys[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
-        fetchSurveys();
+        const controller = new AbortController();
+        fetchSurveys(controller.signal);
+        return () => controller.abort();
     }, []);
 
-    const fetchSurveys = async () => {
+    const fetchSurveys = async (signal?: AbortSignal) => {
+        if (!signal?.aborted) {
+            setFetchError(null);
+        }
         try {
-            const data = await surveyApi.getSurveys();
+            const data = await surveyApi.getSurveys({ signal });
             setSurveys(data);
         } catch (error) {
+            if (signal?.aborted) return;
             console.error("Failed to fetch surveys:", error);
-            toast.error("Failed to load surveys");
+            const message = toUserMessage(error, "Failed to load surveys");
+            setFetchError(message);
+            toast.error(message);
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     };
 
@@ -69,6 +81,25 @@ export default function Dashboard() {
                             {[1, 2, 3].map((i) => (
                                 <div key={i} className="h-48 bg-muted rounded-2xl animate-pulse border border-border" />
                             ))}
+                        </motion.div>
+                    ) : fetchError ? (
+                        <motion.div
+                            key="error"
+                            initial={{ opacity: 0, scale: 0.98 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="text-center py-20 bg-card border border-border rounded-2xl"
+                        >
+                            <h3 className="text-xl font-bold text-foreground mb-2">Could not load surveys</h3>
+                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">{fetchError}</p>
+                            <button
+                                onClick={() => {
+                                    setLoading(true);
+                                    fetchSurveys();
+                                }}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:opacity-90 transition-all"
+                            >
+                                Retry
+                            </button>
                         </motion.div>
                     ) : surveys.length > 0 ? (
                         <motion.div

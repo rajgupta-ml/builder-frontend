@@ -12,26 +12,41 @@ import {
 import { surveyResponseApi } from '@/api/surveyResponse';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeDate, safeIdShort, safeOpenExternal, safeText } from '@/lib/safe-format';
+import { toUserMessage } from '@/lib/api-error';
+import { toast } from 'sonner';
 
 export default function RespondentsPage() {
     const [responses, setResponses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [search, setSearch] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 15;
 
     useEffect(() => {
-        fetchData();
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        return () => controller.abort();
     }, []);
 
-    const fetchData = async () => {
+    const fetchData = async (signal?: AbortSignal) => {
+        if (!signal?.aborted) {
+            setFetchError(null);
+        }
         try {
-            const data = await surveyResponseApi.getAllUserResponses();
+            const data = await surveyResponseApi.getAllUserResponses({ signal });
             setResponses(data);
         } catch (error) {
+            if (signal?.aborted) return;
             console.error("Failed to fetch respondents", error);
+            const message = toUserMessage(error, "Failed to load respondents");
+            setFetchError(message);
+            toast.error(message);
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     };
 
@@ -78,6 +93,21 @@ export default function RespondentsPage() {
 
             {/* Respondents Table */}
             <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden min-h-[400px]">
+                {!loading && fetchError ? (
+                    <div className="p-12 text-center">
+                        <h3 className="text-lg font-bold mb-2">Could not load respondents</h3>
+                        <p className="text-sm text-muted-foreground mb-5">{fetchError}</p>
+                        <button
+                            onClick={() => {
+                                setLoading(true);
+                                fetchData();
+                            }}
+                            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                ) : (
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
@@ -103,16 +133,16 @@ export default function RespondentsPage() {
                                     </td>
                                 </tr>
                             ) : (
-                                paginated.map((resp) => (
-                                    <tr key={resp.id} className="hover:bg-muted/20 transition-colors group">
+                                paginated.map((resp, idx) => (
+                                    <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-muted/20 transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold ring-2 ring-primary/5">
-                                                    {(resp.respondentId || "A")[0].toUpperCase()}
+                                                    {safeText(resp.respondentId, "A").charAt(0).toUpperCase()}
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <span className="font-semibold text-sm">{resp.respondentId || "Anonymous"}</span>
-                                                    <span className="text-[10px] text-muted-foreground font-mono">Response ID: {resp.id.split('-')[0]}...</span>
+                                                    <span className="text-[10px] text-muted-foreground font-mono">Response ID: {safeIdShort(resp.id)}...</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -125,11 +155,11 @@ export default function RespondentsPage() {
                                             <StatusBadge status={resp.status} />
                                         </td>
                                         <td className="px-6 py-4 text-sm text-muted-foreground">
-                                            {new Date(resp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            {safeDate(resp.createdAt, { month: 'short', day: 'numeric', year: 'numeric' })}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <button
-                                                onClick={() => window.open(`/dashboard/surveys/${resp.surveyId}/metrics`, '_blank')}
+                                                onClick={() => safeOpenExternal(`/dashboard/surveys/${resp.surveyId}/metrics`)}
                                                 className="p-2 text-muted-foreground hover:text-primary transition-colors"
                                                 title="View in Context"
                                             >
@@ -142,9 +172,10 @@ export default function RespondentsPage() {
                         </tbody>
                     </table>
                 </div>
+                )}
 
                 {/* Pagination */}
-                {!loading && totalPages > 1 && (
+                {!loading && !fetchError && totalPages > 1 && (
                     <div className="px-6 py-4 border-t border-border flex items-center justify-between bg-muted/10">
                         <span className="text-xs text-muted-foreground font-medium">
                             Showing <span className="text-foreground">{((currentPage - 1) * itemsPerPage) + 1}</span>-
@@ -206,7 +237,7 @@ function StatusBadge({ status }: { status: string }) {
             "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shadow-sm",
             variants[status] || "bg-gray-100 text-gray-600 border-gray-200"
         )}>
-            {status.replace('_', ' ')}
+            {String(status || "UNKNOWN").replace(/_/g, ' ')}
         </span>
     );
 }

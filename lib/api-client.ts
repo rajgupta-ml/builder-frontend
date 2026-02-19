@@ -1,4 +1,5 @@
 import axios from "axios";
+import { reportApiError } from "@/lib/error-reporter";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
@@ -12,6 +13,15 @@ const apiClient = axios.create({
 });
 
 let refreshPromise: Promise<string | null> | null = null;
+const MAX_GET_RETRIES = 2;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getRetryDelay = (attempt: number) => {
+  const base = 250 * Math.pow(2, attempt - 1);
+  const jitter = Math.floor(Math.random() * 120);
+  return base + jitter;
+};
 
 const clearAuthStateAndRedirect = () => {
   if (typeof window === "undefined") return;
@@ -66,10 +76,38 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config as (typeof error.config & { _retry?: boolean });
+    const originalRequest = error.config as
+      | (typeof error.config & { _retry?: boolean; _retryCount?: number })
+      | undefined;
+
+    if (!originalRequest) {
+      reportApiError(error, { phase: "response", reason: "missing_config" });
+      return Promise.reject(error);
+    }
+
+    const method = (originalRequest.method || "get").toLowerCase();
+    const status = error.response?.status as number | undefined;
+    const isNetworkError = !error.response;
+    const isTimeout = error.code === "ECONNABORTED";
+    const isRetryableStatus = status === 502 || status === 503 || status === 504;
+    const isAborted = Boolean(originalRequest.signal?.aborted);
+    const retryCount = originalRequest._retryCount ?? 0;
     const isRefreshCall = originalRequest?.url?.includes("/auth/refresh");
 
-    if (error.response?.status === 401 && originalRequest && !isRefreshCall && !originalRequest._retry) {
+    if (
+      method === "get" &&
+      !isRefreshCall &&
+      !isAborted &&
+      retryCount < MAX_GET_RETRIES &&
+      (isNetworkError || isTimeout || isRetryableStatus)
+    ) {
+      const nextAttempt = retryCount + 1;
+      originalRequest._retryCount = nextAttempt;
+      await sleep(getRetryDelay(nextAttempt));
+      return apiClient(originalRequest);
+    }
+
+    if (status === 401 && !isRefreshCall && !originalRequest._retry) {
       originalRequest._retry = true;
 
       const token = await refreshAccessToken();
@@ -79,6 +117,15 @@ apiClient.interceptors.response.use(
       }
 
       clearAuthStateAndRedirect();
+    }
+
+    if (!isAborted) {
+      reportApiError(error, {
+        phase: "response",
+        method,
+        url: originalRequest.url,
+        retryCount,
+      });
     }
 
     return Promise.reject(error);

@@ -22,23 +22,31 @@ export function MediaPreview({ storageKey, type, className, alt = 'Media preview
             return;
         }
 
+        const controller = new AbortController();
+
         const fetchSignedUrl = async () => {
             setLoading(true);
             setError(null);
             try {
                 const res = await apiClient.get('/storage/view-url', {
-                    params: { key: storageKey }
+                    params: { key: storageKey },
+                    signal: controller.signal,
                 });
+                if (controller.signal.aborted) return;
                 setUrl(res.data.signedUrl);
             } catch (err) {
+                if (controller.signal.aborted) return;
                 console.error("Failed to fetch signed URL:", err);
                 setError("Failed to load media");
             } finally {
-                setLoading(false);
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
             }
         };
 
         fetchSignedUrl();
+        return () => controller.abort();
     }, [storageKey]);
 
     if (loading) {

@@ -5,6 +5,7 @@ import { Survey } from "@/src/shared/types/survey";
 import { toast } from "sonner";
 import { IconDeviceFloppy, IconExternalLink, IconAlertTriangle, IconX } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { safeOpenExternal } from "@/lib/safe-format";
 
 interface SurveySettingsModalProps {
     isOpen: boolean;
@@ -27,15 +28,17 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
     });
 
     useEffect(() => {
+        const controller = new AbortController();
         if (isOpen && surveyId) {
-            fetchSurvey();
+            fetchSurvey(controller.signal);
         }
+        return () => controller.abort();
     }, [isOpen, surveyId]);
 
-    const fetchSurvey = async () => {
+    const fetchSurvey = async (signal?: AbortSignal) => {
         setLoading(true);
         try {
-            const data = await surveyApi.getSurvey(surveyId);
+            const data = await surveyApi.getSurvey(surveyId, { signal });
             setSurvey(data);
             setFormData({
                 redirectUrl: data.redirectUrl || "",
@@ -44,9 +47,12 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                 globalQuota: data.globalQuota !== null ? String(data.globalQuota) : ""
             });
         } catch (error) {
+            if (signal?.aborted) return;
             toast.error("Failed to load settings");
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     };
 
@@ -154,7 +160,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     value={formData.overQuotaUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, overQuotaUrl: e.target.value }))}
                                                 />
-                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => formData.overQuotaUrl && window.open(formData.overQuotaUrl, '_blank')}>
+                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.overQuotaUrl)}>
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
@@ -178,7 +184,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     value={formData.redirectUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, redirectUrl: e.target.value }))}
                                                 />
-                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => formData.redirectUrl && window.open(formData.redirectUrl, '_blank')}>
+                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.redirectUrl)}>
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
@@ -194,7 +200,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     value={formData.securityTerminateUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, securityTerminateUrl: e.target.value }))}
                                                 />
-                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => formData.securityTerminateUrl && window.open(formData.securityTerminateUrl, '_blank')}>
+                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.securityTerminateUrl)}>
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
@@ -227,3 +233,9 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
         </AnimatePresence>
     );
 }
+    const openPreview = (url: string) => {
+        if (!url) return;
+        if (!safeOpenExternal(url)) {
+            toast.error("Invalid URL. Please check and try again.");
+        }
+    };

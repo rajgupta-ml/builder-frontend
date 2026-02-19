@@ -24,9 +24,16 @@ interface EditorHeaderProps {
     setIsQuotaOpen: (open: boolean) => void;
     setIsSettingsOpen: (open: boolean) => void;
     setIsShareOpen: (open: boolean) => void;
+    confirmNavigation?: () => boolean;
 }
 
-export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setIsShareOpen }: EditorHeaderProps) {
+export function EditorHeader({
+    surveyId,
+    setIsQuotaOpen,
+    setIsSettingsOpen,
+    setIsShareOpen,
+    confirmNavigation = () => true
+}: EditorHeaderProps) {
     const router = useRouter();
     const versionDropdownRef = useRef<HTMLDivElement>(null);
     const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
@@ -146,7 +153,11 @@ export function EditorHeader({ surveyId, setIsQuotaOpen, setIsSettingsOpen, setI
             {/* Actions Group */}
             <div className="flex items-center gap-1 bg-background/90 backdrop-blur-md border border-border/60 p-1 rounded-lg shadow-sm">
                 <button
-                    onClick={() => router.push(`/dashboard/surveys/${surveyId}/metrics`)}
+                    onClick={() => {
+                        if (confirmNavigation()) {
+                            router.push(`/dashboard/surveys/${surveyId}/metrics`);
+                        }
+                    }}
                     className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all"
                     title="Metrics"
                 >

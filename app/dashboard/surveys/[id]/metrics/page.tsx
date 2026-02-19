@@ -1,10 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { surveyApi } from "@/api/survey";
 import { Survey } from "@/src/shared/types/survey";
 import { surveyResponseApi } from "@/api/surveyResponse";
-import { surveyWorkflowApi } from "@/api/surveyWorkflow";
 import { toast } from "sonner";
 import {
     IconClick,
@@ -36,6 +35,8 @@ import { cn } from "@/lib/utils";
 import { SurveySettingsModal } from "@/components/modals/SurveySettingsModal";
 import { SurveyQuotaModal } from "@/components/modals/SurveyQuotaModal";
 import { ReconcileResponseModal } from "@/components/modals/ReconcileResponseModal";
+import { safeDateTime, safeIdShort } from "@/lib/safe-format";
+import { toUserMessage } from "@/lib/api-error";
 
 interface MetricData {
     mode: string;
@@ -50,6 +51,14 @@ interface MetricData {
     avgTime: number;
 }
 
+type ResponsesPayload =
+    | any[]
+    | {
+        data?: any[];
+        meta?: {
+            orderedHeaders?: string[];
+        };
+    };
 
 export default function SurveyMetricsPage() {
     const { id } = useParams() as { id: string };
@@ -59,6 +68,7 @@ export default function SurveyMetricsPage() {
     const [responses, setResponses] = useState<any[]>([]);
     const [orderedHeaders, setOrderedHeaders] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [responsesLoading, setResponsesLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'LIVE' | 'TEST'>('LIVE');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -71,15 +81,20 @@ export default function SurveyMetricsPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [filters, setFilters] = useState<Record<string, string>>({});
     const itemsPerPage = 10;
+    const fetchRunRef = useRef(0);
 
-    const fetchData = async () => {
+    const fetchData = async (signal?: AbortSignal) => {
+        const runId = fetchRunRef.current + 1;
+        fetchRunRef.current = runId;
         setLoading(true);
+        setFetchError(null);
         try {
 
             const [surveyData, metricsData] = await Promise.all([
-                surveyApi.getSurvey(id),
-                surveyResponseApi.getMetrics(id)
+                surveyApi.getSurvey(id, { signal }),
+                surveyResponseApi.getMetrics(id, { signal })
             ])
+            if (signal?.aborted || fetchRunRef.current !== runId) return;
 
             if (!surveyData) {
                 toast.error("No survey found for this id");
@@ -93,13 +108,16 @@ export default function SurveyMetricsPage() {
 
             setLoading(false);
             setResponsesLoading(true);
-            const fetchPromises: Promise<any>[] = [
-                surveyResponseApi.getResponses(id)
-            ];
-            const results = await Promise.all(fetchPromises);
-            const responsesData = results[0];
+            const results = await Promise.all([
+                surveyResponseApi.getResponses(id, { signal })
+            ]);
+            if (signal?.aborted || fetchRunRef.current !== runId) return;
+            const responsesData = results[0] as ResponsesPayload;
 
             const rData = Array.isArray(responsesData) ? responsesData : responsesData.data || [];
+            const orderedHeadersFromResponse = Array.isArray(responsesData)
+                ? []
+                : responsesData.meta?.orderedHeaders || [];
             // Inject duration calculation for frontend display
             const enrichedResponses = rData.map((r: any) => {
                 const durationSeconds = r.updatedAt && r.createdAt
@@ -109,22 +127,27 @@ export default function SurveyMetricsPage() {
                 return { ...r, duration: durationStr };
             });
 
-
-            console.log(metricsData)
-
             setResponses(enrichedResponses);
-            setOrderedHeaders(responsesData.meta?.orderedHeaders || []);
+            setOrderedHeaders(orderedHeadersFromResponse);
         } catch (error) {
+            if (signal?.aborted || fetchRunRef.current !== runId) return;
             console.error("Failed to fetch dashboard data:", error);
-            toast.error("Failed to load metrics");
-            setLoading(false);
+            const message = toUserMessage(error, "Failed to load metrics");
+            setFetchError(message);
+            toast.error(message);
         } finally {
-            setResponsesLoading(false);
+            if (!signal?.aborted && fetchRunRef.current === runId) {
+                setLoading(false);
+                setResponsesLoading(false);
+            }
         }
     };
 
     useEffect(() => {
-        if (id) fetchData();
+        if (!id) return;
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        return () => controller.abort();
     }, [id]);
 
     const activeMetrics = metrics.find(m => m.mode === viewMode) || {
@@ -179,10 +202,6 @@ export default function SurveyMetricsPage() {
         { name: 'Test', value: getModeTotal('TEST') }
     ];
 
-    const completionRate = safeTotalTraffic > 0
-        ? ((totalMetrics.completes / safeTotalTraffic) * 100).toFixed(1)
-        : "0";
-
     const chartData = [
         { name: 'Completed', value: totalMetrics.completes, color: '#10b981' },
         { name: 'Disqualified', value: totalMetrics.disqualified, color: '#f59e0b' },
@@ -205,6 +224,7 @@ export default function SurveyMetricsPage() {
     const filteredResponses = responses.filter(r => {
         // Mode filter is primary
         if (r.mode !== viewMode) return false;
+        if (filters['mode'] && r.mode !== filters['mode']) return false;
 
         // Check filtering for static columns
         if (filters['respondentId'] && !(r.respondentId || "Anonymous").toLowerCase().includes(filters['respondentId'].toLowerCase())) return false;
@@ -240,6 +260,31 @@ export default function SurveyMetricsPage() {
         </div>
     );
 
+    if (!survey && fetchError) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background p-6">
+                <div className="max-w-md w-full bg-card border border-border rounded-xl p-6 space-y-4">
+                    <h2 className="text-lg font-semibold">Could not load metrics</h2>
+                    <p className="text-sm text-muted-foreground">{fetchError}</p>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => fetchData()}
+                            className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+                        >
+                            Retry
+                        </button>
+                        <button
+                            onClick={() => router.push('/dashboard')}
+                            className="px-4 py-2 rounded-md border border-border text-sm font-medium"
+                        >
+                            Back to Dashboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="p-8 md:p-12 w-full max-w-7xl mx-auto space-y-8">
             {/* Top Navigation / Actions */}
@@ -256,7 +301,7 @@ export default function SurveyMetricsPage() {
                         Reconcile
                     </button>
                     <button
-                        onClick={fetchData}
+                        onClick={() => fetchData()}
                         className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
                         title="Refresh Data"
                     >
@@ -553,12 +598,12 @@ export default function SurveyMetricsPage() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    paginatedResponses.map((resp) => (
-                                        <tr key={resp.id} className="hover:bg-muted/30 transition-colors group">
+                                    paginatedResponses.map((resp, idx) => (
+                                        <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-muted/30 transition-colors group">
                                             <td className="px-6 py-4 border-b border-border">
                                                 <div className="flex flex-col">
                                                     <span className="font-semibold text-sm">{resp.respondentId || "Anonymous"}</span>
-                                                    <span className="text-[10px] text-muted-foreground font-mono">{resp.id.split('-')[0]}...</span>
+                                                    <span className="text-[10px] text-muted-foreground font-mono">{safeIdShort(resp.id)}...</span>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 border-b border-border">
@@ -598,7 +643,7 @@ export default function SurveyMetricsPage() {
                                                 {resp.duration}
                                             </td>
                                             <td className="px-6 py-4 text-xs text-muted-foreground border-b border-border whitespace-nowrap">
-                                                {new Date(resp.createdAt).toLocaleString()}
+                                                {safeDateTime(resp.createdAt)}
                                             </td>
                                         </tr>
                                     ))
@@ -714,7 +759,7 @@ function StatusBadge({ status }: { status: string }) {
             "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shadow-sm",
             variants[status] || "bg-gray-100 text-gray-600 border-gray-200"
         )}>
-            {status.replace('_', ' ')}
+            {String(status || "UNKNOWN").replace(/_/g, ' ')}
         </span>
     );
 }

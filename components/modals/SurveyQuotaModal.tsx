@@ -46,59 +46,53 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
     });
 
     useEffect(() => {
+        const controller = new AbortController();
         if (isOpen && surveyId) {
-            fetchData();
+            fetchData(controller.signal);
         }
+        return () => controller.abort();
     }, [isOpen, surveyId]);
 
-    const fetchData = async () => {
+    const fetchData = async (signal?: AbortSignal) => {
         setLoading(true);
         try {
             const { surveyApi } = await import('@/api/survey');
             const [quotasData, workflowData, surveyData] = await Promise.all([
-                quotaApi.getQuotas(surveyId),
-                surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId),
-                surveyApi.getSurvey(surveyId)
+                quotaApi.getQuotas(surveyId, { signal }),
+                surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId, { signal }),
+                surveyApi.getSurvey(surveyId, { signal })
             ]);
+            if (signal?.aborted) return;
             setQuotas(quotasData);
             setGlobalQuota(surveyData.globalQuota);
 
-            console.log('[QuotaModal] Workflow Data:', workflowData);
-            console.log('[QuotaModal] Runtime JSON type:', typeof workflowData?.runtimeJson);
-            console.log('[QuotaModal] Runtime JSON:', workflowData?.runtimeJson);
-
             if (workflowData?.runtimeJson) {
-                // Check if runtimeJson is already an object or needs parsing
-                let runtimeData = workflowData.runtimeJson;
-
-                // If it's still a string, it might not have been decompressed
-                if (typeof runtimeData === 'string') {
-                    console.error('[QuotaModal] ERROR: runtimeJson is still a string, decompression may have failed');
+                const runtimeData = workflowData.runtimeJson;
+                if (typeof runtimeData !== 'object' || runtimeData === null) {
                     toast.error("Failed to load survey questions. Please refresh and try again.");
+                    setFlowNodes([]);
                     return;
                 }
 
-                // Convert runtimeJson back to Node[] format for ConditionBuilder
                 const mappedNodes: Node[] = Object.values(runtimeData).map((n: any) => ({
                     id: n.id,
                     type: n.type,
                     data: n.data,
                     position: { x: 0, y: 0 }
                 }));
-
-                console.log('[QuotaModal] Mapped Nodes:', mappedNodes);
-                console.log('[QuotaModal] Total nodes found:', mappedNodes.length);
-
                 setFlowNodes(mappedNodes);
             } else {
-                console.warn('[QuotaModal] No runtimeJson found in workflow data');
                 toast.error("No survey questions found. Please create questions first.");
+                setFlowNodes([]);
             }
         } catch (error) {
+            if (signal?.aborted) return;
             console.error('[QuotaModal] Error loading quotas:', error);
             toast.error("Failed to load quotas");
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     };
 

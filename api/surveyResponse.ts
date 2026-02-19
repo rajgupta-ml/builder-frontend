@@ -1,22 +1,55 @@
 import apiClient from "@/lib/api-client"
-import { downloadCSV, downloadXLSX, downloadSPSS } from "../lib/export-utils";
 import { toUserMessage } from "@/lib/api-error";
 import { toast } from "sonner";
+import { z } from "zod";
+import { reportError } from "@/lib/error-reporter";
+
+type RequestOptions = {
+    signal?: AbortSignal;
+};
 
 export const surveyResponseApi = {
-    getMetrics: async (surveyId: string) => {
-        const response = await apiClient.get(`/responses/metrics/${surveyId}`);
-        return response.data.data;
+    getMetrics: async (surveyId: string, options?: RequestOptions): Promise<{ modes: any[] }> => {
+        const response = await apiClient.get(`/responses/metrics/${surveyId}`, options);
+        const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
+        if (!parsed.success) {
+            reportError({
+                kind: "api",
+                message: "Invalid metrics response shape",
+                details: { endpoint: `/responses/metrics/${surveyId}` },
+            });
+            return { modes: [] };
+        }
+        const payload = parsed.data.data as any;
+        return payload && Array.isArray(payload.modes) ? payload : { modes: [] };
     },
 
-    getResponses: async (surveyId: string) => {
-        const response = await apiClient.get(`/responses/responses/${surveyId}`);
-        return response.data.data;
+    getResponses: async (surveyId: string, options?: RequestOptions) => {
+        const response = await apiClient.get(`/responses/responses/${surveyId}`, options);
+        const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
+        if (!parsed.success) {
+            reportError({
+                kind: "api",
+                message: "Invalid responses payload shape",
+                details: { endpoint: `/responses/responses/${surveyId}` },
+            });
+            return [];
+        }
+        return parsed.data.data;
     },
 
-    getAllUserResponses: async () => {
-        const response = await apiClient.get('/responses/all');
-        return response.data.data;
+    getAllUserResponses: async (options?: RequestOptions) => {
+        const response = await apiClient.get('/responses/all', options);
+        const parsed = z.object({ data: z.array(z.unknown()) }).safeParse(response.data);
+        if (!parsed.success) {
+            reportError({
+                kind: "api",
+                message: "Invalid all responses payload shape",
+                details: { endpoint: "/responses/all" },
+            });
+            return [];
+        }
+        return parsed.data.data;
     },
 
     exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode: 'LIVE' | 'TEST' = 'LIVE') => {
@@ -25,31 +58,15 @@ export const surveyResponseApi = {
                 params: { format, mode },
                 responseType: 'blob'
             });
-            
-            // Generate filename based on format
+
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            let extension = format === 'spss' ? 'sps' : format;
+            const extension = format === 'spss' ? 'sps' : format;
             const filename = `survey-export-${surveyId}-${mode}-${timestamp}.${extension}`;
-            
-            // Use the saveFile utility (or create a new one inline if we want to avoid import issues)
-            // Reusing the existing saveFile logic via a helper if imported, 
-            // but since we are replacing the whole function blocks, let's just inline the download logic 
-            // or we need to export saveFile from export-utils if it's not exported.
-            // Wait, saveFile is not exported in export-utils.ts, only downloadCSV etc are.
-            // Let's create a local helper or rely on the fact that existing code imported downloadCSV/XLSX.
-            
-            /* 
-               Step 125 shows: import { downloadCSV, downloadXLSX, downloadSPSS } from "../lib/export-utils";
-               Step 126 shows: saveFile is NOT exported.
-               
-               So I will implement the download trigger here directly.
-            */
-            
+
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            
-            // Try to get filename from content-disposition
+
             const contentDisposition = response.headers['content-disposition'];
             let finalFilename = filename;
             if (contentDisposition) {
@@ -57,7 +74,7 @@ export const surveyResponseApi = {
                 if (filenameMatch && filenameMatch.length === 2)
                     finalFilename = filenameMatch[1];
             }
-            
+
             link.setAttribute('download', finalFilename);
             document.body.appendChild(link);
             link.click();

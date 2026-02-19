@@ -12,6 +12,7 @@ import { SurveyQuotaModal } from '@/components/modals/SurveyQuotaModal';
 
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { useAutosave } from '@/src/hooks/useAutosave';
+import { useUnsavedChangesGuard } from '@/src/hooks/useUnsavedChangesGuard';
 import { EditorHeader } from '@/components/editor/EditorHeader';
 import { EditorCanvas } from '@/components/editor/EditorCanvas';
 import { ShareModal } from '@/components/editor/ShareModal';
@@ -25,6 +26,7 @@ function SurveyFlow() {
         survey,
         selectedNodeId,
         isReadOnly,
+        loadError,
         setNodes,
         setSelectedNodeId,
         loadSurveyData,
@@ -45,6 +47,24 @@ function SurveyFlow() {
 
     // Autosave Hook
     useAutosave(surveyId || "");
+    const { confirmNavigation } = useUnsavedChangesGuard();
+
+    if (!survey && loadError) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-background px-6">
+                <div className="max-w-md w-full rounded-xl border border-border bg-card p-6 space-y-4">
+                    <h2 className="text-lg font-semibold">Failed to load builder</h2>
+                    <p className="text-sm text-muted-foreground">{loadError}</p>
+                    <button
+                        onClick={() => surveyId && loadSurveyData(surveyId)}
+                        className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     if (!survey) {
         return (
@@ -65,7 +85,7 @@ function SurveyFlow() {
 
     return (
         <div className="flex w-full h-screen bg-background overflow-hidden relative">
-            <SurveyNodeSidebar />
+            <SurveyNodeSidebar confirmNavigation={confirmNavigation} />
 
             <div className="flex-1 h-full relative" >
                 <EditorCanvas />
@@ -77,6 +97,7 @@ function SurveyFlow() {
                     setIsQuotaOpen={setIsQuotaOpen}
                     setIsSettingsOpen={setIsSettingsOpen}
                     setIsShareOpen={setIsShareOpen}
+                    confirmNavigation={confirmNavigation}
                 />
             </div>
 
