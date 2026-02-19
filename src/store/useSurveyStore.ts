@@ -45,6 +45,7 @@ interface SurveyState {
     autosavePending: boolean;
     autosavePendingRuntimeJson: any | null;
     autosaveRequestSeq: number;
+    lastSavedAt: string | null;
 
     // Actions
     setNodes: (nodes: ReactFlowNode[]) => void;
@@ -88,6 +89,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     autosavePending: false,
     autosavePendingRuntimeJson: null,
     autosaveRequestSeq: 0,
+    lastSavedAt: null,
 
     setNodes: (nodes) => set({ nodes, saveStatus: 'unsaved' }),
     setEdges: (edges) => set({ edges, saveStatus: 'unsaved' }),
@@ -111,10 +113,49 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     },
 
     onConnect: (connection) => {
-        const { edges, isReadOnly } = get();
+        const { edges, nodes, isReadOnly } = get();
         if (isReadOnly) return;
-        set({ 
-            edges: addEdge({ ...connection, type: 'custom' }, edges),
+        if (!connection.source || !connection.target) return;
+        if (connection.source === connection.target) return;
+
+        const sourceNode = nodes.find((node) => node.id === connection.source);
+        if (!sourceNode) return;
+
+        const isBranchSource = sourceNode.type === 'branch';
+
+        const hasDuplicate = edges.some((edge) =>
+            edge.source === connection.source &&
+            edge.target === connection.target &&
+            (edge.sourceHandle ?? null) === (connection.sourceHandle ?? null) &&
+            (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
+        );
+        if (hasDuplicate) return;
+
+        const constrainedEdges = edges.filter((edge) => {
+            // Only one incoming edge per node.
+            if (edge.target === connection.target) {
+                return false;
+            }
+
+            // Non-branch nodes can only have one outgoing edge.
+            if (edge.source === connection.source && !isBranchSource) {
+                return false;
+            }
+
+            // Branch nodes can have multiple outgoing edges, but one per handle (true/false).
+            if (edge.source === connection.source && isBranchSource) {
+                const existingSourceHandle = edge.sourceHandle ?? null;
+                const incomingSourceHandle = connection.sourceHandle ?? null;
+                if (existingSourceHandle === incomingSourceHandle) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        set({
+            edges: addEdge({ ...connection, type: 'default' }, constrainedEdges),
             saveStatus: 'unsaved'
         });
     },
@@ -155,6 +196,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 edges: workflow?.designJson?.edges || [],
                 hasChanges: hasDbChanges,
                 loadError: null,
+                lastSavedAt: null,
                 saveStatus: 'saved' // Prevent autosave from triggering on initial load
             });
         } catch (err) {
@@ -236,6 +278,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 workflowId: data.id, 
                 saveStatus: 'saved',
                 versions,
+                lastSavedAt: new Date().toISOString(),
                 hasChanges: hasDbChanges
             });
         } catch (err) {

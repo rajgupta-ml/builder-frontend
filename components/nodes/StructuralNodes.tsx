@@ -26,7 +26,8 @@ export const StartNode = memo((props: NodeProps<any>) => {
             <Handle
                 type="source"
                 position={Position.Bottom}
-                className="w-3 h-3 bg-green-600 border-2 border-white"
+                className="bg-green-600 border-2 border-white"
+                style={{ width: 10, height: 10 }}
             />
         </div>
     );
@@ -50,7 +51,8 @@ export const EndNode = memo((props: NodeProps<any>) => {
             <Handle
                 type="target"
                 position={Position.Top}
-                className="w-3 h-3 bg-red-700 border-2 border-white"
+                className="bg-red-700 border-2 border-white"
+                style={{ width: 10, height: 10 }}
             />
 
             <IconForbid size={16} />

@@ -1,13 +1,30 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useReactFlow, type Node } from '@xyflow/react';
 import { IconSearch, IconFocus2, IconList } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { getNodeDefinition } from '@/components/nodes/definitions';
 
-export default function NodeViewer({ nodes, onSelect }: { nodes: Node[], onSelect: (id: string) => void }) {
+export default function NodeViewer({
+    nodes,
+    onSelect,
+    openSignal = 0
+}: {
+    nodes: Node[],
+    onSelect: (id: string) => void,
+    openSignal?: number
+}) {
     const { setCenter } = useReactFlow();
     const [search, setSearch] = useState('');
     const [isOpen, setIsOpen] = useState(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!openSignal) return;
+        setIsOpen(true);
+        setTimeout(() => {
+            searchInputRef.current?.focus();
+        }, 0);
+    }, [openSignal]);
 
     // Sort nodes by their Y position to assign question numbers logically
     const sortedNodes = [...nodes].sort((a, b) => a.position.y - b.position.y);
@@ -51,6 +68,7 @@ export default function NodeViewer({ nodes, onSelect }: { nodes: Node[], onSelec
                         <div className="relative">
                             <IconSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                             <input
+                                ref={searchInputRef}
                                 type="text"
                                 placeholder="Search nodes..."
                                 value={search}

@@ -27,11 +27,26 @@ const nodeCategories = Object.keys(CATEGORY_CONFIG).map((catKey) => {
 
 interface SurveyNodeSidebarProps {
     confirmNavigation?: () => boolean;
+    isCollapsed?: boolean;
+    onCollapsedChange?: (collapsed: boolean) => void;
 }
 
-export default function SurveyNodeSidebar({ confirmNavigation = () => true }: SurveyNodeSidebarProps) {
+export default function SurveyNodeSidebar({
+    confirmNavigation = () => true,
+    isCollapsed: controlledCollapsed,
+    onCollapsedChange
+}: SurveyNodeSidebarProps) {
     const router = useRouter();
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [internalCollapsed, setInternalCollapsed] = useState(false);
+    const isCollapsed = controlledCollapsed ?? internalCollapsed;
+
+    const setIsCollapsed = (collapsed: boolean) => {
+        if (onCollapsedChange) {
+            onCollapsedChange(collapsed);
+            return;
+        }
+        setInternalCollapsed(collapsed);
+    };
     const [searchTerm, setSearchTerm] = useState("");
     const [hoveredItem, setHoveredItem] = useState<{ label: string, description: string, x: number, y: number } | null>(null);
     const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({

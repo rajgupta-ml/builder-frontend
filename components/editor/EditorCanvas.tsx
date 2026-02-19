@@ -77,6 +77,7 @@ export function EditorCanvas() {
                 onConnect={onConnect}
                 onNodeClick={onNodeClick}
                 onPaneClick={onPaneClick}
+                connectionRadius={40}
                 defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
                 className="bg-muted/10 px-10"
                 nodesDraggable={!isReadOnly}

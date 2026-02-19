@@ -44,8 +44,14 @@ const BaseNode = ({ id, selected, data, children, icon: Icon, color = "bg-primar
                 <Handle
                     type="target"
                     position={handles.target}
-                    className="w-5 h-5 bg-muted-foreground border-2 border-background"
-                    style={{ top: -10, left: '50%', transform: 'translateX(-50%)' }}
+                    className="bg-muted-foreground border-2 border-background"
+                    style={{
+                        width: 10,
+                        height: 10,
+                        top: 0,
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                    }}
                 />
             )}
 
@@ -78,8 +84,14 @@ const BaseNode = ({ id, selected, data, children, icon: Icon, color = "bg-primar
                 <Handle
                     type="source"
                     position={handles.source}
-                    className="w-5 h-5 bg-primary border-2 border-background"
-                    style={{ bottom: -10, left: '50%', transform: 'translateX(-50%)' }}
+                    className="bg-primary border-2 border-background"
+                    style={{
+                        width: 10,
+                        height: 10,
+                        bottom: 0,
+                        left: '50%',
+                        transform: 'translate(-50%, 50%)',
+                    }}
                 />
             )}
         </div>

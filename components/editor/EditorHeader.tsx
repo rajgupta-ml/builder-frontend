@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { validateWorkflow } from '@/lib/validate-workflow';
 import { toast } from 'sonner';
+import { ShortcutsHelp } from '@/components/editor/ShortcutsHelp';
 
 interface EditorHeaderProps {
     surveyId: string;
@@ -25,6 +26,7 @@ interface EditorHeaderProps {
     setIsSettingsOpen: (open: boolean) => void;
     setIsShareOpen: (open: boolean) => void;
     confirmNavigation?: () => boolean;
+    onRunTest?: () => void;
 }
 
 export function EditorHeader({
@@ -32,7 +34,8 @@ export function EditorHeader({
     setIsQuotaOpen,
     setIsSettingsOpen,
     setIsShareOpen,
-    confirmNavigation = () => true
+    confirmNavigation = () => true,
+    onRunTest
 }: EditorHeaderProps) {
     const router = useRouter();
     const versionDropdownRef = useRef<HTMLDivElement>(null);
@@ -49,6 +52,7 @@ export function EditorHeader({
         isSyncingTest,
         hasChanges,
         selectedVersionId,
+        lastSavedAt,
         publish,
         pause,
         close,
@@ -100,6 +104,8 @@ export function EditorHeader({
             ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}`
             : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}?mode=test`;
         window.open(testLink, '_blank');
+        onRunTest?.();
+        toast.success("Opened test survey in a new tab.");
     };
 
     return (
@@ -110,6 +116,9 @@ export function EditorHeader({
                     <IconAlertCircle className="text-amber-500" size={14} />
                     <span className="text-amber-600 font-bold text-[10px] tracking-wider uppercase whitespace-nowrap">
                         Out of Sync
+                    </span>
+                    <span className="text-[10px] text-amber-700/80 hidden md:inline">
+                        Republish to sync live traffic
                     </span>
                 </div>
             ) : isLive ? (
@@ -138,7 +147,9 @@ export function EditorHeader({
                     {saveStatus === 'saved' && (
                         <>
                             <IconCheck className="text-emerald-500" size={14} />
-                            <span className="text-foreground">Saved</span>
+                            <span className="text-foreground">
+                                Saved{lastSavedAt ? ` • ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}
+                            </span>
                         </>
                     )}
                     {saveStatus === 'error' && (
@@ -159,7 +170,7 @@ export function EditorHeader({
                         }
                     }}
                     className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all"
-                    title="Metrics"
+                    title="Open survey metrics dashboard"
                 >
                     <IconChartBar size={18} />
                 </button>
@@ -167,7 +178,7 @@ export function EditorHeader({
                     onClick={() => setIsQuotaOpen(true)}
                     disabled={isReadOnly}
                     className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Traffic Control (Quotas)"
+                    title={isReadOnly ? "Unavailable in read-only version view" : "Manage traffic control and quotas"}
                 >
                     <IconFilter size={18} />
                 </button>
@@ -175,7 +186,7 @@ export function EditorHeader({
                     onClick={() => setIsSettingsOpen(true)}
                     disabled={isReadOnly}
                     className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Settings"
+                    title={isReadOnly ? "Unavailable in read-only version view" : "Configure survey settings"}
                 >
                     <IconSettings size={18} />
                 </button>
@@ -186,7 +197,7 @@ export function EditorHeader({
                     onClick={() => setIsShareOpen(true)}
                     disabled={isReadOnly}
                     className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Share Survey"
+                    title={isReadOnly ? "Unavailable in read-only version view" : "Open share links"}
                 >
                     <IconShare size={18} />
                 </button>
@@ -197,14 +208,16 @@ export function EditorHeader({
                     onClick={handleQuickTest}
                     disabled={isSyncingTest || isReadOnly}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={isReadOnly ? "Unavailable in read-only version view" : "Run test survey in a new tab"}
                 >
                     {isSyncingTest ? (
                         <IconLoader2 className="animate-spin text-blue-500" size={16} />
                     ) : (
                         <IconPlayerPlay size={16} className="text-blue-500" />
                     )}
-                    Test
+                    Run Test Survey
                 </button>
+                <ShortcutsHelp />
             </div>
 
             <div className="w-px h-6 bg-border mx-2" />
