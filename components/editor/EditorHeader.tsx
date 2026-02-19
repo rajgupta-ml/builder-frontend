@@ -12,13 +12,13 @@ import {
     IconSettings,
     IconHistory,
     IconPlayerPause,
-    IconBan
+    IconBan,
+    IconDotsVertical
 } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { validateWorkflow } from '@/lib/validate-workflow';
 import { toast } from 'sonner';
-import { ShortcutsHelp } from '@/components/editor/ShortcutsHelp';
 
 interface EditorHeaderProps {
     surveyId: string;
@@ -39,7 +39,9 @@ export function EditorHeader({
 }: EditorHeaderProps) {
     const router = useRouter();
     const versionDropdownRef = useRef<HTMLDivElement>(null);
+    const actionsDropdownRef = useRef<HTMLDivElement>(null);
     const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
+    const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
 
     const {
         survey,
@@ -65,6 +67,9 @@ export function EditorHeader({
         const handleClickOutside = (event: MouseEvent) => {
             if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
                 setIsVersionDropdownOpen(false);
+            }
+            if (actionsDropdownRef.current && !actionsDropdownRef.current.contains(event.target as Node)) {
+                setIsActionsDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -161,63 +166,130 @@ export function EditorHeader({
                 </div>
             )}
 
-            {/* Actions Group */}
-            <div className="flex items-center gap-1 bg-background/90 backdrop-blur-md border border-border/60 p-1 rounded-lg shadow-sm">
-                <button
-                    onClick={() => {
-                        if (confirmNavigation()) {
-                            router.push(`/dashboard/surveys/${surveyId}/metrics`);
-                        }
-                    }}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all"
-                    title="Open survey metrics dashboard"
-                >
-                    <IconChartBar size={18} />
-                </button>
-                <button
-                    onClick={() => setIsQuotaOpen(true)}
-                    disabled={isReadOnly}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={isReadOnly ? "Unavailable in read-only version view" : "Manage traffic control and quotas"}
-                >
-                    <IconFilter size={18} />
-                </button>
-                <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    disabled={isReadOnly}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={isReadOnly ? "Unavailable in read-only version view" : "Configure survey settings"}
-                >
-                    <IconSettings size={18} />
-                </button>
+            {/* Primary Action */}
+            <button
+                onClick={handleQuickTest}
+                disabled={isSyncingTest || isReadOnly}
+                className="flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-sm font-medium text-foreground hover:bg-muted transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isReadOnly ? "Unavailable in read-only version view" : "Run test survey in a new tab"}
+            >
+                {isSyncingTest ? (
+                    <IconLoader2 className="animate-spin text-blue-500" size={16} />
+                ) : (
+                    <IconPlayerPlay size={16} className="text-blue-500" />
+                )}
+                Run Test Survey
+            </button>
 
-                <div className="w-px h-4 bg-border mx-1" />
-
+            {/* More Menu */}
+            <div className="relative" ref={actionsDropdownRef}>
                 <button
-                    onClick={() => setIsShareOpen(true)}
-                    disabled={isReadOnly}
-                    className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={isReadOnly ? "Unavailable in read-only version view" : "Open share links"}
-                >
-                    <IconShare size={18} />
-                </button>
-
-                <div className="w-px h-4 bg-border mx-1" />
-
-                <button
-                    onClick={handleQuickTest}
-                    disabled={isSyncingTest || isReadOnly}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={isReadOnly ? "Unavailable in read-only version view" : "Run test survey in a new tab"}
-                >
-                    {isSyncingTest ? (
-                        <IconLoader2 className="animate-spin text-blue-500" size={16} />
-                    ) : (
-                        <IconPlayerPlay size={16} className="text-blue-500" />
+                    onClick={() => setIsActionsDropdownOpen((prev) => !prev)}
+                    className={cn(
+                        "flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-xs font-medium hover:bg-muted transition-all",
+                        isActionsDropdownOpen && "bg-muted shadow-inner"
                     )}
-                    Run Test Survey
+                    title="More actions"
+                >
+                    <IconDotsVertical size={16} className="text-muted-foreground" />
+                    <span>More</span>
                 </button>
-                <ShortcutsHelp />
+
+                {isActionsDropdownOpen && (
+                    <div className="absolute top-full right-0 mt-2 w-64 bg-background border border-border rounded-xl shadow-xl overflow-hidden z-60 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-2 border-b border-border bg-muted/30">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Actions</p>
+                        </div>
+                        <div className="p-1 space-y-1">
+                            <button
+                                onClick={() => {
+                                    setIsActionsDropdownOpen(false);
+                                    if (confirmNavigation()) {
+                                        router.push(`/dashboard/surveys/${surveyId}/metrics`);
+                                    }
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all"
+                            >
+                                <IconChartBar size={15} />
+                                Metrics
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsActionsDropdownOpen(false);
+                                    setIsQuotaOpen(true);
+                                }}
+                                disabled={isReadOnly}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <IconFilter size={15} />
+                                Quotas
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsActionsDropdownOpen(false);
+                                    setIsSettingsOpen(true);
+                                }}
+                                disabled={isReadOnly}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <IconSettings size={15} />
+                                Settings
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsActionsDropdownOpen(false);
+                                    setIsShareOpen(true);
+                                }}
+                                disabled={isReadOnly}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <IconShare size={15} />
+                                Share
+                            </button>
+                            <div className="border-t border-border my-1" />
+                            {survey?.status === 'PAUSED' ? (
+                                <button
+                                    onClick={() => {
+                                        setIsActionsDropdownOpen(false);
+                                        resume(surveyId);
+                                    }}
+                                    disabled={isReadOnly}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <IconPlayerPlay size={15} className="text-amber-600" />
+                                    Resume Survey
+                                </button>
+                            ) : survey?.status !== 'DRAFT' && survey?.status !== 'CLOSED' ? (
+                                <button
+                                    onClick={() => {
+                                        setIsActionsDropdownOpen(false);
+                                        pause(surveyId);
+                                    }}
+                                    disabled={isReadOnly}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-amber-500/10 text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <IconPlayerPause size={15} className="text-amber-600" />
+                                    Pause Survey
+                                </button>
+                            ) : null}
+                            {survey?.status !== 'DRAFT' && survey?.status !== 'CLOSED' && (
+                                <button
+                                    onClick={() => {
+                                        setIsActionsDropdownOpen(false);
+                                        if (confirm("Are you sure you want to CLOSE this survey?")) {
+                                            close(surveyId);
+                                        }
+                                    }}
+                                    disabled={isReadOnly}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-destructive/10 text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <IconBan size={15} className="text-destructive" />
+                                    Close Survey
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="w-px h-6 bg-border mx-2" />
@@ -283,50 +355,6 @@ export function EditorHeader({
                     </div>
                 )}
             </div>
-
-            <div className="w-px h-6 bg-border mx-2" />
-
-            {/* Lifecycle Actions */}
-            {
-                survey?.status !== 'DRAFT' && (
-                    <div className="flex items-center gap-1 mr-2">
-                        {survey?.status === 'PAUSED' ? (
-                            <button
-                                onClick={() => resume(surveyId)}
-                                disabled={isReadOnly}
-                                className="p-2 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 rounded-full border border-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Resume Survey"
-                            >
-                                <IconPlayerPlay size={18} />
-                            </button>
-                        ) : survey?.status !== 'CLOSED' ? (
-                            <button
-                                onClick={() => pause(surveyId)}
-                                disabled={isReadOnly}
-                                className="p-2 text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Pause Survey"
-                            >
-                                <IconPlayerPause size={18} />
-                            </button>
-                        ) : null}
-
-                        {survey?.status !== 'CLOSED' && (
-                            <button
-                                onClick={() => {
-                                    if (confirm("Are you sure you want to CLOSE this survey?")) {
-                                        close(surveyId);
-                                    }
-                                }}
-                                disabled={isReadOnly}
-                                className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Close Survey"
-                            >
-                                <IconBan size={18} />
-                            </button>
-                        )}
-                    </div>
-                )
-            }
 
             {/* Publish Button */}
             <div className="flex items-center gap-2">

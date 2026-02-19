@@ -47,6 +47,14 @@ export function ShortcutsHelp() {
               <span>Toggle sidebar</span>
               <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl/Cmd + B</kbd>
             </div>
+            <div className="flex items-center justify-between">
+              <span>Zoom in canvas</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl/Cmd + +</kbd>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Zoom out canvas</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl/Cmd + -</kbd>
+            </div>
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
-import { ReactFlowProvider } from '@xyflow/react';
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import SurveyNodeSidebar from '@/components/SurveyNodeSidebar';
@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { NodeSearchPalette } from '@/components/editor/NodeSearchPalette';
 
 function SurveyFlow() {
+    const { zoomIn, zoomOut } = useReactFlow();
     const { id: surveyIdParam } = useParams();
     const surveyId = Array.isArray(surveyIdParam) ? surveyIdParam[0] : surveyIdParam;
 
@@ -77,6 +78,28 @@ function SurveyFlow() {
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
+            const isModifierPressed = event.ctrlKey || event.metaKey;
+            const zoomInPressed =
+                event.key === '+' ||
+                event.key === '=' ||
+                event.key === 'NumpadAdd';
+            const zoomOutPressed =
+                event.key === '-' ||
+                event.key === '_' ||
+                event.key === 'NumpadSubtract';
+
+            if (isModifierPressed && zoomInPressed) {
+                event.preventDefault();
+                zoomIn({ duration: 120 });
+                return;
+            }
+
+            if (isModifierPressed && zoomOutPressed) {
+                event.preventDefault();
+                zoomOut({ duration: 120 });
+                return;
+            }
+
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
                 event.preventDefault();
                 setIsNodeSearchOpen((prev) => !prev);
@@ -116,7 +139,7 @@ function SurveyFlow() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedNodeId, isReadOnly, nodes, edges, setNodes, setEdges, setSelectedNodeId]);
+    }, [selectedNodeId, isReadOnly, nodes, edges, setNodes, setEdges, setSelectedNodeId, zoomIn, zoomOut]);
 
     // Autosave Hook
     useAutosave(surveyId || "");
