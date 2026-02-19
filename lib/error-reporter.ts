@@ -18,13 +18,7 @@ export interface FrontendErrorEvent {
   details?: Record<string, unknown>;
 }
 
-const AXIOM_DATASET = process.env.NEXT_PUBLIC_AXIOM_DATASET;
-const AXIOM_TOKEN = process.env.NEXT_PUBLIC_AXIOM_TOKEN;
 const APP_ENV = process.env.NEXT_PUBLIC_APP_ENV || process.env.NODE_ENV || "development";
-
-const AXIOM_INGEST_URL = AXIOM_DATASET
-  ? `https://api.axiom.co/v1/datasets/${AXIOM_DATASET}/ingest`
-  : null;
 
 const getRoute = () => {
   if (typeof window === "undefined") return undefined;
@@ -32,8 +26,6 @@ const getRoute = () => {
 };
 
 export const reportError = (event: FrontendErrorEvent) => {
-  if (!AXIOM_INGEST_URL || !AXIOM_TOKEN) return;
-
   const payload = {
     ts: new Date().toISOString(),
     env: APP_ENV,
@@ -41,13 +33,10 @@ export const reportError = (event: FrontendErrorEvent) => {
     route: event.route || getRoute(),
   };
 
-  void fetch(AXIOM_INGEST_URL, {
+  void fetch("/api/telemetry/errors", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${AXIOM_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify([payload]),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
     keepalive: true,
   }).catch(() => {
     // Never throw from telemetry.
@@ -68,4 +57,3 @@ export const reportApiError = (
     details,
   });
 };
-

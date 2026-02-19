@@ -1,7 +1,9 @@
 import axios from "axios";
 import { reportApiError } from "@/lib/error-reporter";
+import { getPublicEnv } from "@/lib/env";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+const { NEXT_PUBLIC_API_URL } = getPublicEnv();
+const API_URL = NEXT_PUBLIC_API_URL;
 
 const apiClient = axios.create({
   baseURL: API_URL,
