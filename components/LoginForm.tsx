@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { authApi } from "@/api/auth";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { toUserMessage } from "@/lib/api-error";
 
 import { LoginSchema, LoginData } from "@/src/shared/common";
 
@@ -54,8 +55,7 @@ export default function LoginForm() {
       router.push("/dashboard");
     } catch (err: any) {
       console.error("Login failed:", err);
-      const message = err.response?.data?.message || "Something went wrong. Please try again.";
-      toast.error(message);
+      toast.error(toUserMessage(err, "Something went wrong. Please try again."));
     } finally {
       setLoading(false);
     }

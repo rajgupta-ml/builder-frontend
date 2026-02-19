@@ -1,5 +1,7 @@
 import apiClient from "@/lib/api-client"
 import { downloadCSV, downloadXLSX, downloadSPSS } from "../lib/export-utils";
+import { toUserMessage } from "@/lib/api-error";
+import { toast } from "sonner";
 
 export const surveyResponseApi = {
     getMetrics: async (surveyId: string) => {
@@ -64,7 +66,7 @@ export const surveyResponseApi = {
 
         } catch (error) {
             console.error("Export failed", error);
-            alert("Failed to export responses. Please try again.");
+            toast.error(toUserMessage(error, "Failed to export responses. Please try again."));
         }
     }
 }

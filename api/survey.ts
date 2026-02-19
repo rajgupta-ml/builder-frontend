@@ -1,5 +1,6 @@
 import apiClient from "@/lib/api-client";
 import { Survey, Surveys } from "@/src/shared/types/survey";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 export const surveyApi = {
   // Done
@@ -30,15 +31,27 @@ export const surveyApi = {
   },
 
   publish: async (surveyId: string, mode: 'LIVE' | 'TEST'): Promise<any> => {
-        const response = await apiClient.post(`/surveys/${surveyId}/publish`, { mode });
+        const response = await apiClient.post(`/surveys/${surveyId}/publish`, { mode }, {
+          headers: {
+            "Idempotency-Key": createIdempotencyKey(`publish-${surveyId}-${mode.toLowerCase()}`),
+          },
+        });
         return response.data;
     },
   
     pause: async (surveyId: string): Promise<void> => {
-        await apiClient.post(`/surveys/${surveyId}/pause`);
+        await apiClient.post(`/surveys/${surveyId}/pause`, {}, {
+          headers: {
+            "Idempotency-Key": createIdempotencyKey(`pause-${surveyId}`),
+          },
+        });
     },
   
     close: async (surveyId: string): Promise<void> => {
-        await apiClient.post(`/surveys/${surveyId}/close`);
+        await apiClient.post(`/surveys/${surveyId}/close`, {}, {
+          headers: {
+            "Idempotency-Key": createIdempotencyKey(`close-${surveyId}`),
+          },
+        });
     }
   };

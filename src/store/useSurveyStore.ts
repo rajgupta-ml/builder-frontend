@@ -15,6 +15,7 @@ import { quotaApi } from '@/api/quota';
 import { toast } from 'sonner';
 import { Survey, SurveyQuota } from '@/src/shared/types/survey';
 import { hydrateNodeIds } from '@/lib/hydrateNodeIds';
+import { toUserMessage } from '@/lib/api-error';
 
 interface SurveyState {
     // ReactFlow state
@@ -37,6 +38,11 @@ interface SurveyState {
 
     // Computed
     hasChanges: boolean;
+    loadRequestId: number;
+    autosaveInFlight: boolean;
+    autosavePending: boolean;
+    autosavePendingRuntimeJson: any | null;
+    autosaveRequestSeq: number;
 
     // Actions
     setNodes: (nodes: ReactFlowNode[]) => void;
@@ -74,9 +80,14 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     isReadOnly: false,
     selectedVersionId: null,
     hasChanges: false,
+    loadRequestId: 0,
+    autosaveInFlight: false,
+    autosavePending: false,
+    autosavePendingRuntimeJson: null,
+    autosaveRequestSeq: 0,
 
     setNodes: (nodes) => set({ nodes, saveStatus: 'unsaved' }),
-    setEdges: (edges) => set({ edges }),
+    setEdges: (edges) => set({ edges, saveStatus: 'unsaved' }),
 
     onNodesChange: (changes) => {
         const { nodes, isReadOnly } = get();
@@ -109,6 +120,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     setSaveStatus: (saveStatus) => set({ saveStatus }),
 
     loadSurveyData: async (surveyId) => {
+        const requestId = get().loadRequestId + 1;
+        set({ loadRequestId: requestId });
         try {
             const [survey, versions, quotas, workflow] = await Promise.all([
                 surveyApi.getSurvey(surveyId),
@@ -117,9 +130,11 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId)
             ]);
 
+            if (get().loadRequestId !== requestId) {
+                return;
+            }
+
             const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
-            
-            console.log(`[SurveyStore] Load Data - Latest Version: ${versions[0]?.version}, Status: ${versions[0]?.status}, hasDbChanges: ${hasDbChanges}`);
 
             // Hydrate design nodes with stable IDs from runtimeJson
             // so generateRuntimeJson won't regenerate UUIDs on autosave
@@ -140,19 +155,25 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             });
         } catch (err) {
             console.error("Failed to load survey data", err);
-            toast.error("Failed to load survey data");
+            if (get().loadRequestId === requestId) {
+                toast.error(toUserMessage(err, "Failed to load survey data"));
+            }
         }
     },
 
     refreshSurveyData: async (surveyId) => {
+        const requestId = get().loadRequestId + 1;
+        set({ loadRequestId: requestId });
         try {
             const [survey, versions] = await Promise.all([
                 surveyApi.getSurvey(surveyId),
                 surveyWorkflowApi.getWorkflowsMetadata(surveyId)
             ]);
-            
+            if (get().loadRequestId !== requestId) {
+                return;
+            }
+
             const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
-            console.log(`[SurveyStore] Refresh Data - Latest Version: ${versions[0]?.version}, Status: ${versions[0]?.status}, hasDbChanges: ${hasDbChanges}`);
 
             set({ 
                 survey, 
@@ -161,14 +182,32 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             });
         } catch (err) {
             console.error("Failed to refresh survey data", err);
+            if (get().loadRequestId === requestId) {
+                toast.error(toUserMessage(err, "Failed to refresh survey data"));
+            }
         }
     },
 
     autosave: async (surveyId, runtimeJson) => {
+        const state = get();
+        if (state.autosaveInFlight) {
+            set({
+                autosavePending: true,
+                autosavePendingRuntimeJson: runtimeJson,
+                saveStatus: 'unsaved',
+            });
+            return;
+        }
+
         const { nodes, edges, workflowId } = get();
-        set({ saveStatus: 'saving' });
+        const requestSeq = get().autosaveRequestSeq + 1;
+        set({
+            saveStatus: 'saving',
+            autosaveInFlight: true,
+            autosaveRequestSeq: requestSeq,
+        });
+
         try {
-            console.log(runtimeJson)
             const data = await surveyWorkflowApi.autosaveWorkflow({
                 surveyId,
                 workflowId,
@@ -178,10 +217,11 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             
             // Refresh versions to update change detection
             const versions = await surveyWorkflowApi.getWorkflowsMetadata(surveyId);
-            const survey = get().survey;
+            if (get().autosaveRequestSeq !== requestSeq) {
+                return;
+            }
 
             const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
-            console.log(`[SurveyStore] Autosave - Latest Version: ${versions[0]?.version}, Status: ${versions[0]?.status}, hasDbChanges: ${hasDbChanges}`);
 
             set({ 
                 workflowId: data.id, 
@@ -191,7 +231,21 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             });
         } catch (err) {
             console.error("Save failed", err);
-            set({ saveStatus: 'error' });
+            if (get().autosaveRequestSeq === requestSeq) {
+                set({ saveStatus: 'error' });
+            }
+        } finally {
+            const hasPending = get().autosavePending;
+            const pendingRuntimeJson = get().autosavePendingRuntimeJson;
+            set({
+                autosaveInFlight: false,
+                autosavePending: false,
+                autosavePendingRuntimeJson: null,
+            });
+
+            if (hasPending && pendingRuntimeJson) {
+                void get().autosave(surveyId, pendingRuntimeJson);
+            }
         }
     },
 
@@ -215,10 +269,9 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             });
 
             if (mode === 'LIVE') toast.success("Successfully published to LIVE mode!");
-        } catch (error: any) {
+        } catch (error) {
             console.error("Publish failed", error);
-            const msg = error?.response?.data?.error || "Failed to publish survey";
-            toast.error(msg);
+            toast.error(toUserMessage(error, "Failed to publish survey"));
         } finally {
             if (mode === 'LIVE') set({ isPublishing: false });
             else set({ isSyncingTest: false });
@@ -231,8 +284,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const survey = await surveyApi.getSurvey(surveyId);
             set({ survey });
             toast.success("Survey Paused");
-        } catch (e) {
-            toast.error("Failed to pause");
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to pause"));
         }
     },
 
@@ -242,8 +295,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const survey = await surveyApi.getSurvey(surveyId);
             set({ survey });
             toast.success("Survey Closed");
-        } catch (e) {
-            toast.error("Failed to close");
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to close"));
         }
     },
 
@@ -253,8 +306,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const survey = await surveyApi.getSurvey(surveyId);
             set({ survey });
             toast.success("Survey Resumed");
-        } catch (e) {
-            toast.error("Failed to resume");
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to resume"));
         }
     },
 
@@ -278,19 +331,24 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             }
         } else {
             set({ isReadOnly: false });
-            // Instead of reload, we should re-fetch current latest
-            const workflow = await surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId);
-            const rawNodes = workflow?.designJson?.nodes || [];
-            const hydratedNodes = workflow?.runtimeJson 
-                ? hydrateNodeIds(rawNodes, workflow.runtimeJson) 
-                : rawNodes;
+            try {
+                // Instead of reload, we should re-fetch current latest
+                const workflow = await surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId);
+                const rawNodes = workflow?.designJson?.nodes || [];
+                const hydratedNodes = workflow?.runtimeJson 
+                    ? hydrateNodeIds(rawNodes, workflow.runtimeJson) 
+                    : rawNodes;
 
-            set({
-                nodes: hydratedNodes,
-                edges: workflow?.designJson?.edges || [],
-                workflowId: workflow?.id || null,
-                saveStatus: 'saved' // Prevent autosave when returning to latest version
-            });
+                set({
+                    nodes: hydratedNodes,
+                    edges: workflow?.designJson?.edges || [],
+                    workflowId: workflow?.id || null,
+                    saveStatus: 'saved' // Prevent autosave when returning to latest version
+                });
+            } catch (error) {
+                console.error("Failed to load latest version", error);
+                toast.error(toUserMessage(error, "Failed to load latest version"));
+            }
         }
     }
 }));
