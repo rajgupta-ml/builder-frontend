@@ -668,7 +668,7 @@ export default function SurveyMetricsPage() {
                                 ) : (
                                     paginatedResponses.map((resp, idx) => (
                                         <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-primary/5 transition-colors group">
-                                            <td className="px-6 py-3 border-b border-border/60 border-l-2 border-transparent group-hover:border-primary transition-colors">
+                                            <td className="px-6 py-3 border-b border-border/60 border-l-2 group-hover:border-primary transition-colors">
                                                 <div className="flex flex-col">
                                                     <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{resp.respondentId || "Anonymous"}</span>
                                                     <span className="text-xs text-muted-foreground opacity-80 font-mono">ID-{safeIdShort(resp.id)}</span>

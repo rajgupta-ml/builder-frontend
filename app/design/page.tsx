@@ -72,8 +72,8 @@ export default function DesignShowcase() {
                         <p className="text-sm text-muted-foreground">Minimal, refined, elegant. Large serif typography, generous white space, and subtle gradients.</p>
                     </div>
                     <div className={`${playfair.className} w-full bg-background border border-border p-8 hover:shadow-2xl transition-all duration-500 group relative overflow-hidden h-full`}>
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-[40px] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-                        <div className="absolute bottom-0 left-0 w-40 h-40 bg-secondary/10 rounded-full blur-[50px] opacity-0 group-hover:opacity-100 transition-opacity duration-1000 pointer-events-none delay-100" />
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-40 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+                        <div className="absolute bottom-0 left-0 w-40 h-40 bg-secondary/10 rounded-full blur-50 opacity-0 group-hover:opacity-100 transition-opacity duration-1000 pointer-events-none delay-100" />
 
                         <div className="flex justify-between items-start mb-12 relative z-10">
                             <span className="text-[10px] sm:text-xs tracking-[0.2em] text-muted-foreground uppercase font-sans">20 Feb 26 / Acme</span>
@@ -158,7 +158,7 @@ export default function DesignShowcase() {
                     {/* Forced dark mode wrapper for this specific variation */}
                     <div className="dark bg-[#0a0a0a] border border-white/10 p-1 w-full relative sm:h-[400px]">
                         <div className="p-6 md:p-8 w-full h-full relative group overflow-hidden">
-                            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none" />
+                            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-size:20px_20px pointer-events-none" />
                             <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/20 rounded-full blur-[60px] group-hover:bg-primary/40 transition-colors duration-700 pointer-events-none" />
                             <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-secondary/20 rounded-full blur-[60px] group-hover:bg-secondary/40 transition-colors duration-700 pointer-events-none" />
 
