@@ -52,6 +52,16 @@ export const surveyResponseApi = {
         return parsed.data.data;
     },
 
+    forceResync: async (surveyId: string, payload?: { full?: boolean; limit?: number; async?: boolean }) => {
+        const response = await apiClient.post(`/responses/resync/${surveyId}`, payload || {});
+        return response.data?.data;
+    },
+
+    getResyncStatus: async (surveyId: string) => {
+        const response = await apiClient.get(`/responses/resync/${surveyId}/status`);
+        return response.data?.data;
+    },
+
     exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode: 'LIVE' | 'TEST' = 'LIVE') => {
         try {
             const response = await apiClient.get(`/responses/export/${surveyId}`, {

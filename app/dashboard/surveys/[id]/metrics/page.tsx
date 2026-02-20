@@ -75,6 +75,7 @@ export default function SurveyMetricsPage() {
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isReconcileOpen, setIsReconcileOpen] = useState(false);
+    const [resyncing, setResyncing] = useState(false);
 
     // Pagination State
     // Pagination & Search State
@@ -149,6 +150,49 @@ export default function SurveyMetricsPage() {
         fetchData(controller.signal);
         return () => controller.abort();
     }, [id]);
+
+    const pollResyncCompletion = async (surveyId: string, maxAttempts = 40, intervalMs = 1500) => {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const snapshot = await surveyResponseApi.getResyncStatus(surveyId);
+            const status = snapshot?.status?.status;
+            if (status === "completed" || status === "failed") {
+                return snapshot;
+            }
+            await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+        return null;
+    };
+
+    const handleForceResync = async () => {
+        if (!id || resyncing) return;
+        try {
+            setResyncing(true);
+            const queued = await surveyResponseApi.forceResync(id, { full: false, limit: 300, async: true });
+            if (queued?.alreadyRunning) {
+                toast.info("Resync already running. Waiting for latest status...");
+            } else if (queued?.accepted) {
+                toast.info("Resync started. Waiting for completion...");
+            } else {
+                toast.warning(`Resync was not started: ${queued?.reason || "unknown reason"}`);
+                return;
+            }
+
+            const finalSnapshot = await pollResyncCompletion(id);
+            const final = finalSnapshot?.status;
+            if (!final) {
+                toast.warning("Resync is still running in background. Check status again in a few seconds.");
+            } else if (final.status === "completed") {
+                toast.success(`Resync complete: applied ${final.applied || 0}, skipped ${final.skipped || 0}, failed ${final.failed || 0}`);
+            } else {
+                toast.warning(`Resync finished with issues: ${final.reason || "unknown reason"}`);
+            }
+            await fetchData();
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to resync survey data"));
+        } finally {
+            setResyncing(false);
+        }
+    };
 
     const activeMetrics = metrics.find(m => m.mode === viewMode) || {
         mode: viewMode,
@@ -299,6 +343,18 @@ export default function SurveyMetricsPage() {
                         className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all shadow-sm"
                     >
                         Reconcile
+                    </button>
+                    <button
+                        onClick={handleForceResync}
+                        disabled={resyncing}
+                        className={cn(
+                            "px-4 py-2 text-sm font-semibold rounded-lg transition-all shadow-sm",
+                            resyncing
+                                ? "bg-sky-400 text-white cursor-not-allowed"
+                                : "bg-sky-600 text-white hover:bg-sky-700"
+                        )}
+                    >
+                        {resyncing ? "Resyncing..." : "Force Resync"}
                     </button>
                     <button
                         onClick={() => fetchData()}
