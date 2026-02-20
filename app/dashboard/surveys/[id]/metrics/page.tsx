@@ -338,6 +338,44 @@ export default function SurveyMetricsPage() {
                     <p className="mt-2 text-muted-foreground font-medium">{survey?.client} • Performance Overview</p>
                 </div>
                 <div className="flex items-center gap-3">
+
+                    <button
+                        onClick={() => fetchData()}
+                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
+                        title="Refresh Data"
+                    >
+                        <IconRefresh size={20} />
+                    </button>
+
+                    <button
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
+                        title="Settings"
+                    >
+                        <IconSettings size={20} />
+                    </button>
+
+
+                    <div className="w-px h-6 bg-border mx-1" />
+
+                    <button
+                        onClick={() => router.push(`/dashboard/surveys/${id}`)}
+                        className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-muted transition-all"
+                    >
+                        Open Builder
+                    </button>
+
+
+                    <button
+                        onClick={() => setIsQuotaOpen(true)}
+                        className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-muted transition-all"
+                    >
+                        Quotas
+                    </button>
+
+
+                    <div className="w-px h-6 bg-border mx-1" />
+
                     <button
                         onClick={() => setIsReconcileOpen(true)}
                         className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all shadow-sm"
@@ -356,32 +394,7 @@ export default function SurveyMetricsPage() {
                     >
                         {resyncing ? "Resyncing..." : "Force Resync"}
                     </button>
-                    <button
-                        onClick={() => fetchData()}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
-                        title="Refresh Data"
-                    >
-                        <IconRefresh size={20} />
-                    </button>
-                    <button
-                        onClick={() => setIsQuotaOpen(true)}
-                        className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-muted transition-all"
-                    >
-                        Quotas
-                    </button>
-                    <button
-                        onClick={() => setIsSettingsOpen(true)}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
-                        title="Settings"
-                    >
-                        <IconSettings size={20} />
-                    </button>
-                    <button
-                        onClick={() => router.push(`/dashboard/surveys/${id}`)}
-                        className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-muted transition-all"
-                    >
-                        Open Builder
-                    </button>
+
                     <div className="relative">
                         <button
                             onClick={() => setIsExportOpen(!isExportOpen)}
