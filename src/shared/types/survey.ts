@@ -16,6 +16,15 @@ export interface Survey {
   client: string; 
   redirectUrl: string | null;
   securityTerminateUrl: string | null;
+  privacyConfig?: {
+    privacyMode?: "standard" | "strict";
+    responseRetentionDays?: number;
+    collectGeo?: boolean;
+    collectUserAgent?: boolean;
+    allowRawRespondentId?: boolean;
+    piiOverrideDenylist?: string[];
+    piiPolicyVersion?: number;
+  } | null;
 }
 
 export interface SurveyWorkflow {

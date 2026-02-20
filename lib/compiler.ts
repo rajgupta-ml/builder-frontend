@@ -14,6 +14,9 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         if (!nodeData.technicalId) {
             nodeData.technicalId = uuidv4();
         }
+        if (nodeData.isPii === undefined) {
+            nodeData.isPii = false;
+        }
 
         // Add stable IDs to options (for choice-based questions)
         if (["singleChoice", "multipleChoice", "dropdown", "ranking", "emojiRating"].includes(node.type as string)) {

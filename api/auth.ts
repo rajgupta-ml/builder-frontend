@@ -1,7 +1,19 @@
 import apiClient from "@/lib/api-client";
-import { LoginCredentials, LoginResponse } from "@/types/auth";
+import { LoginCredentials, LoginResponse, User } from "@/types/auth";
 import { z } from "zod";
 import { reportError } from "@/lib/error-reporter";
+
+const userSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string().optional(),
+  role: z.enum(["SUPER_ADMIN", "PROJECT_MANAGER", "SALES_REP", "DEMO_USER"]),
+  roleExpiresAt: z.string().nullable().optional(),
+});
+
+const meSchema = z.object({
+  user: userSchema,
+});
 
 export const authApi = {
   //Done
@@ -10,7 +22,7 @@ export const authApi = {
     const parsed = z
       .object({
         token: z.string(),
-        user: z.unknown(),
+        user: userSchema,
       })
       .safeParse(response.data);
     if (!parsed.success) {
@@ -24,9 +36,9 @@ export const authApi = {
     return parsed.data as LoginResponse;
   },
   //Done
-  me: async (): Promise<any> => {
+  me: async (): Promise<{ user: User }> => {
     const response = await apiClient.get("/auth/me");
-    const parsed = z.unknown().safeParse(response.data);
+    const parsed = meSchema.safeParse(response.data);
     if (!parsed.success) {
       reportError({
         kind: "api",

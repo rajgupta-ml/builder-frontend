@@ -19,6 +19,25 @@ interface PropertiesPanelProps {
     readOnly?: boolean;
 }
 
+const PII_HINT_REGEX =
+    /\b(email|e-mail|phone|mobile|contact|name|first name|last name|full name|address|street|city|state|zipcode|zip|postal|ssn|social security|dob|birth|passport|aadhaar|pan|tax id)\b/i;
+
+const isLikelyPiiNode = (node: Node): boolean => {
+    const data = (node.data || {}) as Record<string, unknown>;
+    const label = String(data.label || "").trim();
+    const description = String(data.description || "").trim();
+    if (node.type === "emailInput" || node.type === "zipCodeInput") return true;
+    if (PII_HINT_REGEX.test(label) || PII_HINT_REGEX.test(description)) return true;
+    if (node.type === "multiInput" && Array.isArray(data.fields)) {
+        return data.fields.some((field) => {
+            const fieldRecord = field as Record<string, unknown>;
+            const fieldLabel = String(fieldRecord?.label || "");
+            return PII_HINT_REGEX.test(fieldLabel);
+        });
+    }
+    return false;
+};
+
 export default function PropertiesPanel({ node, nodes, onChange, onClose, readOnly = false }: PropertiesPanelProps) {
 
     // Get the definition for this node type
@@ -27,6 +46,8 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
     if (!node || !definition) {
         return null;
     }
+
+    const piiRecommended = !Boolean((node.data as any)?.isPii) && isLikelyPiiNode(node);
 
 
     return (
@@ -47,6 +68,21 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
 
             {/* Form Fields */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {piiRecommended && (
+                    <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                        <div>
+                            This node looks like it may collect personal data. Enable <strong>Contains PII</strong> to encrypt and exclude it from analytics exports.
+                        </div>
+                        {!readOnly && (
+                            <button
+                                onClick={() => onChange("isPii", true)}
+                                className="mt-2 inline-flex items-center rounded-md border border-amber-700/40 bg-amber-600/15 px-2 py-1 text-[11px] font-semibold text-amber-900 transition-colors hover:bg-amber-600/25 dark:text-amber-100"
+                            >
+                                Enable PII
+                            </button>
+                        )}
+                    </div>
+                )}
                 {(() => {
                     // Pre-calculate data with defaults for consistent visibility checks
                     const dataWithDefaults = { ...node.data };

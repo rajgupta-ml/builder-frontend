@@ -1,7 +1,11 @@
+export type UserRole = "SUPER_ADMIN" | "PROJECT_MANAGER" | "SALES_REP" | "DEMO_USER";
+
 export interface User {
   id: string;
   email: string;
   name?: string;
+  role: UserRole;
+  roleExpiresAt?: string | null;
 }
 
 export interface LoginCredentials {

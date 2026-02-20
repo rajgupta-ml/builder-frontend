@@ -6,6 +6,28 @@ interface ValidationError {
     nodeId?: string;
 }
 
+const PII_HINT_REGEX =
+    /\b(email|e-mail|phone|mobile|contact|name|first name|last name|full name|address|street|city|state|zipcode|zip|postal|ssn|social security|dob|birth|passport|aadhaar|pan|tax id)\b/i;
+
+const looksLikePiiNode = (node: Node): boolean => {
+    const data = (node.data || {}) as Record<string, unknown>;
+    const label = String(data.label || "").trim();
+    const description = String(data.description || "").trim();
+
+    if (node.type === "emailInput" || node.type === "zipCodeInput") return true;
+    if (PII_HINT_REGEX.test(label) || PII_HINT_REGEX.test(description)) return true;
+
+    if (node.type === "multiInput" && Array.isArray(data.fields)) {
+        return data.fields.some((field) => {
+            const fieldRecord = field as Record<string, unknown>;
+            const fieldLabel = String(fieldRecord?.label || "");
+            return PII_HINT_REGEX.test(fieldLabel);
+        });
+    }
+
+    return false;
+};
+
 export const validateWorkflow = (nodes: Node[], edges: Edge[]): { isValid: boolean, errors: ValidationError[] } => {
     const errors: ValidationError[] = [];
 
@@ -176,6 +198,20 @@ export const validateWorkflow = (nodes: Node[], edges: Edge[]): { isValid: boole
             if (outEdges.length > 1) {
                 errors.push({ type: 'error', message: 'Standard question nodes can only have one outgoing connection.', nodeId: node.id });
             }
+        }
+    });
+
+    // 7. PII Recommendation Warnings (non-blocking)
+    nodes.forEach((node) => {
+        const data = (node.data || {}) as Record<string, unknown>;
+        const isPiiEnabled = Boolean(data.isPii);
+        if (!isPiiEnabled && looksLikePiiNode(node)) {
+            const label = String(data.label || node.id);
+            errors.push({
+                type: "warning",
+                message: `Node '${label}' looks like personal data. Consider enabling "Contains PII" or adding a survey-level PII override.`,
+                nodeId: node.id,
+            });
         }
     });
 

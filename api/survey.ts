@@ -45,7 +45,17 @@ export const surveyApi = {
     return response.data.data;
   },
 
-  updateSurvey: async (id: string, data: { name?: string; description?: string; redirectUrl?: string | null; overQuotaUrl?: string | null; securityTerminateUrl?: string | null; globalQuota?: number | null }): Promise<void> => {
+  updateSurvey: async (id: string, data: {
+    name?: string;
+    description?: string;
+    redirectUrl?: string | null;
+    overQuotaUrl?: string | null;
+    securityTerminateUrl?: string | null;
+    globalQuota?: number | null;
+    privacyConfig?: {
+      piiOverrideDenylist?: string[];
+    };
+  }): Promise<void> => {
     await apiClient.put(`/surveys/${id}`, data);
   },
 

@@ -11,6 +11,7 @@ import NewSurveyModal from "@/components/SurveyModal";
 import { toUserMessage } from "@/lib/api-error";
 import { jetBrainsMono } from "@/app/dashboard/layout";
 import { cn } from "@/lib/utils";
+import { getStoredUserRole, hasPermission, PERMISSIONS } from "@/lib/permissions";
 
 export default function Dashboard() {
     const router = useRouter();
@@ -18,10 +19,15 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [canCreateSurvey, setCanCreateSurvey] = useState(false);
+    const [canDeleteSurvey, setCanDeleteSurvey] = useState(false);
 
     useEffect(() => {
         const controller = new AbortController();
         fetchSurveys(controller.signal);
+        const role = getStoredUserRole();
+        setCanCreateSurvey(hasPermission(role, PERMISSIONS.SURVEY_CREATE));
+        setCanDeleteSurvey(hasPermission(role, PERMISSIONS.SURVEY_DELETE));
         return () => controller.abort();
     }, []);
 
@@ -169,23 +175,25 @@ export default function Dashboard() {
                                                     >
                                                         DATA
                                                     </button>
-                                                    <button
-                                                        onClick={async (e) => {
-                                                            e.stopPropagation();
-                                                            if (confirm("Execute command: DELETE SURVEY?")) {
-                                                                try {
-                                                                    await surveyApi.deleteSurvey(survey.id);
-                                                                    toast.success("Survey record deleted");
-                                                                    fetchSurveys();
-                                                                } catch (err) {
-                                                                    toast.error("Deletion failed");
+                                                    {canDeleteSurvey && (
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                if (confirm("Execute command: DELETE SURVEY?")) {
+                                                                    try {
+                                                                        await surveyApi.deleteSurvey(survey.id);
+                                                                        toast.success("Survey record deleted");
+                                                                        fetchSurveys();
+                                                                    } catch (err) {
+                                                                        toast.error("Deletion failed");
+                                                                    }
                                                                 }
-                                                            }
-                                                        }}
-                                                        className={`text-[10px] text-muted-foreground hover:text-destructive border border-transparent hover:border-destructive/20 px-2 py-1 rounded transition-all ${jetBrainsMono.className}`}
-                                                    >
-                                                        DEL
-                                                    </button>
+                                                            }}
+                                                            className={`text-[10px] text-muted-foreground hover:text-destructive border border-transparent hover:border-destructive/20 px-2 py-1 rounded transition-all ${jetBrainsMono.className}`}
+                                                        >
+                                                            DEL
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </motion.tr>
@@ -207,13 +215,15 @@ export default function Dashboard() {
                             <p className="text-sm text-foreground/60 mb-8 max-w-md mx-auto font-medium">
                                 The system database currently contains zero active or draft survey records. Initialize a new record to begin data collection.
                             </p>
-                            <button
-                                onClick={() => setIsModalOpen(true)}
-                                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold text-sm tracking-wide rounded-lg hover:opacity-90 transition-all shadow-md shadow-primary/20"
-                            >
-                                <IconPlus size={18} strokeWidth={2.5} />
-                                INITIALIZE RECORD
-                            </button>
+                            {canCreateSurvey && (
+                                <button
+                                    onClick={() => setIsModalOpen(true)}
+                                    className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold text-sm tracking-wide rounded-lg hover:opacity-90 transition-all shadow-md shadow-primary/20"
+                                >
+                                    <IconPlus size={18} strokeWidth={2.5} />
+                                    INITIALIZE RECORD
+                                </button>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>

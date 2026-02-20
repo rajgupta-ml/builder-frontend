@@ -23,7 +23,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
             }
 
             try {
-                await authApi.me();
+                const me = await authApi.me();
+                if (me?.user) {
+                    localStorage.setItem("user", JSON.stringify(me.user));
+                }
                 if (isMounted) {
                     setIsAuthenticated(true);
                 }

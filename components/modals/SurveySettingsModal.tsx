@@ -24,7 +24,8 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
         redirectUrl: "",
         overQuotaUrl: "",
         securityTerminateUrl: "",
-        globalQuota: ""
+        globalQuota: "",
+        piiOverrideDenylist: ""
     });
 
     useEffect(() => {
@@ -44,7 +45,10 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                 redirectUrl: data.redirectUrl || "",
                 overQuotaUrl: data.overQuotaUrl || "",
                 securityTerminateUrl: data.securityTerminateUrl || "",
-                globalQuota: data.globalQuota !== null ? String(data.globalQuota) : ""
+                globalQuota: data.globalQuota !== null ? String(data.globalQuota) : "",
+                piiOverrideDenylist: Array.isArray(data.privacyConfig?.piiOverrideDenylist)
+                    ? data.privacyConfig!.piiOverrideDenylist!.join("\n")
+                    : ""
             });
         } catch (error) {
             if (signal?.aborted) return;
@@ -84,6 +88,21 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
             const newGlobalQuota = formData.globalQuota !== "" ? parseInt(formData.globalQuota) : null;
             if (newGlobalQuota !== survey.globalQuota) {
                 updates.globalQuota = newGlobalQuota;
+            }
+
+            const parsedOverrides = formData.piiOverrideDenylist
+                .split(/[\n,]+/)
+                .map((item) => item.trim())
+                .filter((item) => item.length > 0);
+            const currentOverrides = Array.isArray(survey.privacyConfig?.piiOverrideDenylist)
+                ? survey.privacyConfig!.piiOverrideDenylist!
+                : [];
+            const changedOverrides = parsedOverrides.join("|") !== currentOverrides.join("|");
+            if (changedOverrides) {
+                updates.privacyConfig = {
+                    ...(survey.privacyConfig || {}),
+                    piiOverrideDenylist: parsedOverrides
+                };
             }
 
             if (Object.keys(updates).length > 0) {
@@ -204,6 +223,25 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 pb-2 border-b border-border">
+                                            <IconAlertTriangle size={18} className="text-amber-600" />
+                                            <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">PII Overrides</h4>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <label className="text-sm font-semibold">PII Technical ID Denylist</label>
+                                            <textarea
+                                                placeholder={"Enter one technical ID per line\nExample: q_email, field_phone"}
+                                                className="min-h-[120px] bg-muted/30 border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-y"
+                                                value={formData.piiOverrideDenylist}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, piiOverrideDenylist: e.target.value }))}
+                                            />
+                                            <p className="text-xs text-muted-foreground">
+                                                Any ID listed here is always treated as PII, encrypted at rest, and excluded from analytics exports.
+                                            </p>
                                         </div>
                                     </div>
                                 </>

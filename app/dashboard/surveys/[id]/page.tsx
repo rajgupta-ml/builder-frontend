@@ -23,9 +23,87 @@ import { getNodeInitialData } from '@/components/nodes/definitions';
 import { generateUniqueId } from '@/lib/utils';
 import { toast } from 'sonner';
 import { NodeSearchPalette } from '@/components/editor/NodeSearchPalette';
+import type { Node as ReactFlowNode, XYPosition } from '@xyflow/react';
+
+const DEFAULT_NODE_WIDTH = 260;
+const DEFAULT_NODE_HEIGHT = 140;
+const NODE_GAP = 28;
+
+const getNodeBox = (node: ReactFlowNode) => {
+    const measured = (node as ReactFlowNode & { measured?: { width?: number; height?: number } }).measured;
+    const width = typeof node.width === 'number'
+        ? node.width
+        : (typeof measured?.width === 'number' ? measured.width : DEFAULT_NODE_WIDTH);
+    const height = typeof node.height === 'number'
+        ? node.height
+        : (typeof measured?.height === 'number' ? measured.height : DEFAULT_NODE_HEIGHT);
+    return {
+        x: node.position.x,
+        y: node.position.y,
+        width,
+        height,
+    };
+};
+
+const boxesOverlap = (
+    a: { x: number; y: number; width: number; height: number },
+    b: { x: number; y: number; width: number; height: number },
+    padding = NODE_GAP
+) => {
+    const ax1 = a.x - padding;
+    const ay1 = a.y - padding;
+    const ax2 = a.x + a.width + padding;
+    const ay2 = a.y + a.height + padding;
+    const bx1 = b.x;
+    const by1 = b.y;
+    const bx2 = b.x + b.width;
+    const by2 = b.y + b.height;
+    return ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1;
+};
+
+const findNonOverlappingPosition = (center: XYPosition, nodes: ReactFlowNode[]): XYPosition => {
+    const isFree = (candidate: XYPosition) => {
+        const candidateBox = {
+            x: candidate.x,
+            y: candidate.y,
+            width: DEFAULT_NODE_WIDTH,
+            height: DEFAULT_NODE_HEIGHT,
+        };
+        return !nodes.some((n) => boxesOverlap(candidateBox, getNodeBox(n)));
+    };
+
+    if (isFree(center)) {
+        return center;
+    }
+
+    const stepX = DEFAULT_NODE_WIDTH + NODE_GAP;
+    const stepY = DEFAULT_NODE_HEIGHT + NODE_GAP;
+
+    for (let ring = 1; ring <= 10; ring++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+            for (let dy = -ring; dy <= ring; dy++) {
+                if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue;
+                const candidate = {
+                    x: center.x + dx * stepX,
+                    y: center.y + dy * stepY,
+                };
+                if (isFree(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    const maxY = nodes.reduce((acc, node) => {
+        const box = getNodeBox(node);
+        return Math.max(acc, box.y + box.height);
+    }, center.y);
+
+    return { x: center.x, y: maxY + NODE_GAP };
+};
 
 function SurveyFlow() {
-    const { zoomIn, zoomOut } = useReactFlow();
+    const { zoomIn, zoomOut, screenToFlowPosition } = useReactFlow();
     const { id: surveyIdParam } = useParams();
     const surveyId = Array.isArray(surveyIdParam) ? surveyIdParam[0] : surveyIdParam;
 
@@ -173,10 +251,18 @@ function SurveyFlow() {
 
     const handleAddNodeFromPalette = (type: string, label: string) => {
         if (isReadOnly) return;
+        const canvas = document.querySelector('.react-flow') as HTMLElement | null;
+        const fallbackCenter = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        const screenCenter = canvas
+            ? { x: canvas.getBoundingClientRect().left + canvas.clientWidth / 2, y: canvas.getBoundingClientRect().top + canvas.clientHeight / 2 }
+            : fallbackCenter;
+        const centerPosition = screenToFlowPosition(screenCenter);
+        const position = findNonOverlappingPosition(centerPosition, nodes);
+
         const newNode = {
             id: generateUniqueId('node'),
             type,
-            position: { x: 320 + (nodes.length % 3) * 220, y: 180 + Math.floor(nodes.length / 3) * 110 },
+            position,
             data: {
                 ...getNodeInitialData(type),
                 label,

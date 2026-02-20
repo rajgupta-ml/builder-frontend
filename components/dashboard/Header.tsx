@@ -1,37 +1,28 @@
 "use client";
 import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import {
-    IconBell,
     IconSearch,
-    IconLogout,
-    IconUserCircle,
     IconPlus
 } from '@tabler/icons-react';
-import { motion } from 'motion/react';
 import NewSurveyModal from "@/components/SurveyModal";
+import { getStoredUserRole, hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 export const DashboardHeader = () => {
-    const router = useRouter();
     const [isModalOpen, setIsModalOpen] = React.useState(false);
-    const [user, setUser] = React.useState<any>(null);
+    const [canCreateSurvey, setCanCreateSurvey] = React.useState(false);
 
     useEffect(() => {
         const storedUser = localStorage.getItem("user");
         if (storedUser) {
             try {
-                setUser(JSON.parse(storedUser));
+                JSON.parse(storedUser);
             } catch (e) {
                 console.error("Failed to parse user");
             }
         }
+        const role = getStoredUserRole();
+        setCanCreateSurvey(hasPermission(role, PERMISSIONS.SURVEY_CREATE));
     }, []);
-
-    const handleLogout = () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        router.replace("/");
-    };
 
     return (
         <>
@@ -52,12 +43,14 @@ export const DashboardHeader = () => {
                 </div>
 
                 <div className="flex gap-6 items-center">
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-2 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-4 py-1.5 rounded-full"
-                    >
-                        <IconPlus size={14} /> New Survey
-                    </button>
+                    {canCreateSurvey && (
+                        <button
+                            onClick={() => setIsModalOpen(true)}
+                            className="flex items-center gap-2 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-4 py-1.5 rounded-full"
+                        >
+                            <IconPlus size={14} /> New Survey
+                        </button>
+                    )}
 
                     <div className="h-6 w-px bg-border/60" />
                 </div>

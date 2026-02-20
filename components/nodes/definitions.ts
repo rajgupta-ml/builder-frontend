@@ -40,6 +40,7 @@ export const CATEGORY_CONFIG: Record<NodeCategory, { label: string, icon: React.
 const commonProperties: PropertyField[] = [
     { name: 'label', label: 'Field Label', type: 'text', placeholder: 'e.g., What is your name?' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Helper text for the user', defaultValue: '' },
+    { name: 'isPii', label: 'Contains PII', type: 'switch', defaultValue: false, helperText: 'Encrypt this field and exclude it from analytics/export.' },
     { name: 'condition', label: 'Logic Applied To This Node', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] }, helperText: 'Define when this node should be shown (Skip Logic)' },
 ];
 

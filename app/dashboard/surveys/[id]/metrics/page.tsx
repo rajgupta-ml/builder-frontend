@@ -37,6 +37,8 @@ import { SurveyQuotaModal } from "@/components/modals/SurveyQuotaModal";
 import { ReconcileResponseModal } from "@/components/modals/ReconcileResponseModal";
 import { safeDateTime, safeIdShort } from "@/lib/safe-format";
 import { toUserMessage } from "@/lib/api-error";
+import { getStoredUserRole, hasPermission, PERMISSIONS } from "@/lib/permissions";
+import type { UserRole } from "@/types/auth";
 
 interface MetricData {
     mode: string;
@@ -76,6 +78,7 @@ export default function SurveyMetricsPage() {
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isReconcileOpen, setIsReconcileOpen] = useState(false);
     const [resyncing, setResyncing] = useState(false);
+    const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
 
     // Pagination State
     // Pagination & Search State
@@ -147,9 +150,15 @@ export default function SurveyMetricsPage() {
     useEffect(() => {
         if (!id) return;
         const controller = new AbortController();
+        setUserRole(getStoredUserRole());
         fetchData(controller.signal);
         return () => controller.abort();
     }, [id]);
+
+    const canManageSurvey = hasPermission(userRole, PERMISSIONS.SURVEY_EDIT);
+    const canManageQuotas = hasPermission(userRole, PERMISSIONS.QUOTA_MANAGE);
+    const canExport = hasPermission(userRole, PERMISSIONS.RESPONSE_EXPORT);
+    const canResync = hasPermission(userRole, PERMISSIONS.RESPONSE_RESYNC);
 
     const pollResyncCompletion = async (surveyId: string, maxAttempts = 40, intervalMs = 1500) => {
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -347,13 +356,15 @@ export default function SurveyMetricsPage() {
                         <IconRefresh size={18} strokeWidth={1.5} />
                     </button>
 
-                    <button
-                        onClick={() => setIsSettingsOpen(true)}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
-                        title="Settings"
-                    >
-                        <IconSettings size={18} strokeWidth={1.5} />
-                    </button>
+                    {canManageSurvey && (
+                        <button
+                            onClick={() => setIsSettingsOpen(true)}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
+                            title="Settings"
+                        >
+                            <IconSettings size={18} strokeWidth={1.5} />
+                        </button>
+                    )}
 
                     <div className="w-px h-6 bg-border/60 mx-1" />
 
@@ -365,88 +376,96 @@ export default function SurveyMetricsPage() {
                     </button>
 
 
-                    <button
-                        onClick={() => setIsQuotaOpen(true)}
-                        className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
-                    >
-                        Quotas
-                    </button>
+                    {canManageQuotas && (
+                        <button
+                            onClick={() => setIsQuotaOpen(true)}
+                            className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
+                        >
+                            Quotas
+                        </button>
+                    )}
 
 
                     <div className="w-px h-6 bg-border/60 mx-1" />
 
-                    <button
-                        onClick={() => setIsReconcileOpen(true)}
-                        className="px-4 py-2 text-sm font-medium border border-amber-600/30 text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all rounded-md shadow-sm"
-                    >
-                        Reconcile
-                    </button>
-                    <button
-                        onClick={handleForceResync}
-                        disabled={resyncing}
-                        className={cn(
-                            "px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm border",
-                            resyncing
-                                ? "bg-muted text-muted-foreground border-border/60 cursor-not-allowed"
-                                : "bg-sky-50 text-sky-600 border-sky-600/30 hover:bg-sky-100"
-                        )}
-                    >
-                        {resyncing ? "Resyncing..." : "Force Resync"}
-                    </button>
+                    {canResync && (
+                        <>
+                            <button
+                                onClick={() => setIsReconcileOpen(true)}
+                                className="px-4 py-2 text-sm font-medium border border-amber-600/30 text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all rounded-md shadow-sm"
+                            >
+                                Reconcile
+                            </button>
+                            <button
+                                onClick={handleForceResync}
+                                disabled={resyncing}
+                                className={cn(
+                                    "px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm border",
+                                    resyncing
+                                        ? "bg-muted text-muted-foreground border-border/60 cursor-not-allowed"
+                                        : "bg-sky-50 text-sky-600 border-sky-600/30 hover:bg-sky-100"
+                                )}
+                            >
+                                {resyncing ? "Resyncing..." : "Force Resync"}
+                            </button>
+                        </>
+                    )}
 
-                    <div className="relative">
-                        <button
-                            onClick={() => setIsExportOpen(!isExportOpen)}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all border",
-                                isExportOpen ? "bg-primary/10 text-primary border-primary/30 shadow-sm" : "bg-background border-border/60 text-foreground hover:bg-muted/50"
+                    {canExport && (
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsExportOpen(!isExportOpen)}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all border",
+                                    isExportOpen ? "bg-primary/10 text-primary border-primary/30 shadow-sm" : "bg-background border-border/60 text-foreground hover:bg-muted/50"
+                                )}
+                            >
+                                <IconDownload size={18} strokeWidth={1.5} />
+                                Export Data
+                            </button>
+
+                            {isExportOpen && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        onClick={() => setIsExportOpen(false)}
+                                    />
+                                    <div className="absolute right-0 mt-2 w-48 bg-background border border-border/60 shadow-lg rounded-md p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        <button
+                                            onClick={() => {
+                                                surveyResponseApi.exportResponses(id, 'csv');
+                                                setIsExportOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
+                                        >
+                                            <IconTable size={16} className="text-muted-foreground" />
+                                            Export CSV
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                surveyResponseApi.exportResponses(id, 'xlsx');
+                                                setIsExportOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
+                                        >
+                                            <IconTable size={16} className="text-muted-foreground" />
+                                            Export Excel
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                surveyResponseApi.exportResponses(id, 'spss');
+                                                setIsExportOpen(false);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
+                                        >
+                                            <IconTable size={16} className="text-muted-foreground" />
+                                            Export SPSS
+                                        </button>
+                                    </div>
+                                </>
                             )}
-                        >
-                            <IconDownload size={18} strokeWidth={1.5} />
-                            Export Data
-                        </button>
-
-                        {isExportOpen && (
-                            <>
-                                <div
-                                    className="fixed inset-0 z-40"
-                                    onClick={() => setIsExportOpen(false)}
-                                />
-                                <div className="absolute right-0 mt-2 w-48 bg-background border border-border/60 shadow-lg rounded-md p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
-                                    <button
-                                        onClick={() => {
-                                            surveyResponseApi.exportResponses(id, 'csv');
-                                            setIsExportOpen(false);
-                                        }}
-                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
-                                    >
-                                        <IconTable size={16} className="text-muted-foreground" />
-                                        Export CSV
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            surveyResponseApi.exportResponses(id, 'xlsx');
-                                            setIsExportOpen(false);
-                                        }}
-                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
-                                    >
-                                        <IconTable size={16} className="text-muted-foreground" />
-                                        Export Excel
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            surveyResponseApi.exportResponses(id, 'spss');
-                                            setIsExportOpen(false);
-                                        }}
-                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
-                                    >
-                                        <IconTable size={16} className="text-muted-foreground" />
-                                        Export SPSS
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

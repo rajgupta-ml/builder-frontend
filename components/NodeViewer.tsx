@@ -20,10 +20,15 @@ export default function NodeViewer({
 
     useEffect(() => {
         if (!openSignal) return;
-        setIsOpen(true);
-        setTimeout(() => {
-            searchInputRef.current?.focus();
-        }, 0);
+        setIsOpen((prev) => {
+            const next = !prev;
+            if (next) {
+                setTimeout(() => {
+                    searchInputRef.current?.focus();
+                }, 0);
+            }
+            return next;
+        });
     }, [openSignal]);
 
     // Sort nodes by their Y position to assign question numbers logically
