@@ -334,33 +334,32 @@ export default function SurveyMetricsPage() {
             {/* Top Navigation / Actions */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-4xl font-bold tracking-tight">{survey?.name}</h1>
-                    <p className="mt-2 text-muted-foreground font-medium">{survey?.client} • Performance Overview</p>
+                    <h1 className="text-3xl font-semibold tracking-tight text-foreground">{survey?.name}</h1>
+                    <p className="mt-2 text-sm text-muted-foreground font-medium">{survey?.client} • Performance Overview</p>
                 </div>
                 <div className="flex items-center gap-3">
 
                     <button
                         onClick={() => fetchData()}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
+                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
                         title="Refresh Data"
                     >
-                        <IconRefresh size={20} />
+                        <IconRefresh size={18} strokeWidth={1.5} />
                     </button>
 
                     <button
                         onClick={() => setIsSettingsOpen(true)}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all"
+                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
                         title="Settings"
                     >
-                        <IconSettings size={20} />
+                        <IconSettings size={18} strokeWidth={1.5} />
                     </button>
 
-
-                    <div className="w-px h-6 bg-border mx-1" />
+                    <div className="w-px h-6 bg-border/60 mx-1" />
 
                     <button
                         onClick={() => router.push(`/dashboard/surveys/${id}`)}
-                        className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-muted transition-all"
+                        className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
                     >
                         Open Builder
                     </button>
@@ -368,17 +367,17 @@ export default function SurveyMetricsPage() {
 
                     <button
                         onClick={() => setIsQuotaOpen(true)}
-                        className="px-4 py-2 text-sm font-semibold border border-border rounded-lg hover:bg-muted transition-all"
+                        className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
                     >
                         Quotas
                     </button>
 
 
-                    <div className="w-px h-6 bg-border mx-1" />
+                    <div className="w-px h-6 bg-border/60 mx-1" />
 
                     <button
                         onClick={() => setIsReconcileOpen(true)}
-                        className="px-4 py-2 text-sm font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all shadow-sm"
+                        className="px-4 py-2 text-sm font-medium border border-amber-600/30 text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all rounded-md shadow-sm"
                     >
                         Reconcile
                     </button>
@@ -386,10 +385,10 @@ export default function SurveyMetricsPage() {
                         onClick={handleForceResync}
                         disabled={resyncing}
                         className={cn(
-                            "px-4 py-2 text-sm font-semibold rounded-lg transition-all shadow-sm",
+                            "px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm border",
                             resyncing
-                                ? "bg-sky-400 text-white cursor-not-allowed"
-                                : "bg-sky-600 text-white hover:bg-sky-700"
+                                ? "bg-muted text-muted-foreground border-border/60 cursor-not-allowed"
+                                : "bg-sky-50 text-sky-600 border-sky-600/30 hover:bg-sky-100"
                         )}
                     >
                         {resyncing ? "Resyncing..." : "Force Resync"}
@@ -399,11 +398,11 @@ export default function SurveyMetricsPage() {
                         <button
                             onClick={() => setIsExportOpen(!isExportOpen)}
                             className={cn(
-                                "flex items-center gap-2 px-4 py-2 font-semibold rounded-lg transition-all",
-                                isExportOpen ? "bg-primary text-primary-foreground shadow-lg" : "bg-primary/10 text-primary hover:bg-primary/20"
+                                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all border",
+                                isExportOpen ? "bg-primary/10 text-primary border-primary/30 shadow-sm" : "bg-background border-border/60 text-foreground hover:bg-muted/50"
                             )}
                         >
-                            <IconDownload size={18} />
+                            <IconDownload size={18} strokeWidth={1.5} />
                             Export Data
                         </button>
 
@@ -413,36 +412,36 @@ export default function SurveyMetricsPage() {
                                     className="fixed inset-0 z-40"
                                     onClick={() => setIsExportOpen(false)}
                                 />
-                                <div className="absolute right-0 mt-2 w-48 bg-card border border-border shadow-xl rounded-xl p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
+                                <div className="absolute right-0 mt-2 w-48 bg-background border border-border/60 shadow-lg rounded-md p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
                                     <button
                                         onClick={() => {
                                             surveyResponseApi.exportResponses(id, 'csv');
                                             setIsExportOpen(false);
                                         }}
-                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
                                     >
-                                        <IconTable size={16} className="text-emerald-600" />
-                                        Export as CSV
+                                        <IconTable size={16} className="text-muted-foreground" />
+                                        Export CSV
                                     </button>
                                     <button
                                         onClick={() => {
                                             surveyResponseApi.exportResponses(id, 'xlsx');
                                             setIsExportOpen(false);
                                         }}
-                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
                                     >
-                                        <IconTable size={16} className="text-blue-600" />
-                                        Export as Excel
+                                        <IconTable size={16} className="text-muted-foreground" />
+                                        Export Excel
                                     </button>
                                     <button
                                         onClick={() => {
                                             surveyResponseApi.exportResponses(id, 'spss');
                                             setIsExportOpen(false);
                                         }}
-                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg hover:bg-muted transition-colors flex items-center gap-2"
+                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
                                     >
-                                        <IconTable size={16} className="text-purple-600" />
-                                        Export as SPSS
+                                        <IconTable size={16} className="text-muted-foreground" />
+                                        Export SPSS
                                     </button>
                                 </div>
                             </>
@@ -452,12 +451,12 @@ export default function SurveyMetricsPage() {
             </div>
 
             {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-xl w-fit border border-border">
+            <div className="flex items-center gap-1 bg-muted/20 p-1 rounded-md w-fit border border-border/60">
                 <button
                     onClick={() => setViewMode('LIVE')}
                     className={cn(
-                        "px-6 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wide",
-                        viewMode === 'LIVE' ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-muted"
+                        "px-6 py-1.5 text-xs font-semibold rounded-sm transition-all",
+                        viewMode === 'LIVE' ? "bg-background text-foreground shadow-sm border border-border/60" : "text-muted-foreground hover:bg-muted/50 border border-transparent"
                     )}
                 >
                     Live Data
@@ -465,8 +464,8 @@ export default function SurveyMetricsPage() {
                 <button
                     onClick={() => setViewMode('TEST')}
                     className={cn(
-                        "px-6 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-wide",
-                        viewMode === 'TEST' ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-muted"
+                        "px-6 py-1.5 text-xs font-semibold rounded-sm transition-all",
+                        viewMode === 'TEST' ? "bg-background text-foreground shadow-sm border border-border/60" : "text-muted-foreground hover:bg-muted/50 border border-transparent"
                     )}
                 >
                     Test Data
@@ -516,12 +515,12 @@ export default function SurveyMetricsPage() {
             </div>
 
             {/* Charts Area */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Status Breakdown Bar Chart */}
-                <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6 shadow-sm">
-                    <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                        <IconChartBar size={20} className="text-primary" />
-                        Conversion Funnel logic
+                <div className="lg:col-span-2 bg-background border border-border/60 rounded-xl p-6 shadow-sm">
+                    <h3 className="text-sm font-semibold mb-6 flex items-center gap-2 text-foreground">
+                        <IconChartBar size={18} className="text-muted-foreground" />
+                        Conversion Funnel
                     </h3>
                     <div className="h-[300px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -551,9 +550,9 @@ export default function SurveyMetricsPage() {
                 </div>
 
                 {/* Mode Breakdown Pie Chart */}
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-                    <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-                        <IconClock size={20} className="text-primary" />
+                <div className="bg-background border border-border/60 rounded-xl p-6 shadow-sm">
+                    <h3 className="text-sm font-semibold mb-6 flex items-center gap-2 text-foreground">
+                        <IconClock size={18} className="text-muted-foreground" />
                         Mode Distribution
                     </h3>
                     <div className="h-[300px] w-full">
@@ -585,24 +584,24 @@ export default function SurveyMetricsPage() {
             </div>
 
             {/* Recent Responses Table */}
-            <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-6 py-5 border-b border-border flex items-center justify-between">
-                    <h3 className="text-lg font-bold flex items-center gap-2">
-                        <IconTable size={20} className="text-primary" />
-                        Recent Responses
+            <div className="bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm">
+                <div className="px-6 py-5 border-b border-border/60 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+                        <IconTable size={18} className="text-muted-foreground" />
+                        Data Feed
                     </h3>
                 </div>
                 {responsesLoading && responses.length === 0 ? (
                     <div className="p-12 text-center text-muted-foreground bg-muted/10">
-                        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                        Loading responses...
+                        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                        Loading records...
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left table-auto border-separate border-spacing-0">
                             <thead>
-                                <tr className="bg-muted/50 text-muted-foreground text-[10px] uppercase tracking-wider font-bold">
-                                    <th className="px-6 py-4 border-b border-border z-20 min-w-[200px]">
+                                <tr className="bg-muted/30 text-muted-foreground text-xs font-medium">
+                                    <th className="px-6 py-3 border-b border-border/60 z-20 min-w-[200px]">
                                         <div className="flex items-center gap-2">
                                             <span>Respondent</span>
                                             <FilterPopover
@@ -613,7 +612,7 @@ export default function SurveyMetricsPage() {
                                             />
                                         </div>
                                     </th>
-                                    <th className="px-6 py-4 border-b border-border min-w-[150px]">
+                                    <th className="px-6 py-3 border-b border-border/60 min-w-[150px]">
                                         <div className="flex items-center gap-2">
                                             <span>Status / Outcome</span>
                                             <FilterPopover
@@ -633,7 +632,7 @@ export default function SurveyMetricsPage() {
                                             />
                                         </div>
                                     </th>
-                                    <th className="px-6 py-4 border-b border-border min-w-[100px]">
+                                    <th className="px-6 py-3 border-b border-border/60 min-w-[100px]">
                                         <div className="flex items-center gap-2">
                                             <span>Mode</span>
                                             <FilterPopover
@@ -649,46 +648,46 @@ export default function SurveyMetricsPage() {
                                         </div>
                                     </th>
                                     {finalDynamicHeaders.map((header: string) => (
-                                        <th key={header} className="px-6 py-4 border-b border-border min-w-[200px]">
+                                        <th key={header} className="px-6 py-3 border-b border-border/60 min-w-[200px]">
                                             <div className="flex flex-col gap-2">
                                                 <span className="truncate max-w-[180px]" title={header}>{header}</span>
                                             </div>
                                         </th>
                                     ))}
-                                    <th className="px-6 py-4 border-b border-border min-w-[100px]">Duration</th>
-                                    <th className="px-6 py-4 border-b border-border">Timestamp</th>
+                                    <th className="px-6 py-3 border-b border-border/60 min-w-[100px]">Duration</th>
+                                    <th className="px-6 py-3 border-b border-border/60">Timestamp</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-border">
+                            <tbody className="divide-y divide-border/60">
                                 {paginatedResponses.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5 + dynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground">
-                                            No responses recorded yet.
+                                        <td colSpan={5 + dynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground text-sm">
+                                            No records intercepted.
                                         </td>
                                     </tr>
                                 ) : (
                                     paginatedResponses.map((resp, idx) => (
-                                        <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-muted/30 transition-colors group">
-                                            <td className="px-6 py-4 border-b border-border">
+                                        <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-primary/5 transition-colors group">
+                                            <td className="px-6 py-3 border-b border-border/60 border-l-2 border-transparent group-hover:border-primary transition-colors">
                                                 <div className="flex flex-col">
-                                                    <span className="font-semibold text-sm">{resp.respondentId || "Anonymous"}</span>
-                                                    <span className="text-[10px] text-muted-foreground font-mono">{safeIdShort(resp.id)}...</span>
+                                                    <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{resp.respondentId || "Anonymous"}</span>
+                                                    <span className="text-xs text-muted-foreground opacity-80 font-mono">ID-{safeIdShort(resp.id)}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 border-b border-border">
+                                            <td className="px-6 py-3 border-b border-border/60">
                                                 <div className="flex flex-col gap-1">
                                                     <StatusBadge status={resp.status} />
                                                     {resp.outcome && (
-                                                        <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[150px]" title={resp.outcome}>
+                                                        <span className="text-xs text-muted-foreground truncate max-w-[150px]" title={resp.outcome}>
                                                             {resp.outcome}
                                                         </span>
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 border-b border-border">
+                                            <td className="px-6 py-3 border-b border-border/60">
                                                 <span className={cn(
-                                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                                    resp.mode === 'LIVE' ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                                                    "px-2 py-0.5 rounded-sm text-xs font-medium border",
+                                                    resp.mode === 'LIVE' ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-blue-50 text-blue-600 border-blue-200"
                                                 )}>
                                                     {resp.mode}
                                                 </span>
@@ -697,21 +696,21 @@ export default function SurveyMetricsPage() {
                                                 const displayValue = resp[header];
 
                                                 return (
-                                                    <td key={header} className="px-6 py-4 border-b border-border">
-                                                        <div className="text-sm font-medium text-foreground line-clamp-2" title={String(displayValue || '')}>
+                                                    <td key={header} className="px-6 py-3 border-b border-border/60">
+                                                        <div className="text-sm text-foreground line-clamp-2" title={String(displayValue || '')}>
                                                             {displayValue !== undefined && displayValue !== null && displayValue !== '' && displayValue !== '-' ? (
                                                                 displayValue
                                                             ) : (
-                                                                <span className="text-muted-foreground italic text-xs">N/A</span>
+                                                                <span className="text-muted-foreground opacity-50 block">-</span>
                                                             )}
                                                         </div>
                                                     </td>
                                                 );
                                             })}
-                                            <td className="px-6 py-4 border-b border-border text-sm font-medium text-muted-foreground">
+                                            <td className="px-6 py-3 border-b border-border/60 text-sm text-muted-foreground">
                                                 {resp.duration}
                                             </td>
-                                            <td className="px-6 py-4 text-xs text-muted-foreground border-b border-border whitespace-nowrap">
+                                            <td className="px-6 py-3 border-b border-border/60 text-sm text-muted-foreground whitespace-nowrap">
                                                 {safeDateTime(resp.createdAt)}
                                             </td>
                                         </tr>
@@ -790,14 +789,14 @@ function MetricCard({ title, value, icon, color }: { title: string, value: strin
     return (
         <motion.div
             whileHover={{ y: -4 }}
-            className="bg-card border border-border rounded-2xl p-6 shadow-sm flex items-center gap-6"
+            className="bg-background border border-border/60 rounded-xl p-5 shadow-sm flex items-center gap-4"
         >
-            <div className={cn("p-4 rounded-xl text-white shadow-lg", color)}>
+            <div className="p-2 text-muted-foreground">
                 {icon}
             </div>
             <div>
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{title}</p>
-                <h4 className="text-3xl font-black mt-1 leading-none">{value}</h4>
+                <p className="text-xs font-semibold text-muted-foreground mb-1">{title}</p>
+                <h4 className="text-2xl font-bold leading-none text-foreground">{value}</h4>
             </div>
         </motion.div>
     );
@@ -805,28 +804,29 @@ function MetricCard({ title, value, icon, color }: { title: string, value: strin
 
 function MiniMetricCard({ title, value, color }: { title: string, value: string | number, color: string }) {
     return (
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">{title}</p>
-            <h5 className={cn("text-xl font-black", color)}>{value}</h5>
+        <div className="bg-background border border-border/60 rounded-xl p-4 shadow-sm flex flex-col justify-end min-h-[80px]">
+            <p className="text-xs font-semibold text-muted-foreground mb-2">{title}</p>
+            <h5 className={cn("text-lg font-bold", color)}>{value}</h5>
         </div>
     );
 }
 
 function StatusBadge({ status }: { status: string }) {
+    // Map standard colors
     const variants: Record<string, string> = {
-        COMPLETED: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-        DROPPED: "bg-rose-500/10 text-rose-600 border-rose-500/20",
-        DISQUALIFIED: "bg-amber-500/10 text-amber-600 border-amber-500/20",
-        QUALITY_TERMINATE: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
-        SECURITY_TERMINATE: "bg-zinc-500/10 text-zinc-600 border-zinc-500/20",
-        OVER_QUOTA: "bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/20",
-        IN_PROGRESS: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+        COMPLETED: "bg-emerald-50 text-emerald-600 border-emerald-200",
+        DROPPED: "bg-rose-50 text-rose-600 border-rose-200",
+        DISQUALIFIED: "bg-amber-50 text-amber-600 border-amber-200",
+        QUALITY_TERMINATE: "bg-indigo-50 text-indigo-600 border-indigo-200",
+        SECURITY_TERMINATE: "bg-zinc-50 text-zinc-600 border-zinc-200",
+        OVER_QUOTA: "bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200",
+        IN_PROGRESS: "bg-blue-50 text-blue-600 border-blue-200",
     };
 
     return (
         <span className={cn(
-            "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shadow-sm",
-            variants[status] || "bg-gray-100 text-gray-600 border-gray-200"
+            "px-2 py-0.5 rounded-md text-[10px] uppercase font-semibold border shadow-sm w-fit",
+            variants[status] || "bg-muted text-muted-foreground border-border"
         )}>
             {String(status || "UNKNOWN").replace(/_/g, ' ')}
         </span>

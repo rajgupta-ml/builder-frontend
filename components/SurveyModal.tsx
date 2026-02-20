@@ -4,9 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { surveyApi } from "@/api/survey";
 import { toast } from "sonner";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconCheck, IconX, IconSettings } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "motion/react";
 import { createSurveySchema } from "@/src/shared/common";
+import { JetBrains_Mono } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const jetBrainsMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "700"] });
 
 interface NewSurveyModalProps {
     isOpen: boolean;
@@ -72,27 +76,29 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
 
                     {/* Modal Content */}
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        initial={{ opacity: 0, scale: 0.98, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        transition={{ type: "spring", duration: 0.5, bounce: 0.3 }}
-                        className="relative w-full max-w-xl bg-card border border-border shadow-xl rounded-3xl p-8 md:p-10 pointer-events-auto"
+                        exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                        transition={{ duration: 0.2 }}
+                        className="relative w-full max-w-lg bg-background border border-border/60 shadow-xl rounded-xl p-8 pointer-events-auto"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <button
                             onClick={onClose}
-                            className="absolute cursor-pointer top-6 right-6 p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-full transition-all"
+                            className="absolute cursor-pointer top-6 right-6 p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-all rounded-md"
                         >
-                            <IconX size={20} />
+                            <IconX size={18} strokeWidth={1.5} />
                         </button>
 
-                        <h2 className="text-3xl font-bold mb-2">Create New Survey</h2>
-                        <p className="text-muted-foreground mb-8">Fill in the details below to launch your new survey campaign.</p>
+                        <div className="mb-8">
+                            <h2 className="text-xl font-semibold mb-2 text-foreground">Create New Survey</h2>
+                            <p className="text-xs text-muted-foreground">Fill in the details below to initialize a new data collection task.</p>
+                        </div>
 
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            <div className="space-y-2">
-                                <label htmlFor="name" className="text-sm font-medium text-muted-foreground ml-1">
-                                    Survey Name
+                            <div className="space-y-1">
+                                <label htmlFor="name" className={`text-xs text-muted-foreground ${jetBrainsMono.className}`}>
+                                    SURVEY NAME
                                 </label>
                                 <input
                                     id="name"
@@ -101,13 +107,13 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     placeholder="e.g. Q1 Product Feedback"
-                                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                                    className="w-full bg-background border border-border/60 px-3 py-2 text-sm text-foreground rounded-md placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors mt-1"
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label htmlFor="client" className="text-sm font-medium text-muted-foreground ml-1">
-                                    Client Name
+                            <div className="space-y-1">
+                                <label htmlFor="client" className={`text-xs text-muted-foreground ${jetBrainsMono.className}`}>
+                                    CLIENT
                                 </label>
                                 <input
                                     id="client"
@@ -116,42 +122,42 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
                                     value={formData.client}
                                     onChange={(e) => setFormData({ ...formData, client: e.target.value })}
                                     placeholder="e.g. Acme Corp"
-                                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                                    className="w-full bg-background border border-border/60 px-3 py-2 text-sm text-foreground rounded-md placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors mt-1"
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label htmlFor="description" className="text-sm font-medium text-muted-foreground ml-1">
-                                    Description
+                            <div className="space-y-1">
+                                <label htmlFor="description" className={`text-xs text-muted-foreground ${jetBrainsMono.className}`}>
+                                    DESCRIPTION
                                 </label>
                                 <textarea
                                     id="description"
                                     rows={3}
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                                    placeholder="Describe the purpose of this survey..."
-                                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all resize-none"
+                                    placeholder="Describe the objective..."
+                                    className="w-full bg-background border border-border/60 px-3 py-2 text-sm text-foreground rounded-md placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors resize-none mt-1"
                                 />
                             </div>
 
-                            <div className="pt-4 flex gap-3">
+                            <div className="flex justify-end gap-3 pt-6 mt-2">
                                 <button
                                     type="button"
                                     onClick={onClose}
-                                    className="flex-1 px-6 cursor-pointer py-4 border border-border text-foreground font-bold rounded-xl hover:bg-accent transition-all active:scale-[0.98]"
+                                    className="px-5 py-2 border border-border/60 text-xs font-medium text-foreground hover:bg-muted transition-colors rounded-full"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-2 flex cursor-pointer items-center justify-center gap-2 bg-primary text-primary-foreground font-bold py-4 rounded-xl hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 shadow-sm"
+                                    className="flex items-center justify-center gap-2 bg-primary/10 text-primary px-5 py-2 text-xs font-medium hover:bg-primary/20 transition-colors disabled:opacity-50 rounded-full"
                                 >
                                     {loading ? (
-                                        <div className="h-5 w-5  border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin" />
+                                        <div className="h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                                     ) : (
                                         <>
-                                            <IconCheck size={20} />
+                                            <IconCheck size={16} strokeWidth={2} />
                                             Create Survey
                                         </>
                                     )}

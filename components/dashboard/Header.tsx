@@ -41,46 +41,25 @@ export const DashboardHeader = () => {
                 onSuccess={() => { }} // Modal handles redirect
             />
 
-            <header className="h-20 bg-background/50 backdrop-blur-md border-b border-border px-8 flex items-center justify-between sticky top-0 z-30">
-                <div className="flex-1 max-w-md">
-                    <div className="relative group">
-                        <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search surveys or respondents..."
-                            className="w-full bg-muted/50 border border-transparent focus:border-primary/20 focus:bg-background h-10 pl-10 pr-4 rounded-xl text-sm outline-none transition-all"
-                        />
-                    </div>
+            <header className="h-16 border-b border-border/60 flex items-center justify-between px-8 bg-background relative z-10 shrink-0">
+                <div className="flex items-center text-sm w-96">
+                    <IconSearch className="text-muted-foreground mr-3" size={16} />
+                    <input
+                        type="text"
+                        placeholder="Search records..."
+                        className="bg-transparent outline-none placeholder:text-muted-foreground/60 w-full"
+                    />
                 </div>
 
-                <div className="flex items-center gap-6">
+                <div className="flex gap-6 items-center">
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-wider rounded-lg hover:opacity-90 transition-all hover:scale-[1.02] active:scale-95 shadow-md shadow-primary/20"
+                        className="flex items-center gap-2 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-4 py-1.5 rounded-full"
                     >
-                        <IconPlus size={16} />
-                        New Survey
+                        <IconPlus size={14} /> New Survey
                     </button>
 
-                    <div className="h-6 w-px bg-border" />
-
-                    <div className="flex items-center gap-3 group cursor-pointer">
-                        <div className="text-right">
-                            <p className="text-xs font-bold tracking-tight">{user?.name || "User Name"}</p>
-                            <p className="text-[10px] text-muted-foreground">Premium Plan</p>
-                        </div>
-                        <div className="w-10 h-10 rounded-xl bg-muted border border-border flex items-center justify-center text-muted-foreground group-hover:border-primary/50 transition-colors bg-linear-to-br from-violet-500/10 to-indigo-500/10">
-                            <IconUserCircle size={24} />
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={handleLogout}
-                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
-                        title="Logout"
-                    >
-                        <IconLogout size={20} />
-                    </button>
+                    <div className="h-6 w-px bg-border/60" />
                 </div>
             </header>
         </>

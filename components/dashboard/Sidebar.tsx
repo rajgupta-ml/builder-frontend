@@ -2,22 +2,22 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { cn } from "@/lib/utils";
 import {
     IconLayoutDashboard,
-    IconClipboardList,
     IconChartBar,
-    IconSettings,
     IconUsers,
+    IconSettings,
     IconHelpCircle,
+    IconClipboardList,
     IconChevronLeft,
     IconChevronRight
 } from '@tabler/icons-react';
-import { cn } from '@/lib/utils';
-import { motion } from 'motion/react';
+import { jetBrainsMono } from '@/app/dashboard/layout';
 
 interface SidebarItemProps {
     href: string;
-    icon: React.ElementType;
+    icon: any;
     label: string;
     active?: boolean;
     collapsed?: boolean;
@@ -28,18 +28,18 @@ const SidebarItem = ({ href, icon: Icon, label, active, collapsed }: SidebarItem
         <Link
             href={href}
             className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group relative",
+                "flex items-center gap-3 px-3 py-2 text-sm transition-colors group relative border-l-2",
                 active
-                    ? "bg-primary text-primary-foreground shadow-md"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    ? "bg-primary/5 font-medium text-primary border-primary"
+                    : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             )}
         >
-            <Icon size={22} className={cn("shrink-0", active ? "text-white" : "group-hover:scale-110 transition-transform")} />
+            <Icon size={16} strokeWidth={2} className={cn("shrink-0", active ? "text-primary" : "")} />
             {!collapsed && (
-                <span className="font-semibold text-sm tracking-tight">{label}</span>
+                <span>{label}</span>
             )}
             {collapsed && (
-                <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded shadow-md opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap">
+                <div className="absolute left-full ml-2 px-2 py-1 bg-foreground text-background text-[10px] uppercase tracking-widest shadow-none opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap border border-border">
                     {label}
                 </div>
             )}
@@ -65,51 +65,67 @@ export const DashboardSidebar = () => {
     return (
         <aside
             className={cn(
-                "h-screen bg-card border-r border-border flex flex-col transition-all duration-300 relative z-40",
-                collapsed ? "w-[80px]" : "w-[260px]"
+                "h-screen bg-background border-r border-border/60 flex flex-col transition-all duration-300 relative z-40 shrink-0",
+                collapsed ? "w-[80px]" : "w-64"
             )}
         >
             {/* Logo Area */}
-            <div className="p-6 flex items-center gap-3 overflow-hidden">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0 shadow-lg shadow-primary/20">
-                    <IconLayoutDashboard className="text-white" size={18} />
-                </div>
+            <div className="h-16 flex items-center px-6 gap-3 overflow-hidden">
+                <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
                 {!collapsed && (
-                    <span className="font-black text-xl tracking-tighter uppercase italic">Survey Studio</span>
+                    <span className="font-medium tracking-tight">Survey_Studio</span>
                 )}
             </div>
 
             {/* Collapse Toggle */}
             <button
                 onClick={() => setCollapsed(!collapsed)}
-                className="absolute -right-3 top-20 w-6 h-6 bg-background border border-border rounded-full flex items-center justify-center shadow-sm hover:bg-muted transition-colors z-50"
+                className="absolute -right-3 top-20 w-6 h-6 bg-background border border-border/60 rounded-full flex items-center justify-center shadow-sm hover:bg-muted transition-colors z-50"
             >
                 {collapsed ? <IconChevronRight size={14} /> : <IconChevronLeft size={14} />}
             </button>
 
-            <nav className="flex-1 px-4 py-8 space-y-2">
-                <div className={cn("text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mb-4 px-2", collapsed && "text-center")}>
-                    {collapsed ? '...' : 'Menu'}
+            <nav className="py-6 flex-1 px-4 space-y-8">
+                <div>
+                    <div className={cn(`px-2 text-[10px] text-muted-foreground uppercase tracking-widest mb-3 ${jetBrainsMono.className}`, collapsed && "text-center")}>
+                        {collapsed ? 'DIR' : 'Directory'}
+                    </div>
+                    <div className="space-y-1">
+                        {menuItems.map((item) => (
+                            <SidebarItem
+                                key={item.href}
+                                {...item}
+                                active={pathname === item.href}
+                                collapsed={collapsed}
+                            />
+                        ))}
+                    </div>
                 </div>
-                {menuItems.map((item) => (
-                    <SidebarItem
-                        key={item.href}
-                        {...item}
-                        active={pathname === item.href}
-                        collapsed={collapsed}
-                    />
-                ))}
             </nav>
 
-            <div className="px-4 py-6 space-y-2 border-t border-border">
-                {bottomItems.map((item) => (
-                    <SidebarItem
-                        key={item.href}
-                        {...item}
-                        active={pathname === item.href}
-                        collapsed={collapsed}
-                    />
-                ))}
+            <div className="p-4 border-t border-border/60">
+                <div className="space-y-1">
+                    {bottomItems.map((item) => (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            className={cn(
+                                "flex items-center gap-3 px-3 py-2 text-sm transition-colors group relative border-l-2",
+                                pathname === item.href
+                                    ? "bg-primary/5 font-medium text-primary border-primary"
+                                    : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                            )}
+                        >
+                            <item.icon size={16} strokeWidth={2} />
+                            {!collapsed && <span>{item.label}</span>}
+                            {collapsed && (
+                                <div className="absolute left-full ml-2 px-2 py-1 bg-foreground text-background text-[10px] uppercase tracking-widest shadow-none opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 whitespace-nowrap border border-border">
+                                    {item.label}
+                                </div>
+                            )}
+                        </Link>
+                    ))}
+                </div>
             </div>
         </aside>
     );
