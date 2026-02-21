@@ -12,6 +12,7 @@ import {
 import { surveyApi } from '@/api/survey';
 import { surveyWorkflowApi } from '@/api/surveyWorkflow';
 import { quotaApi } from '@/api/quota';
+import { operationsApi } from '@/api/operations';
 import { toast } from 'sonner';
 import { Survey, SurveyQuota } from '@/src/shared/types/survey';
 import { hydrateNodeIds } from '@/lib/hydrateNodeIds';
@@ -309,7 +310,12 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
         else set({ isSyncingTest: true });
 
         try {
-            await surveyApi.publish(surveyId, mode);
+            const accepted = await surveyApi.publish(surveyId, mode);
+            const op = await operationsApi.waitForOperation(accepted.operationId);
+
+            if (op.status !== "SUCCEEDED") {
+                throw new Error(op.errorDetail || "Publish operation failed");
+            }
             
             // Refresh all data
             const [survey, versions] = await Promise.all([
@@ -324,7 +330,16 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             });
 
             if (mode === 'LIVE') toast.success("Successfully published to LIVE mode!");
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.code === "OPERATION_TIMEOUT") {
+                toast.info("Publish is still processing in background. We will refresh status shortly.");
+                try {
+                    await get().refreshSurveyData(surveyId);
+                } catch {
+                    // no-op
+                }
+                return;
+            }
             console.error("Publish failed", error);
             toast.error(toUserMessage(error, "Failed to publish survey"));
             reportApiError(error, { location: "useSurveyStore.publish", surveyId, mode });
@@ -336,11 +351,25 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
 
     pause: async (surveyId) => {
         try {
-            await surveyApi.pause(surveyId);
+            const accepted = await surveyApi.pause(surveyId);
+            const op = await operationsApi.waitForOperation(accepted.operationId);
+            if (op.status !== "SUCCEEDED") {
+                throw new Error(op.errorDetail || "Pause operation failed");
+            }
+
             const survey = await surveyApi.getSurvey(surveyId);
             set({ survey });
             toast.success("Survey Paused");
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.code === "OPERATION_TIMEOUT") {
+                toast.info("Pause is still processing. Refreshing shortly.");
+                try {
+                    await get().refreshSurveyData(surveyId);
+                } catch {
+                    // no-op
+                }
+                return;
+            }
             toast.error(toUserMessage(error, "Failed to pause"));
             reportApiError(error, { location: "useSurveyStore.pause", surveyId });
         }
@@ -348,11 +377,25 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
 
     close: async (surveyId) => {
         try {
-            await surveyApi.close(surveyId);
+            const accepted = await surveyApi.close(surveyId);
+            const op = await operationsApi.waitForOperation(accepted.operationId);
+            if (op.status !== "SUCCEEDED") {
+                throw new Error(op.errorDetail || "Close operation failed");
+            }
+
             const survey = await surveyApi.getSurvey(surveyId);
             set({ survey });
             toast.success("Survey Closed");
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.code === "OPERATION_TIMEOUT") {
+                toast.info("Close is still processing. Refreshing shortly.");
+                try {
+                    await get().refreshSurveyData(surveyId);
+                } catch {
+                    // no-op
+                }
+                return;
+            }
             toast.error(toUserMessage(error, "Failed to close"));
             reportApiError(error, { location: "useSurveyStore.close", surveyId });
         }
@@ -360,11 +403,25 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
 
     resume: async (surveyId) => {
         try {
-            await surveyApi.publish(surveyId, 'LIVE');
+            const accepted = await surveyApi.publish(surveyId, 'LIVE');
+            const op = await operationsApi.waitForOperation(accepted.operationId);
+            if (op.status !== "SUCCEEDED") {
+                throw new Error(op.errorDetail || "Resume operation failed");
+            }
+
             const survey = await surveyApi.getSurvey(surveyId);
             set({ survey });
             toast.success("Survey Resumed");
         } catch (error) {
+            if ((error as any)?.code === "OPERATION_TIMEOUT") {
+                toast.info("Resume is still processing. Refreshing shortly.");
+                try {
+                    await get().refreshSurveyData(surveyId);
+                } catch {
+                    // no-op
+                }
+                return;
+            }
             toast.error(toUserMessage(error, "Failed to resume"));
             reportApiError(error, { location: "useSurveyStore.resume", surveyId });
         }

@@ -210,7 +210,8 @@ export const validateWorkflow = (nodes: Node[], edges: Edge[]): { isValid: boole
     });
 
     return {
-        isValid: errors.length === 0,
+        // Only hard errors should block publish; warnings are informational.
+        isValid: errors.every((issue) => issue.type !== 'error'),
         errors
     };
 };

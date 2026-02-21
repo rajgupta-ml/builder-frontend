@@ -3,6 +3,7 @@ import { toUserMessage } from "@/lib/api-error";
 import { toast } from "sonner";
 import { z } from "zod";
 import { reportError } from "@/lib/error-reporter";
+import type { AcceptedOperation } from "./survey";
 
 type RequestOptions = {
     signal?: AbortSignal;
@@ -52,9 +53,9 @@ export const surveyResponseApi = {
         return parsed.data.data;
     },
 
-    forceResync: async (surveyId: string, payload?: { full?: boolean; limit?: number; async?: boolean }) => {
+    forceResync: async (surveyId: string, payload?: { full?: boolean; limit?: number; async?: boolean }): Promise<AcceptedOperation> => {
         const response = await apiClient.post(`/responses/resync/${surveyId}`, payload || {});
-        return response.data?.data;
+        return response.data?.data as AcceptedOperation;
     },
 
     getResyncStatus: async (surveyId: string) => {

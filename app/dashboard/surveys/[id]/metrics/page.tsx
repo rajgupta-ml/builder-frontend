@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { surveyApi } from "@/api/survey";
 import { Survey } from "@/src/shared/types/survey";
 import { surveyResponseApi } from "@/api/surveyResponse";
+import { operationsApi } from "@/api/operations";
 import { toast } from "sonner";
 import {
     IconClick,
@@ -160,43 +161,30 @@ export default function SurveyMetricsPage() {
     const canExport = hasPermission(userRole, PERMISSIONS.RESPONSE_EXPORT);
     const canResync = hasPermission(userRole, PERMISSIONS.RESPONSE_RESYNC);
 
-    const pollResyncCompletion = async (surveyId: string, maxAttempts = 40, intervalMs = 1500) => {
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            const snapshot = await surveyResponseApi.getResyncStatus(surveyId);
-            const status = snapshot?.status?.status;
-            if (status === "completed" || status === "failed") {
-                return snapshot;
-            }
-            await new Promise((resolve) => setTimeout(resolve, intervalMs));
-        }
-        return null;
-    };
-
     const handleForceResync = async () => {
         if (!id || resyncing) return;
         try {
             setResyncing(true);
-            const queued = await surveyResponseApi.forceResync(id, { full: false, limit: 300, async: true });
-            if (queued?.alreadyRunning) {
-                toast.info("Resync already running. Waiting for latest status...");
-            } else if (queued?.accepted) {
-                toast.info("Resync started. Waiting for completion...");
-            } else {
-                toast.warning(`Resync was not started: ${queued?.reason || "unknown reason"}`);
-                return;
-            }
+            const accepted = await surveyResponseApi.forceResync(id, { full: false, limit: 300, async: true });
+            toast.info("Resync started. Waiting for completion...");
 
-            const finalSnapshot = await pollResyncCompletion(id);
-            const final = finalSnapshot?.status;
-            if (!final) {
-                toast.warning("Resync is still running in background. Check status again in a few seconds.");
-            } else if (final.status === "completed") {
-                toast.success(`Resync complete: applied ${final.applied || 0}, skipped ${final.skipped || 0}, failed ${final.failed || 0}`);
+            const finalOperation = await operationsApi.waitForOperation(accepted.operationId, {
+                timeoutMs: 120000,
+                intervalMs: 1500,
+            });
+            if (finalOperation.status === "SUCCEEDED") {
+                const payload = (finalOperation.resultPayload || {}) as any;
+                toast.success(`Resync complete: applied ${payload.applied || 0}, skipped ${payload.skipped || 0}, failed ${payload.failed || 0}`);
             } else {
-                toast.warning(`Resync finished with issues: ${final.reason || "unknown reason"}`);
+                toast.warning(`Resync finished with issues: ${finalOperation.errorDetail || "unknown reason"}`);
             }
             await fetchData();
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.code === "OPERATION_TIMEOUT") {
+                toast.warning("Resync is still running in background. Check status again in a few seconds.");
+                await fetchData();
+                return;
+            }
             toast.error(toUserMessage(error, "Failed to resync survey data"));
         } finally {
             setResyncing(false);

@@ -1,6 +1,7 @@
 
 import { useState, useRef } from "react";
 import { reconcileApi } from "@/api/reconcile";
+import { operationsApi } from "@/api/operations";
 import { toast } from "sonner";
 import { IconAlertTriangle, IconLoader, IconCheck, IconUpload, IconFileSpreadsheet, IconX } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -102,10 +103,28 @@ export const ReconcileResponseModal = ({
 
         setLoading(true);
         try {
-            const data = await reconcileApi.disqualifyResponses(surveyId, parsedIds);
-            setResult(data);
+            const accepted = await reconcileApi.disqualifyResponses(surveyId, parsedIds);
+            const op = await operationsApi.waitForOperation(accepted.operationId, {
+                timeoutMs: 120000,
+                intervalMs: 1500,
+            });
+
+            if (op.status !== "SUCCEEDED") {
+                throw new Error(op.errorDetail || "Disqualification failed");
+            }
+
+            const data = (op.resultPayload || {}) as any;
+            setResult({
+                success: true,
+                message: `Successfully disqualified ${data.decrementedCompleted || 0} responses.`,
+                data
+            });
             toast.success("Responses disqualified successfully");
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.code === "OPERATION_TIMEOUT") {
+                toast.info("Disqualification is still processing in background.");
+                return;
+            }
             console.error("Disqualification failed:", error);
             toast.error("Failed to disqualify responses");
         } finally {

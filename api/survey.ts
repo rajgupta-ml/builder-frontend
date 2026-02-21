@@ -8,6 +8,13 @@ type RequestOptions = {
   signal?: AbortSignal;
 };
 
+export interface AcceptedOperation {
+  operationId: string;
+  operationType: string;
+  status: "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+  acceptedAt: string;
+}
+
 export const surveyApi = {
   // Done
   getSurveys: async (options?: RequestOptions): Promise<Surveys[]> => {
@@ -64,28 +71,39 @@ export const surveyApi = {
     await apiClient.delete(`/surveys/${id}`);
   },
 
-  publish: async (surveyId: string, mode: 'LIVE' | 'TEST'): Promise<any> => {
+  publish: async (surveyId: string, mode: 'LIVE' | 'TEST'): Promise<AcceptedOperation> => {
         const response = await apiClient.post(`/surveys/${surveyId}/publish`, { mode }, {
           headers: {
             "Idempotency-Key": createIdempotencyKey(`publish-${surveyId}-${mode.toLowerCase()}`),
           },
         });
-        return response.data;
+        return response.data?.data as AcceptedOperation;
     },
   
-    pause: async (surveyId: string): Promise<void> => {
-        await apiClient.post(`/surveys/${surveyId}/pause`, {}, {
+    pause: async (surveyId: string): Promise<AcceptedOperation> => {
+        const response = await apiClient.post(`/surveys/${surveyId}/pause`, {}, {
           headers: {
             "Idempotency-Key": createIdempotencyKey(`pause-${surveyId}`),
           },
         });
+        return response.data?.data as AcceptedOperation;
     },
   
-    close: async (surveyId: string): Promise<void> => {
-        await apiClient.post(`/surveys/${surveyId}/close`, {}, {
+    close: async (surveyId: string): Promise<AcceptedOperation> => {
+        const response = await apiClient.post(`/surveys/${surveyId}/close`, {}, {
           headers: {
             "Idempotency-Key": createIdempotencyKey(`close-${surveyId}`),
           },
         });
+        return response.data?.data as AcceptedOperation;
+    },
+
+    unpublish: async (surveyId: string): Promise<AcceptedOperation> => {
+        const response = await apiClient.post(`/surveys/${surveyId}/unpublish`, {}, {
+          headers: {
+            "Idempotency-Key": createIdempotencyKey(`unpublish-${surveyId}`),
+          },
+        });
+        return response.data?.data as AcceptedOperation;
     }
   };
