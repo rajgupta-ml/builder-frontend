@@ -16,6 +16,7 @@ import { useUnsavedChangesGuard } from '@/src/hooks/useUnsavedChangesGuard';
 import { EditorHeader } from '@/components/editor/EditorHeader';
 import { EditorCanvas } from '@/components/editor/EditorCanvas';
 import { ShareModal } from '@/components/editor/ShareModal';
+import { AiImportModal } from '@/components/editor/AiImportModal';
 import { ValidationDrawer } from '@/components/editor/ValidationDrawer';
 import { OnboardingChecklist } from '@/components/editor/OnboardingChecklist';
 import { validateWorkflow } from '@/lib/validate-workflow';
@@ -125,6 +126,8 @@ function SurveyFlow() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
+    const [isAiImportOpen, setIsAiImportOpen] = useState(false);
+    const [aiImportStatus, setAiImportStatus] = useState<"IDLE" | "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED">("IDLE");
     const [nodeViewerOpenSignal, setNodeViewerOpenSignal] = useState(0);
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -360,6 +363,8 @@ function SurveyFlow() {
                     setIsQuotaOpen={setIsQuotaOpen}
                     setIsSettingsOpen={setIsSettingsOpen}
                     setIsShareOpen={setIsShareOpen}
+                    setIsAiImportOpen={setIsAiImportOpen}
+                    aiImportStatus={aiImportStatus}
                     confirmNavigation={confirmNavigation}
                     onRunTest={() => {
                         if (typeof window !== 'undefined' && surveyId) {
@@ -377,6 +382,18 @@ function SurveyFlow() {
                 testLink={testLink}
                 liveLink={liveLink}
                 isLive={isLive}
+            />
+            <AiImportModal
+                isOpen={isAiImportOpen}
+                onClose={() => setIsAiImportOpen(false)}
+                surveyId={surveyId || ""}
+                onImported={() => {
+                    refreshSurveyData(surveyId || "");
+                    if (surveyId) {
+                        loadSurveyData(surveyId);
+                    }
+                }}
+                onStatusChange={setAiImportStatus}
             />
 
             {/* Right Sidebar: Properties Panel */}

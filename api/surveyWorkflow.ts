@@ -8,6 +8,42 @@ type RequestOptions = {
     signal?: AbortSignal;
 };
 
+type WorkflowImportStatus = "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED";
+
+export interface WorkflowImportJobStatus {
+    id: string;
+    surveyId: string;
+    status: WorkflowImportStatus;
+    sourceFileName: string;
+    sourceFileMime: string;
+    sourceFileBytes: number;
+    warnings: string[];
+    assumptions: string[];
+    mappingReport: string[];
+    errorCode: string | null;
+    errorDetail: string | null;
+    resultWorkflowId: string | null;
+    createdAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    updatedAt: string;
+    qualityScore: number;
+    selectedStrategy: "primary_model" | "deterministic_rebuild" | "reasoning_retry";
+    branchRulesDetected: number;
+    branchRulesApplied: number;
+    skipConditionsDetected: number;
+    skipConditionsApplied: number;
+    legacyWhenParsedCount: number;
+    ambiguousLogicCount: number;
+    placeholderLabelCount: number;
+    emptyChoiceNodeCount: number;
+    debug?: {
+        canonical: unknown;
+        candidates: unknown;
+        selectedCandidate: unknown;
+    };
+}
+
 export const surveyWorkflowApi = {
     getLatestWorkflowBySurveyId: async (surveyId: string, options?: RequestOptions): Promise<SurveyWorkflow> => {
         const response = await apiClient.get(`/workflows/${surveyId}/latest`, options)
@@ -98,5 +134,68 @@ export const surveyWorkflowApi = {
         }
         
         return data;
-    }
+    },
+    createAiImportJob: async (payload: {
+        surveyId: string;
+        fileName: string;
+        mimeType: string;
+        fileBase64: string;
+        languageHint?: string;
+        mode?: "AUTO" | "LIVE" | "TEST";
+        strictLogic?: boolean;
+    }): Promise<{ jobId: string; status: WorkflowImportStatus }> => {
+        const response = await apiClient.post("/workflows/import-ai", payload);
+        const parsed = z.object({
+            data: z.object({
+                jobId: z.string(),
+                status: z.enum(["QUEUED", "PROCESSING", "SUCCEEDED", "FAILED"]),
+            }),
+        }).safeParse(response.data);
+
+        if (!parsed.success) {
+            throw new Error("Invalid AI import create response");
+        }
+        return parsed.data.data;
+    },
+    getAiImportJob: async (jobId: string): Promise<WorkflowImportJobStatus> => {
+        const response = await apiClient.get(`/workflows/import-ai/${jobId}`);
+        const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
+        if (!parsed.success) {
+            throw new Error("Invalid AI import status response");
+        }
+        return parsed.data.data as WorkflowImportJobStatus;
+    },
+    getAiImportResult: async (jobId: string): Promise<{
+        jobId: string;
+        status: WorkflowImportStatus;
+        warnings: string[];
+        assumptions: string[];
+        mappingReport: string[];
+        errorCode: string | null;
+        errorDetail: string | null;
+        workflowId: string | null;
+        completedAt: string | null;
+        qualityScore: number;
+        selectedStrategy: "primary_model" | "deterministic_rebuild" | "reasoning_retry";
+        branchRulesDetected: number;
+        branchRulesApplied: number;
+        skipConditionsDetected: number;
+        skipConditionsApplied: number;
+        legacyWhenParsedCount: number;
+        ambiguousLogicCount: number;
+        placeholderLabelCount: number;
+        emptyChoiceNodeCount: number;
+        debug?: {
+            canonical: unknown;
+            candidates: unknown;
+            selectedCandidate: unknown;
+        };
+    }> => {
+        const response = await apiClient.get(`/workflows/import-ai/${jobId}/result`);
+        const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
+        if (!parsed.success) {
+            throw new Error("Invalid AI import result response");
+        }
+        return parsed.data.data as any;
+    },
 }

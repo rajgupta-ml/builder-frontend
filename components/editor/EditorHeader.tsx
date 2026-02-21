@@ -13,7 +13,8 @@ import {
     IconHistory,
     IconPlayerPause,
     IconBan,
-    IconDotsVertical
+    IconDotsVertical,
+    IconSparkles
 } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
@@ -27,6 +28,8 @@ interface EditorHeaderProps {
     setIsQuotaOpen: (open: boolean) => void;
     setIsSettingsOpen: (open: boolean) => void;
     setIsShareOpen: (open: boolean) => void;
+    setIsAiImportOpen: (open: boolean) => void;
+    aiImportStatus?: "IDLE" | "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED";
     confirmNavigation?: () => boolean;
     onRunTest?: () => void;
 }
@@ -36,6 +39,8 @@ export function EditorHeader({
     setIsQuotaOpen,
     setIsSettingsOpen,
     setIsShareOpen,
+    setIsAiImportOpen,
+    aiImportStatus = "IDLE",
     confirmNavigation = () => true,
     onRunTest
 }: EditorHeaderProps) {
@@ -172,6 +177,13 @@ export function EditorHeader({
                 </div>
             )}
 
+            {(aiImportStatus === "QUEUED" || aiImportStatus === "PROCESSING") && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 backdrop-blur-sm rounded-full shadow-sm text-xs font-medium transition-all mr-2">
+                    <IconLoader2 className="animate-spin text-blue-600" size={14} />
+                    <span className="text-blue-700">AI Import Running</span>
+                </div>
+            )}
+
             {/* Primary Action */}
             {canRunTest && (
                 <button
@@ -253,6 +265,17 @@ export function EditorHeader({
                             >
                                 <IconShare size={15} />
                                 Share
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsActionsDropdownOpen(false);
+                                    setIsAiImportOpen(true);
+                                }}
+                                disabled={isReadOnly}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <IconSparkles size={15} className="text-primary" />
+                                Import Questionnaire (AI)
                             </button>
                             {canPublishLive && <div className="border-t border-border my-1" />}
                             {canPublishLive && survey?.status === 'PAUSED' ? (

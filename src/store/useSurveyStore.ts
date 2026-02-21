@@ -194,6 +194,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 workflowId: workflow?.id || null,
                 nodes: hydratedNodes,
                 edges: workflow?.designJson?.edges || [],
+                isReadOnly: false,
+                selectedVersionId: null,
                 hasChanges: hasDbChanges,
                 loadError: null,
                 lastSavedAt: null,

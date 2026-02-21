@@ -124,12 +124,6 @@ export const validateWorkflow = (nodes: Node[], edges: Edge[]): { isValid: boole
 
     // 6. Node-Specific Logical Checks
     nodes.forEach(node => {
-        if (node.type === 'end') {
-            if (!node.data.redirectUrl) {
-                errors.push({ type: 'error', message: 'End node must have a Redirect URL.', nodeId: node.id });
-            }
-        }
-
         if (node.type === 'branch') {
             const condition = node.data.condition as any;
             if (!condition || !condition.children || condition.children.length === 0) {
