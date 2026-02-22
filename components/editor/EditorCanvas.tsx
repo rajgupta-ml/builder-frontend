@@ -1,5 +1,5 @@
 "use client"
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
     ReactFlow,
     Background,
@@ -64,6 +64,20 @@ export function EditorCanvas() {
     const onPaneClick = useCallback(() => {
         setSelectedNodeId(null);
     }, [setSelectedNodeId]);
+
+    const { duplicateNode } = useSurveyStore();
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+                e.preventDefault();
+                duplicateNode();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [duplicateNode]);
 
     return (
         <div className="flex-1 h-full relative border-r border-border" onDragOver={onDragOver} onDrop={onDrop}>

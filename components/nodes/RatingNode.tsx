@@ -6,7 +6,8 @@ import { IconStar } from '@tabler/icons-react';
 const RatingNode = (props: NodeProps<any>) => {
     const { label, description, maxRating, items } = props.data;
     const max = maxRating || 5;
-    const ratingItems = items || (label ? [{ label: label, value: 'q1' }] : []);
+    const hasCustomItems = Array.isArray(items) && items.length > 0;
+    const ratingItems = hasCustomItems ? items : [{ label: 'Rating', value: 'default' }];
 
     return (
         <BaseNode
@@ -16,25 +17,29 @@ const RatingNode = (props: NodeProps<any>) => {
             icon={IconStar}
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-3">
+            <div className="space-y-4">
                 <div className="space-y-1">
-                    <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                        {label || "Rating Matrix"}
-                    </p>
+                    <label className="text-sm font-medium text-foreground">
+                        {label || "Rating Question"}
+                    </label>
                     {description && (
-                        <p className="text-[10px] text-muted-foreground italic truncate">{description}</p>
+                        <p className="text-xs text-muted-foreground">{description}</p>
                     )}
                 </div>
 
-                <div className="space-y-2 border-t border-border/50 pt-2">
+                <div className="space-y-4">
                     {ratingItems.length > 0 ? (
                         ratingItems.map((item: any, idx: number) => (
-                            <div key={idx} className="space-y-1">
-                                <p className="text-[10px] font-medium text-foreground truncate">{item.label}</p>
-                                <div className="flex gap-0.5">
+                            <div key={idx} className="space-y-2">
+                                {hasCustomItems && (
+                                    <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                                )}
+                                <div className="px-1 py-2">
+                                    <div className="flex gap-1.5">
                                     {Array.from({ length: max }).map((_, i) => (
-                                        <IconStar key={i} size={12} className="text-muted-foreground/30" />
+                                            <IconStar key={i} size={13} className="text-muted-foreground/30" />
                                     ))}
+                                    </div>
                                 </div>
                             </div>
                         ))

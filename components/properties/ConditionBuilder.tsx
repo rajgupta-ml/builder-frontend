@@ -267,7 +267,7 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
             < div className={cn("space-y-2", isRoot ? "mt-2" : "mt-2 pl-1 border-l-2 border-border/30")} >
                 {
                     group.children.length === 0 && (
-                        <div className="text-[10px] italic text-muted-foreground py-2 px-2">No conditions added. Always TRUE.</div>
+                        <div className="text-[10px] italic text-muted-foreground py-2 px-2">No logic added. This question will always be shown.</div>
                     )
                 }
 

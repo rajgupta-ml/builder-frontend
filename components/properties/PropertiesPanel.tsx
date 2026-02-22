@@ -93,10 +93,10 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
                     });
 
                     // Group properties by category
-                    const basicFields = ['label', 'description', 'questionLabel', 'url', 'urls'];
-                    const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps'];
-                    const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices'];
-                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords'];
+                    const basicFields = ['label', 'description', 'questionLabel', 'url', 'urls', 'fields', 'isPii', 'welcomeMessage', 'message', 'buttonLabel', 'thankYouMessage'];
+                    const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps', 'allowedZips'];
+                    const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices', 'multiple', 'maxRating', 'maxStars'];
+                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords', 'longAnswer', 'sitekey', 'redirectUrl', 'outcome', 'alt', 'interactionType', 'sliderConfig', 'autoplay'];
                     const logicFields = ['condition'];
 
                     const groupedProperties = {
@@ -172,13 +172,18 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
                                                             const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
                                                             if (lines.length > 0) {
                                                                 const newOptions = lines.map((l, i) => ({ label: l, value: `opt${Date.now()}_${i}` }));
-                                                                onChange('options', newOptions);
+                                                                // Find the primary options-type field in this node
+                                                                const optionsField = definition.properties.find(p => p.type === 'options');
+                                                                if (optionsField) {
+                                                                    onChange(optionsField.name, newOptions);
+                                                                }
                                                             }
                                                         }
                                                         onChange(field.name, val);
                                                     }}
                                                     nodes={nodes}
                                                     readOnly={readOnly}
+                                                    nodeType={node.type}
                                                 />
 
                                                 {field.helperText && (
@@ -215,7 +220,21 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
 }
 
 
-function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: PropertyField, value: any, onChange: (val: any) => void, nodes: Node[], readOnly?: boolean }) {
+function FieldRenderer({
+    field,
+    value,
+    onChange,
+    nodes,
+    readOnly,
+    nodeType
+}: {
+    field: PropertyField,
+    value: any,
+    onChange: (val: any) => void,
+    nodes: Node[],
+    readOnly?: boolean,
+    nodeType?: string
+}) {
     if (readOnly) {
         // Logic fields and complex builders should be disabled
         if (['condition', 'stepBuilder', 'emojiOptions'].includes(field.type)) {
@@ -234,6 +253,13 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                     value={value || { field: '', operator: 'equals', value: '' }}
                     onChange={onChange}
                     nodes={nodes}
+                />
+            );
+        case 'stepBuilder':
+            return (
+                <StepsBuilder
+                    value={value || []}
+                    onChange={onChange}
                 />
             );
         case 'text':
@@ -440,111 +466,153 @@ function FieldRenderer({ field, value, onChange, nodes, readOnly }: { field: Pro
                 </div>
             );
         case 'options':
+            const optionValues = Array.isArray(value) ? value : [];
+            const isRatingItemsField = nodeType === 'rating' && field.name === 'items';
+            const handleOptionImageUpload = async (index: number) => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (!file) return;
+
+                    try {
+                        const res = await apiClient.post('/storage/upload-url', {
+                            filename: file.name,
+                            fileType: file.type
+                        });
+                        const { uploadUrl, key } = res.data;
+
+                        const upload = await fetch(uploadUrl, {
+                            method: 'PUT',
+                            body: file,
+                            headers: { 'Content-Type': file.type }
+                        });
+
+                        if (!upload.ok) throw new Error("Failed to upload image");
+
+                        const newOptions = [...optionValues];
+                        newOptions[index] = { ...newOptions[index], imageUrl: key };
+                        onChange(newOptions);
+                    } catch (err) {
+                        console.error("Upload failed", err);
+                        alert("Upload failed. Please try again.");
+                    }
+                };
+                input.click();
+            };
+
             return (
                 <div className="space-y-2">
-                    {(value || []).map((option: any, index: number) => (
-                        <div key={index} className="flex flex-col gap-2 p-2 border rounded-md bg-muted/5">
-                            <div className="flex gap-2">
+                    {optionValues.map((option: any, index: number) => (
+                        <div key={index} className="flex flex-col gap-1.5 p-2 rounded-lg border border-border bg-muted/5 group">
+                            <div className="flex gap-1 items-center">
                                 <input
                                     type="text"
                                     disabled={readOnly}
                                     value={option.label}
                                     onChange={(e) => {
-                                        const newOptions = [...value];
+                                        const newOptions = [...optionValues];
                                         newOptions[index] = { ...newOptions[index], label: e.target.value };
                                         onChange(newOptions);
                                     }}
-                                    className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                                    placeholder={`Option ${index + 1}`}
+                                    className="flex-1 px-3 py-1.5 text-sm bg-background border border-input rounded-md focus:ring-1 focus:ring-primary outline-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+                                    placeholder={isRatingItemsField ? `Item ${index + 1}` : `Option ${index + 1}`}
                                 />
                                 {!readOnly && (
-                                    <button
-                                        onClick={() => {
-                                            const newOptions = value.filter((_: any, i: number) => i !== index);
-                                            onChange(newOptions);
-                                        }}
-                                        className="p-2 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                                    >
-                                        <IconTrash size={14} />
-                                    </button>
+                                    <div className="flex items-center shrink-0">
+                                        <button
+                                            onClick={() => handleOptionImageUpload(index)}
+                                            className={cn(
+                                                "p-2 transition-colors rounded-md hover:bg-muted",
+                                                option.imageUrl ? "text-primary" : "text-muted-foreground hover:text-primary"
+                                            )}
+                                            title={option.imageUrl ? "Change Image" : "Add Image"}
+                                        >
+                                            <IconPhoto size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const newOptions = optionValues.filter((_: any, i: number) => i !== index);
+                                                onChange(newOptions);
+                                            }}
+                                            className="p-2 text-muted-foreground hover:text-destructive transition-colors rounded-md hover:bg-muted"
+                                            title="Delete Option"
+                                        >
+                                            <IconTrash size={16} />
+                                        </button>
+                                    </div>
                                 )}
                             </div>
 
-                            {!readOnly && (
-                                <div className="flex flex-col gap-2 p-2 border border-dashed rounded-md bg-muted/20">
-                                    <div className="flex items-center gap-2">
+                            {option.imageUrl && (
+                                <div className="relative group/preview mx-1 mb-1">
+                                    <MediaPreview
+                                        storageKey={option.imageUrl}
+                                        type="image"
+                                        className="w-full h-24 rounded-md object-cover border border-border bg-white"
+                                    />
+                                    {!readOnly && (
                                         <button
                                             onClick={() => {
-                                                const input = document.createElement('input');
-                                                input.type = 'file';
-                                                input.accept = 'image/*';
-                                                input.onchange = async (e) => {
-                                                    const file = (e.target as HTMLInputElement).files?.[0];
-                                                    if (!file) return;
-
-                                                    try {
-                                                        const res = await apiClient.post('/storage/upload-url', {
-                                                            filename: file.name,
-                                                            fileType: file.type
-                                                        });
-                                                        const { uploadUrl, key } = res.data;
-
-                                                        const upload = await fetch(uploadUrl, {
-                                                            method: 'PUT',
-                                                            body: file,
-                                                            headers: { 'Content-Type': file.type }
-                                                        });
-
-                                                        if (!upload.ok) throw new Error("Failed to upload image");
-
-                                                        const newOptions = [...value];
-                                                        newOptions[index] = { ...newOptions[index], imageUrl: key };
-                                                        onChange(newOptions);
-                                                    } catch (err) {
-                                                        console.error("Upload failed", err);
-                                                        alert("Upload failed. Please try again.");
-                                                    }
-                                                };
-                                                input.click();
+                                                const newOptions = [...optionValues];
+                                                const updatedOption = { ...newOptions[index] };
+                                                delete updatedOption.imageUrl;
+                                                newOptions[index] = updatedOption;
+                                                onChange(newOptions);
                                             }}
-                                            className="flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
+                                            className="absolute top-1 right-1 p-1.5 bg-destructive/90 text-white rounded-full opacity-0 group-hover/preview:opacity-100 transition-opacity shadow-sm hover:bg-destructive"
+                                            title="Remove Image"
                                         >
-                                            <IconPhoto size={12} />
-                                            {option.imageUrl ? "Change Image" : "Add Image"}
+                                            <IconTrash size={12} />
                                         </button>
-                                        {option.imageUrl && (
-                                            <button
-                                                onClick={() => {
-                                                    const newOptions = [...value];
-                                                    const updatedOption = { ...newOptions[index] };
-                                                    delete updatedOption.imageUrl;
-                                                    newOptions[index] = updatedOption;
-                                                    onChange(newOptions);
-                                                }}
-                                                className="text-[10px] text-muted-foreground hover:text-destructive"
-                                            >
-                                                Remove
-                                            </button>
-                                        )}
-                                    </div>
-                                    {option.imageUrl && (
-                                        <MediaPreview
-                                            storageKey={option.imageUrl}
-                                            type="image"
-                                            className="w-full h-20 rounded-sm"
-                                        />
                                     )}
                                 </div>
                             )}
                         </div>
                     ))}
                     {!readOnly && (
-                        <button
-                            onClick={() => onChange([...(value || []), { label: `Option ${(value?.length || 0) + 1}`, value: `opt${Date.now()}` }])}
-                            className="text-xs text-primary hover:underline"
-                        >
-                            + Add Option
-                        </button>
+                        (optionValues.length > 0) ? (
+                            <button
+                                onClick={() => onChange([
+                                    ...optionValues,
+                                    {
+                                        label: isRatingItemsField ? `Item ${optionValues.length + 1}` : `Option ${optionValues.length + 1}`,
+                                        value: isRatingItemsField ? `item${Date.now()}` : `opt${Date.now()}`
+                                    }
+                                ])}
+                                className="text-xs text-primary hover:underline font-medium py-1 px-2"
+                            >
+                                {isRatingItemsField ? '+ Add Item' : '+ Add Option'}
+                            </button>
+                        ) : (
+                            isRatingItemsField ? (
+                                <button
+                                    onClick={() => onChange([
+                                        { label: 'Overall Rating', value: `item${Date.now()}_overall` },
+                                        { label: 'Item 2', value: `item${Date.now()}_2` }
+                                    ])}
+                                    className="w-full flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-border rounded-lg hover:bg-muted/50 hover:border-primary/50 transition-all text-muted-foreground hover:text-primary group"
+                                >
+                                    <div className="p-2 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-colors">
+                                        <IconPlus size={20} className="text-primary" />
+                                    </div>
+                                    <span className="text-sm font-medium">Add Another Rating Item</span>
+                                    <p className="text-[10px] opacity-70">Default rating uses the Field Label automatically</p>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => onChange([{ label: 'Option 1', value: `opt${Date.now()}` }])}
+                                    className="w-full flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-border rounded-lg hover:bg-muted/50 hover:border-primary/50 transition-all text-muted-foreground hover:text-primary group"
+                                >
+                                    <div className="p-2 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-colors">
+                                        <IconPlus size={20} className="text-primary" />
+                                    </div>
+                                    <span className="text-sm font-medium">Add Your First Option</span>
+                                    <p className="text-[10px] opacity-70">Click to start building your list</p>
+                                </button>
+                            )
+                        )
                     )}
                 </div>
             );

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { 
-    type Node as ReactFlowNode, 
+import {
+    type Node as ReactFlowNode,
     type Edge as ReactFlowEdge,
     applyNodeChanges,
     applyEdgeChanges,
@@ -18,6 +18,7 @@ import { Survey, SurveyQuota } from '@/src/shared/types/survey';
 import { hydrateNodeIds } from '@/lib/hydrateNodeIds';
 import { toUserMessage } from '@/lib/api-error';
 import { reportApiError } from '@/lib/error-reporter';
+import { generateUniqueId } from '@/lib/utils';
 
 interface SurveyState {
     // ReactFlow state
@@ -30,7 +31,7 @@ interface SurveyState {
     quotas: SurveyQuota[];
     versions: any[];
     workflowId: string | null;
-    
+
     // Status
     saveStatus: 'saved' | 'saving' | 'error' | 'unsaved';
     isPublishing: boolean;
@@ -56,11 +57,12 @@ interface SurveyState {
     onConnect: OnConnect;
     setSelectedNodeId: (id: string | null) => void;
     setSaveStatus: (status: 'saved' | 'saving' | 'error' | 'unsaved') => void;
+    updateNodeData: (nodeId: string, data: Record<string, any>) => void;
 
     // Data Loaders
     loadSurveyData: (surveyId: string) => Promise<void>;
     refreshSurveyData: (surveyId: string) => Promise<void>;
-    
+
     // Workflow Actions
     autosave: (surveyId: string, runtimeJson: any) => Promise<void>;
     publish: (surveyId: string, mode: 'LIVE' | 'TEST') => Promise<void>;
@@ -68,6 +70,7 @@ interface SurveyState {
     close: (surveyId: string) => Promise<void>;
     resume: (surveyId: string) => Promise<void>;
     selectVersion: (surveyId: string, versionId: string | null) => Promise<void>;
+    duplicateNode: () => void;
 }
 
 export const useSurveyStore = create<SurveyState>((set, get) => ({
@@ -95,10 +98,19 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     setNodes: (nodes) => set({ nodes, saveStatus: 'unsaved' }),
     setEdges: (edges) => set({ edges, saveStatus: 'unsaved' }),
 
+    updateNodeData: (nodeId, newData) => {
+        const { nodes, isReadOnly } = get();
+        if (isReadOnly) return;
+        set({
+            nodes: nodes.map(n => n.id === nodeId ? { ...n, data: { ...n.data, ...newData } } : n),
+            saveStatus: 'unsaved'
+        });
+    },
+
     onNodesChange: (changes) => {
         const { nodes, isReadOnly } = get();
         if (isReadOnly) return;
-        set({ 
+        set({
             nodes: applyNodeChanges(changes, nodes),
             saveStatus: 'unsaved'
         });
@@ -107,7 +119,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     onEdgesChange: (changes) => {
         const { edges, isReadOnly } = get();
         if (isReadOnly) return;
-        set({ 
+        set({
             edges: applyEdgeChanges(changes, edges),
             saveStatus: 'unsaved'
         });
@@ -184,8 +196,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             // Hydrate design nodes with stable IDs from runtimeJson
             // so generateRuntimeJson won't regenerate UUIDs on autosave
             const rawNodes = workflow?.designJson?.nodes || [];
-            const hydratedNodes = workflow?.runtimeJson 
-                ? hydrateNodeIds(rawNodes, workflow.runtimeJson) 
+            const hydratedNodes = workflow?.runtimeJson
+                ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                 : rawNodes;
 
             set({
@@ -227,8 +239,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
 
             const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
 
-            set({ 
-                survey, 
+            set({
+                survey,
                 versions,
                 loadError: null,
                 hasChanges: hasDbChanges
@@ -268,7 +280,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 designJson: { nodes, edges },
                 runtimeJson
             });
-            
+
             // Refresh versions to update change detection
             const versions = await surveyWorkflowApi.getWorkflowsMetadata(surveyId);
             if (get().autosaveRequestSeq !== requestSeq) {
@@ -277,8 +289,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
 
             const hasDbChanges = versions.length > 0 && versions[0].status === 'DRAFT';
 
-            set({ 
-                workflowId: data.id, 
+            set({
+                workflowId: data.id,
                 saveStatus: 'saved',
                 versions,
                 lastSavedAt: new Date().toISOString(),
@@ -316,15 +328,15 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             if (op.status !== "SUCCEEDED") {
                 throw new Error(op.errorDetail || "Publish operation failed");
             }
-            
+
             // Refresh all data
             const [survey, versions] = await Promise.all([
                 surveyApi.getSurvey(surveyId),
                 surveyWorkflowApi.getWorkflowsMetadata(surveyId)
             ]);
 
-            set({ 
-                survey, 
+            set({
+                survey,
                 versions,
                 hasChanges: false
             });
@@ -452,8 +464,8 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 // Instead of reload, we should re-fetch current latest
                 const workflow = await surveyWorkflowApi.getLatestWorkflowBySurveyId(surveyId);
                 const rawNodes = workflow?.designJson?.nodes || [];
-                const hydratedNodes = workflow?.runtimeJson 
-                    ? hydrateNodeIds(rawNodes, workflow.runtimeJson) 
+                const hydratedNodes = workflow?.runtimeJson
+                    ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                     : rawNodes;
 
                 set({
@@ -468,5 +480,40 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 reportApiError(error, { location: "useSurveyStore.selectVersion.latest", surveyId });
             }
         }
+    },
+
+    duplicateNode: () => {
+        const { nodes, selectedNodeId, isReadOnly, setSelectedNodeId, setNodes } = get();
+        if (isReadOnly || !selectedNodeId) return;
+
+        const nodeToDuplicate = nodes.find(n => n.id === selectedNodeId);
+        if (!nodeToDuplicate) return;
+
+        const newNodeId = generateUniqueId('node');
+        const newNode: ReactFlowNode = {
+            ...nodeToDuplicate,
+            id: newNodeId,
+            selected: true,
+            position: {
+                x: nodeToDuplicate.position.x + 40,
+                y: nodeToDuplicate.position.y + 40,
+            },
+            data: {
+                ...nodeToDuplicate.data,
+            }
+        };
+
+        // Deselect all existing nodes and add the new one
+        const updatedNodes: ReactFlowNode[] = [
+            ...nodes.map(n => ({
+                ...n,
+                selected: false
+            })),
+            newNode
+        ];
+
+        setNodes(updatedNodes);
+        setSelectedNodeId(newNodeId);
+        toast.info("Node duplicated");
     }
 }));

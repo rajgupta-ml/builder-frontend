@@ -36,6 +36,10 @@ export function ShortcutsHelp() {
               <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Esc</kbd>
             </div>
             <div className="flex items-center justify-between">
+              <span>Duplicate selected node</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl + D</kbd>
+            </div>
+            <div className="flex items-center justify-between">
               <span>Open node search</span>
               <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border">/</kbd>
             </div>

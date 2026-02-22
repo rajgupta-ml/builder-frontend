@@ -119,7 +119,8 @@ function SurveyFlow() {
         setEdges,
         setSelectedNodeId,
         loadSurveyData,
-        refreshSurveyData
+        refreshSurveyData,
+        updateNodeData
     } = useSurveyStore();
 
     // Modal States
@@ -403,11 +404,8 @@ function SurveyFlow() {
                     nodes={nodes}
                     readOnly={isReadOnly}
                     onChange={(fieldName, value) => {
-                        if (isReadOnly) return;
-                        setNodes(nodes.map(n => {
-                            if (n.id === selectedNodeId) return { ...n, data: { ...n.data, [fieldName]: value } };
-                            return n;
-                        }));
+                        if (isReadOnly || !selectedNodeId) return;
+                        updateNodeData(selectedNodeId, { [fieldName]: value });
                     }}
                     onClose={() => setSelectedNodeId(null)}
                 />
