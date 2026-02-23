@@ -394,6 +394,20 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 }
                 return;
             }
+
+            // Reconcile local UI state with backend even when operation polling reports failure.
+            // This avoids stale "Publish to Live" UI when publish side effects were actually applied.
+            try {
+                await get().refreshSurveyData(surveyId);
+                const refreshedStatus = get().survey?.status;
+                if (mode === 'LIVE' && (refreshedStatus === 'LIVE' || refreshedStatus === 'PAUSED')) {
+                    toast.warning("Survey is live, but publish verification failed. UI has been refreshed.");
+                    return;
+                }
+            } catch {
+                // no-op; preserve original error handling below
+            }
+
             console.error("Publish failed", error);
             toast.error(toUserMessage(error, "Failed to publish survey"));
             reportApiError(error, { location: "useSurveyStore.publish", surveyId, mode });
