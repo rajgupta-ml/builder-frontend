@@ -1,5 +1,5 @@
 import React from "react";
-import { useReactFlow, Node } from "@xyflow/react";
+import { useReactFlow, Node, Edge } from "@xyflow/react";
 import apiClient from "@/lib/api-client";
 import { getNodeDefinition, PropertyField } from "@/components/nodes/definitions";
 import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto } from "@tabler/icons-react";
@@ -22,6 +22,8 @@ interface PropertiesPanelProps {
 }
 
 export default function PropertiesPanel({ node, nodes, issues = [], onChange, onClose, readOnly = false }: PropertiesPanelProps) {
+    const { getEdges } = useReactFlow();
+    const edges = getEdges();
 
     // Get the definition for this node type
     const definition = node ? getNodeDefinition(node.type || "") : null;
@@ -169,8 +171,10 @@ export default function PropertiesPanel({ node, nodes, issues = [], onChange, on
                                                         onChange(field.name, val);
                                                     }}
                                                     nodes={nodes}
+                                                    edges={edges}
                                                     readOnly={readOnly}
                                                     nodeType={node.type}
+                                                    nodeId={node.id}
                                                 />
 
                                                 {field.helperText && (
@@ -212,22 +216,26 @@ function FieldRenderer({
     value,
     onChange,
     nodes,
+    edges,
     readOnly,
-    nodeType
+    nodeType,
+    nodeId
 }: {
     field: PropertyField,
     value: any,
     onChange: (val: any) => void,
     nodes: Node[],
+    edges: Edge[],
     readOnly?: boolean,
-    nodeType?: string
+    nodeType?: string,
+    nodeId?: string
 }) {
     if (readOnly) {
         // Logic fields and complex builders should be disabled
         if (['condition', 'stepBuilder', 'emojiOptions'].includes(field.type)) {
             return (
                 <div className="pointer-events-none opacity-60 grayscale">
-                    <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} readOnly={false} />
+                    <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} edges={edges} readOnly={false} nodeType={nodeType} nodeId={nodeId} />
                 </div>
             );
         }
@@ -240,6 +248,8 @@ function FieldRenderer({
                     value={value || { field: '', operator: 'equals', value: '' }}
                     onChange={onChange}
                     nodes={nodes}
+                    edges={edges}
+                    currentNodeId={nodeId}
                 />
             );
         case 'stepBuilder':

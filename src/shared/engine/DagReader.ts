@@ -106,6 +106,47 @@ export class DAGReader {
         }
     }
 
+    private parseDateValue(input: any): Date | null {
+        if (input === undefined || input === null || input === '') return null;
+        if (input instanceof Date && !Number.isNaN(input.getTime())) {
+            return new Date(input.getFullYear(), input.getMonth(), input.getDate());
+        }
+        if (typeof input === 'string') {
+            const match = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (match) {
+                const year = Number(match[1]);
+                const month = Number(match[2]) - 1;
+                const day = Number(match[3]);
+                const date = new Date(year, month, day);
+                if (
+                    date.getFullYear() === year &&
+                    date.getMonth() === month &&
+                    date.getDate() === day
+                ) {
+                    return date;
+                }
+                return null;
+            }
+        }
+        const parsed = new Date(input);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    }
+
+    private shiftDate(base: Date, amount: number, unit: string): Date {
+        const shifted = new Date(base.getTime());
+        if (unit === 'months') {
+            shifted.setMonth(shifted.getMonth() - amount);
+            return shifted;
+        }
+        if (unit === 'years') {
+            shifted.setFullYear(shifted.getFullYear() - amount);
+            return shifted;
+        }
+        shifted.setDate(shifted.getDate() - amount);
+        return shifted;
+    }
+
     /**
      * Evaluates a single logic rule against user responses.
      */
@@ -197,11 +238,28 @@ export class DAGReader {
             });
         };
 
+        const isDateInputField = fieldNode?.type === 'dateInput';
+        const answerDate = isDateInputField ? this.parseDateValue(value) : null;
+        const targetDate = isDateInputField ? this.parseDateValue(targetValue) : null;
+        const compareDateParts = (part: 'day' | 'month' | 'year', operator: string, expected: number) => {
+            if (!answerDate || Number.isNaN(expected)) return false;
+            const actual = part === 'day' ? answerDate.getDate() : part === 'month' ? answerDate.getMonth() + 1 : answerDate.getFullYear();
+            if (operator.endsWith('_lt')) return actual < expected;
+            if (operator.endsWith('_lte')) return actual <= expected;
+            if (operator.endsWith('_gt')) return actual > expected;
+            if (operator.endsWith('_gte')) return actual >= expected;
+            if (operator.endsWith('_eq')) return actual === expected;
+            if (operator.endsWith('_neq')) return actual !== expected;
+            return false;
+        };
+
         switch (rule.operator) {
             case 'equals':
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() === targetDate.getTime();
                 if (Array.isArray(value)) return value.some(v => normStr(v) === normStr(targetValue));
                 return normStr(value) === normStr(targetValue);
             case 'not_equals':
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() !== targetDate.getTime();
                 if (Array.isArray(value)) return !value.some(v => normStr(v) === normStr(targetValue));
                 return normStr(value) !== normStr(targetValue);
             case 'contains':
@@ -211,9 +269,47 @@ export class DAGReader {
                 if (Array.isArray(value)) return !value.some(v => normStr(v) === normStr(targetValue));
                 return !normStr(value).includes(normStr(targetValue));
             case 'gt':
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() > targetDate.getTime();
                 return getNumericComparableValue(value) > Number(targetValue);
             case 'lt':
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() < targetDate.getTime();
                 return getNumericComparableValue(value) < Number(targetValue);
+            case 'date_before_relative':
+            case 'date_before_or_equal_relative':
+            case 'date_after_relative':
+            case 'date_after_or_equal_relative': {
+                if (!answerDate || typeof targetValue !== 'object' || targetValue === null) return false;
+                const amount = Math.max(0, Number(targetValue.amount || 0));
+                const unit = ['days', 'months', 'years'].includes(targetValue.unit) ? targetValue.unit : 'days';
+                const today = new Date();
+                const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const thresholdDate = this.shiftDate(todayDate, amount, unit);
+                if (rule.operator === 'date_before_relative') return answerDate.getTime() < thresholdDate.getTime();
+                if (rule.operator === 'date_before_or_equal_relative') return answerDate.getTime() <= thresholdDate.getTime();
+                if (rule.operator === 'date_after_relative') return answerDate.getTime() > thresholdDate.getTime();
+                return answerDate.getTime() >= thresholdDate.getTime();
+            }
+            case 'date_day_lt':
+            case 'date_day_lte':
+            case 'date_day_gt':
+            case 'date_day_gte':
+            case 'date_day_eq':
+            case 'date_day_neq':
+                return compareDateParts('day', rule.operator, Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue));
+            case 'date_month_lt':
+            case 'date_month_lte':
+            case 'date_month_gt':
+            case 'date_month_gte':
+            case 'date_month_eq':
+            case 'date_month_neq':
+                return compareDateParts('month', rule.operator, Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue));
+            case 'date_year_lt':
+            case 'date_year_lte':
+            case 'date_year_gt':
+            case 'date_year_gte':
+            case 'date_year_eq':
+            case 'date_year_neq':
+                return compareDateParts('year', rule.operator, Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue));
             case 'is_set':
                 return value !== undefined && value !== null && value !== '';
             case 'is_empty':
