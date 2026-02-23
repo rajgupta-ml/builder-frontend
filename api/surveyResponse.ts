@@ -25,8 +25,11 @@ export const surveyResponseApi = {
         return payload && Array.isArray(payload.modes) ? payload : { modes: [] };
     },
 
-    getResponses: async (surveyId: string, options?: RequestOptions) => {
-        const response = await apiClient.get(`/responses/responses/${surveyId}`, options);
+    getResponses: async (surveyId: string, mode?: 'LIVE' | 'TEST', options?: RequestOptions) => {
+        const response = await apiClient.get(`/responses/responses/${surveyId}`, {
+            ...options,
+            params: mode ? { mode } : undefined,
+        });
         const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
         if (!parsed.success) {
             reportError({

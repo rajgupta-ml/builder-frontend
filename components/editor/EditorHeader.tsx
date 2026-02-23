@@ -18,10 +18,10 @@ import {
 } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
-import { validateWorkflow } from '@/lib/validate-workflow';
 import { toast } from 'sonner';
 import { getStoredUserRole, hasPermission, PERMISSIONS } from '@/lib/permissions';
 import type { UserRole } from '@/types/auth';
+import type { WorkflowValidationIssue } from '@/api/surveyWorkflow';
 
 interface EditorHeaderProps {
     surveyId: string;
@@ -32,6 +32,8 @@ interface EditorHeaderProps {
     aiImportStatus?: "IDLE" | "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED";
     confirmNavigation?: () => boolean;
     onRunTest?: () => void;
+    validationIssues?: WorkflowValidationIssue[];
+    validationPending?: boolean;
 }
 
 export function EditorHeader({
@@ -42,7 +44,9 @@ export function EditorHeader({
     setIsAiImportOpen,
     aiImportStatus = "IDLE",
     confirmNavigation = () => true,
-    onRunTest
+    onRunTest,
+    validationIssues = [],
+    validationPending = false,
 }: EditorHeaderProps) {
     const router = useRouter();
     const versionDropdownRef = useRef<HTMLDivElement>(null);
@@ -54,8 +58,6 @@ export function EditorHeader({
     const {
         survey,
         versions,
-        nodes,
-        edges,
         workflowId,
         saveStatus,
         isPublishing,
@@ -95,15 +97,19 @@ export function EditorHeader({
             return;
         }
 
-        const { isValid, errors } = validateWorkflow(nodes, edges);
-        if (!isValid) {
+        const blockingIssues = validationIssues.filter((issue) => issue.type === 'error');
+        if (validationPending) {
+            toast.error("Validation in progress. Please wait a moment.");
+            return;
+        }
+        if (blockingIssues.length > 0) {
             toast.error("Cannot Publish", {
                 description: (
                     <ul className="list-disc pl-4 mt-2 text-xs">
-                        {errors.slice(0, 5).map((e, i) => (
+                        {blockingIssues.slice(0, 5).map((e, i) => (
                             <li key={i}>{e.message}</li>
                         ))}
-                        {errors.length > 5 && <li>...and {errors.length - 5} more</li>}
+                        {blockingIssues.length > 5 && <li>...and {blockingIssues.length - 5} more</li>}
                     </ul>
                 ),
                 duration: 5000
