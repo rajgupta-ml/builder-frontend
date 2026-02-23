@@ -342,9 +342,8 @@ function SurveyFlow() {
         );
     }
 
-    const testLink = `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}?transactionid=[%%TRANSACTION_ID%%]`
-
-    const liveLink = `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.slug}?transactionid=[%%TRANSACTION_ID%%]`
+    const testLink = `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}?id=[%%transactionid%%]`
+    const liveLink = `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.slug}?id=[%%transactionid%%]`
 
     const isLive = survey?.status === 'LIVE' || survey?.status === 'PAUSED';
 
