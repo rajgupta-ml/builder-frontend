@@ -63,7 +63,16 @@ export const surveyResponseApi = {
                 "Idempotency-Key": createIdempotencyKey(`resync-${surveyId}`),
             },
         });
-        return response.data?.data as AcceptedOperation;
+        const accepted = (response.data?.data ?? response.data) as Partial<AcceptedOperation> | undefined;
+        if (!accepted || typeof accepted.operationId !== "string" || accepted.operationId.length === 0) {
+            reportError({
+                kind: "api",
+                message: "Invalid resync accepted payload",
+                details: { endpoint: `/responses/resync/${surveyId}` },
+            });
+            throw new Error("Invalid resync accepted payload");
+        }
+        return accepted as AcceptedOperation;
     },
 
     getResyncStatus: async (surveyId: string) => {

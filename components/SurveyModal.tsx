@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { createSurveySchema } from "@/src/shared/common";
 import { JetBrains_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { ModalPortal } from "@/components/ui/ModalPortal";
 
 const jetBrainsMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "700"] });
 
@@ -62,28 +63,30 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
     };
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    {/* Backdrop */}
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={onClose}
-                        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-                    />
+        <ModalPortal>
+            <AnimatePresence>
+                {isOpen && (
+                    <div className="fixed inset-0 z-120 h-dvh w-screen flex items-center justify-center p-4">
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={onClose}
+                            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                        />
 
-                    {/* Modal Content */}
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.98, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.98, y: 10 }}
-                        transition={{ duration: 0.2 }}
-                        className="relative w-full max-w-lg bg-background border border-border/60 shadow-xl rounded-xl p-8 pointer-events-auto"
-                        onClick={(e) => e.stopPropagation()}
-                    >
+                        {/* Modal Content */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                            transition={{ duration: 0.2 }}
+                            className="relative w-full max-w-lg bg-background border border-border/60 shadow-xl rounded-xl p-8 pointer-events-auto"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                         <button
+                            title="X Icon"
                             onClick={onClose}
                             className="absolute cursor-pointer top-6 right-6 p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-all rounded-md"
                         >
@@ -164,9 +167,10 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
                                 </button>
                             </div>
                         </form>
-                    </motion.div>
-                </div>
-            )}
-        </AnimatePresence>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </ModalPortal>
     );
 }
