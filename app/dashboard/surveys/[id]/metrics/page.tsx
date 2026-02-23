@@ -114,7 +114,7 @@ export default function SurveyMetricsPage() {
             setLoading(false);
             setResponsesLoading(true);
             const results = await Promise.all([
-                surveyResponseApi.getResponses(id, { signal })
+                surveyResponseApi.getResponses(id, viewMode, { signal })
             ]);
             if (signal?.aborted || fetchRunRef.current !== runId) return;
             const responsesData = results[0] as ResponsesPayload;
@@ -154,7 +154,7 @@ export default function SurveyMetricsPage() {
         setUserRole(getStoredUserRole());
         fetchData(controller.signal);
         return () => controller.abort();
-    }, [id]);
+    }, [id, viewMode]);
 
     const canManageSurvey = hasPermission(userRole, PERMISSIONS.SURVEY_EDIT);
     const canManageQuotas = hasPermission(userRole, PERMISSIONS.QUOTA_MANAGE);
