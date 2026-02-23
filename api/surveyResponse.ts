@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { reportError } from "@/lib/error-reporter";
 import type { AcceptedOperation } from "./survey";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 type RequestOptions = {
     signal?: AbortSignal;
@@ -57,7 +58,11 @@ export const surveyResponseApi = {
     },
 
     forceResync: async (surveyId: string, payload?: { full?: boolean; limit?: number; async?: boolean }): Promise<AcceptedOperation> => {
-        const response = await apiClient.post(`/responses/resync/${surveyId}`, payload || {});
+        const response = await apiClient.post(`/responses/resync/${surveyId}`, payload || {}, {
+            headers: {
+                "Idempotency-Key": createIdempotencyKey(`resync-${surveyId}`),
+            },
+        });
         return response.data?.data as AcceptedOperation;
     },
 

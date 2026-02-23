@@ -1,4 +1,5 @@
 import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
+import { featureFlags } from '@/lib/feature-flags';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
 export type PropertyType = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'color' | 'options' | 'condition' | 'stepBuilder' | 'fileTextarea' | 'file' | 'files' | 'emojiOptions';
@@ -42,6 +43,13 @@ const commonProperties: PropertyField[] = [
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Helper text for the user', defaultValue: '' },
     { name: 'isPii', label: 'Contains PII', type: 'switch', defaultValue: false, helperText: 'Encrypt this field and exclude it from analytics/export.' },
     { name: 'condition', label: 'When should this question be shown?', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] }, helperText: 'If no rules are added, this question will always be shown.' },
+];
+
+const MEDIA_INTERACTION_OPTIONS = [
+    { label: 'None (Display Only)', value: 'none' },
+    ...(!featureFlags.hideMediaInteractionText ? [{ label: 'Text Question', value: 'text' }] : []),
+    ...(!featureFlags.hideMediaInteractionRating ? [{ label: 'Slider Rating', value: 'slider' }] : []),
+    ...(!featureFlags.hideMediaInteractionChoice ? [{ label: 'Multiple Choice', value: 'choice' }] : [])
 ];
 
 export const NODE_DEFINITIONS: NodeDefinition[] = [
@@ -339,12 +347,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Enable Interaction',
                 type: 'select',
                 defaultValue: 'none',
-                options: [
-                    { label: 'None (Display Only)', value: 'none' },
-                    { label: 'Text Question', value: 'text' },
-                    { label: 'Slider Rating', value: 'slider' },
-                    { label: 'Multiple Choice', value: 'choice' }
-                ],
+                options: MEDIA_INTERACTION_OPTIONS,
                 helperText: 'Add a question below this media'
             },
             {
@@ -352,20 +355,21 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Question / Text',
                 type: 'text',
                 placeholder: 'Type your text here...',
+                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
             },
             {
                 name: 'sliderConfig',
                 label: 'Slider Config (Min-Max)',
                 type: 'text',
                 placeholder: '0-10',
-                visible: (data) => data.interactionType === 'slider'
+                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
             },
             {
                 name: 'choices',
                 label: 'Choices',
                 type: 'options',
                 defaultValue: [],
-                visible: (data) => data.interactionType === 'choice'
+                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
             }
         ]
     },
@@ -383,32 +387,28 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Enable Interaction',
                 type: 'select',
                 defaultValue: 'none',
-                options: [
-                    { label: 'None (Display Only)', value: 'none' },
-                    { label: 'Text Question', value: 'text' },
-                    { label: 'Slider Rating', value: 'slider' },
-                    { label: 'Multiple Choice', value: 'choice' }
-                ]
+                options: MEDIA_INTERACTION_OPTIONS
             },
             {
                 name: 'questionLabel',
                 label: 'Question / Text',
                 type: 'text',
                 placeholder: 'Type your text here...',
+                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
             },
             {
                 name: 'sliderConfig',
                 label: 'Slider Config (Min-Max)',
                 type: 'text',
                 placeholder: '0-10',
-                visible: (data) => data.interactionType === 'slider'
+                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
             },
             {
                 name: 'choices',
                 label: 'Choices',
                 type: 'options',
                 defaultValue: [],
-                visible: (data) => data.interactionType === 'choice'
+                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
             }
         ]
     },
@@ -426,32 +426,28 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Enable Interaction',
                 type: 'select',
                 defaultValue: 'none',
-                options: [
-                    { label: 'None (Display Only)', value: 'none' },
-                    { label: 'Text Question', value: 'text' },
-                    { label: 'Slider Rating', value: 'slider' },
-                    { label: 'Multiple Choice', value: 'choice' }
-                ]
+                options: MEDIA_INTERACTION_OPTIONS
             },
             {
                 name: 'questionLabel',
                 label: 'Question / Text',
                 type: 'text',
                 placeholder: 'Type your text here...',
+                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
             },
             {
                 name: 'sliderConfig',
                 label: 'Slider Config (Min-Max)',
                 type: 'text',
                 placeholder: '0-10',
-                visible: (data) => data.interactionType === 'slider'
+                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
             },
             {
                 name: 'choices',
                 label: 'Choices',
                 type: 'options',
                 defaultValue: [],
-                visible: (data) => data.interactionType === 'choice'
+                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
             }
         ]
     },

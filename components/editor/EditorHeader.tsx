@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { toast } from 'sonner';
 import { getStoredUserRole, hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { featureFlags } from '@/lib/feature-flags';
 import type { UserRole } from '@/types/auth';
 import type { WorkflowValidationIssue } from '@/api/surveyWorkflow';
 
@@ -272,17 +273,19 @@ export function EditorHeader({
                                 <IconShare size={15} />
                                 Share
                             </button>
-                            <button
-                                onClick={() => {
-                                    setIsActionsDropdownOpen(false);
-                                    setIsAiImportOpen(true);
-                                }}
-                                disabled={isReadOnly}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <IconSparkles size={15} className="text-primary" />
-                                Import Questionnaire (AI)
-                            </button>
+                            {!featureFlags.hideAiQuestionImporter && (
+                                <button
+                                    onClick={() => {
+                                        setIsActionsDropdownOpen(false);
+                                        setIsAiImportOpen(true);
+                                    }}
+                                    disabled={isReadOnly}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <IconSparkles size={15} className="text-primary" />
+                                    Import Questionnaire (AI)
+                                </button>
+                            )}
                             {canPublishLive && <div className="border-t border-border my-1" />}
                             {canPublishLive && survey?.status === 'PAUSED' ? (
                                 <button
