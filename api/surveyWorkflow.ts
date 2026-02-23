@@ -8,6 +8,20 @@ type RequestOptions = {
     signal?: AbortSignal;
 };
 
+export interface WorkflowValidationIssue {
+    type: "error" | "warning";
+    code: string;
+    message: string;
+    nodeId?: string;
+    field?: string;
+}
+
+export interface WorkflowValidationResult {
+    isValid: boolean;
+    issues: WorkflowValidationIssue[];
+    error?: string;
+}
+
 type WorkflowImportStatus = "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED";
 
 export interface WorkflowImportJobStatus {
@@ -81,6 +95,27 @@ export const surveyWorkflowApi = {
     autosaveWorkflow: async (data: { surveyId: string, workflowId?: string | null, runtimeJson: any, designJson: any }) => {
         const response = await apiClient.post(`/workflows/autosave`, data);
         return response.data.data;
+    },
+
+    validateWorkflow: async (
+        data: { surveyId: string; designJson: { nodes: any[]; edges: any[] } },
+        options?: RequestOptions
+    ): Promise<WorkflowValidationResult> => {
+        const response = await apiClient.post(`/workflows/validate`, data, options);
+        const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
+        if (!parsed.success) {
+            reportError({
+                kind: "api",
+                message: "Invalid workflow validate payload shape",
+                details: { endpoint: "/workflows/validate" },
+            });
+            return { isValid: false, issues: [{ type: "error", code: "VALIDATION_API_SHAPE", message: "Invalid validation response shape." }] };
+        }
+        const payload = parsed.data.data as WorkflowValidationResult;
+        if (!payload || !Array.isArray(payload.issues)) {
+            return { isValid: false, issues: [{ type: "error", code: "VALIDATION_API_MISSING", message: "Validation service returned invalid payload." }] };
+        }
+        return payload;
     },
 
     createWorkflow: async (data: { surveyId: string, runtimeJson: any, designJson: any }) => {
