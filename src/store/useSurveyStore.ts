@@ -176,7 +176,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
         const sourceNode = nodes.find((node) => node.id === connection.source);
         if (!sourceNode) return;
 
-        const isBranchSource = sourceNode.type === 'branch';
+        const isBranchSource = sourceNode.type === 'branch' || sourceNode.type === 'validation';
 
         const hasDuplicate = edges.some((edge) =>
             edge.source === connection.source &&

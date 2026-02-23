@@ -95,7 +95,7 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             id: node.id,
             type: node.type,
             data: nodeData,
-            next: node.type === 'branch'
+            next: (node.type === 'branch' || node.type === 'validation')
                 ? { kind: 'branch', trueId: null, falseId: null }
                 : { kind: 'linear', nextId: null }
         };

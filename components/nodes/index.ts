@@ -9,6 +9,7 @@ import SliderNode from './SliderNode';
 import PlainTextNode from './PlainTextNode';
 import EmojiRatingNode from './EmojiRatingNode';
 import BranchNode from './BranchNode';
+import ValidationNode from './ValidationNode';
 import ConsentNode from './ConsentNode';
 import MultiInputNode from './MultiInputNode';
 import ZipCodeInputNode from './ZipCodeInputNode';
@@ -42,6 +43,7 @@ const componentMap: Record<string, React.ComponentType<any>> = {
     start: StartNode,
     end: EndNode,
     branch: BranchNode,
+    validation: ValidationNode,
 
     zipCodeInput: ZipCodeInputNode,
     matrixChoice: MatrixChoiceNode,
@@ -57,4 +59,3 @@ export const edgeTypes = {
 };
 
 export * from './definitions';
-

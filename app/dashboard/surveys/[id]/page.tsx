@@ -261,7 +261,7 @@ function SurveyFlow() {
     }, [surveyId, nodes, edges]);
 
     const hasQuestionNode = useMemo(
-        () => nodes.some((node) => !['start', 'end', 'branch'].includes(node.type || '')),
+        () => nodes.some((node) => !['start', 'end', 'branch', 'validation'].includes(node.type || '')),
         [nodes]
     );
     const selectedNode = useMemo(

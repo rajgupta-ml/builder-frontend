@@ -10,6 +10,7 @@ import { cn, generateUniqueId } from '@/lib/utils';
 
 type FieldKeyMode = 'nodeId' | 'technicalId';
 type OptionKeyMode = 'value' | 'exportId';
+type BuilderMode = 'default' | 'validation';
 
 interface ConditionBuilderProps {
     value: LogicGroup;
@@ -29,6 +30,7 @@ interface ConditionBuilderProps {
      * - 'exportId': uses option.exportId/value fallback
      */
     optionKeyMode?: OptionKeyMode;
+    builderMode?: BuilderMode;
 }
 
 const ALL_OPERATORS = [
@@ -44,6 +46,11 @@ const ALL_OPERATORS = [
     { label: 'In Range List', value: 'in_range' },
     { label: 'Not In Range List', value: 'not_in_range' },
     { label: 'is valid postal code for', value: 'is_postal_code' },
+    { label: 'Age matches DOB', value: 'age_matches_dob' },
+    { label: 'Matches Field', value: 'fields_match' },
+    { label: 'Does Not Match Field', value: 'fields_not_match' },
+    { label: 'Length >=', value: 'length_gte' },
+    { label: 'Length <=', value: 'length_lte' },
     { label: 'Date Before (Today - N, strict)', value: 'date_before_relative' },
     { label: 'Date Before/On (Today - N)', value: 'date_before_or_equal_relative' },
     { label: 'Date After (Today - N, strict)', value: 'date_after_relative' },
@@ -81,12 +88,12 @@ const OPERATORS_BY_NODE_TYPE: Record<string, string[]> = {
     matrixChoice: ['equals', 'not_equals', 'gt', 'lt', 'is_set', 'is_empty'],
 
     // Numeric: comparison operators
-    numberInput: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'in_range', 'not_in_range', 'is_set', 'is_empty'],
+    numberInput: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'in_range', 'not_in_range', 'is_set', 'is_empty', 'age_matches_dob'],
     slider: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'in_range', 'not_in_range', 'is_set', 'is_empty'],
     rating: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'in_range', 'not_in_range', 'is_set', 'is_empty'],
 
     // Text-based: string operators
-    textInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
+    textInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty', 'age_matches_dob'],
     emailInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
 
     // Zip code: specialized for range lists
@@ -106,6 +113,26 @@ const getOperatorsForNodeType = (nodeType?: string): typeof ALL_OPERATORS => {
     if (!nodeType || !OPERATORS_BY_NODE_TYPE[nodeType]) return ALL_OPERATORS;
     const allowed = OPERATORS_BY_NODE_TYPE[nodeType];
     return ALL_OPERATORS.filter(op => allowed.includes(op.value));
+};
+
+const VALIDATION_OPERATOR_VALUES = new Set([
+    'age_matches_dob',
+    'fields_match',
+    'fields_not_match',
+    'length_gte',
+    'length_lte',
+    'gt',
+    'lt',
+    'is_between',
+    'is_set',
+    'is_empty',
+]);
+
+const getOperatorsForContext = (nodeType: string | undefined, builderMode: BuilderMode): typeof ALL_OPERATORS => {
+    if (builderMode === 'validation') {
+        return ALL_OPERATORS.filter(op => VALIDATION_OPERATOR_VALUES.has(op.value));
+    }
+    return getOperatorsForNodeType(nodeType);
 };
 
 const NUMERIC_NODE_TYPES = ['numberInput', 'slider', 'rating', 'emojiRating'];
@@ -176,6 +203,9 @@ const DATE_PART_OPERATORS = new Set([
 
 const isDateRelativeOperator = (operator?: string) => !!operator && DATE_RELATIVE_OPERATORS.has(operator);
 const isDatePartOperator = (operator?: string) => !!operator && DATE_PART_OPERATORS.has(operator);
+const isAgeDobOperator = (operator?: string) => operator === 'age_matches_dob';
+const isFieldCompareOperator = (operator?: string) => operator === 'fields_match' || operator === 'fields_not_match';
+const isLengthOperator = (operator?: string) => operator === 'length_gte' || operator === 'length_lte';
 
 const getDefaultRuleValueForOperator = (operator?: string) => {
     if (isDateRelativeOperator(operator)) {
@@ -187,6 +217,12 @@ const getDefaultRuleValueForOperator = (operator?: string) => {
     }
     if (operator === 'is_between') {
         return { min: '', max: '' };
+    }
+    if (isAgeDobOperator(operator)) {
+        return { toleranceYears: 1 };
+    }
+    if (isLengthOperator(operator)) {
+        return { value: 1 };
     }
     return '';
 };
@@ -228,7 +264,8 @@ export const ConditionBuilder = ({
     edges,
     currentNodeId,
     fieldKeyMode = 'nodeId',
-    optionKeyMode = 'value'
+    optionKeyMode = 'value',
+    builderMode = 'default'
 }: ConditionBuilderProps) => {
     const ancestorNodeIds = useMemo(() => {
         if (!currentNodeId || !edges) {
@@ -264,7 +301,7 @@ export const ConditionBuilder = ({
     const validQuestions = useMemo(() => {
         return nodes.filter(n => {
             const def = getNodeDefinition(n.type || '');
-            const isStructural = ['start', 'end', 'branch', 'image', 'video', 'audio'].includes(n.type || '');
+            const isStructural = ['start', 'end', 'branch', 'validation', 'image', 'video', 'audio'].includes(n.type || '');
             const isAllowedByGraph = ancestorNodeIds ? ancestorNodeIds.has(n.id) : true;
             return def && !isStructural && n.id !== 'current' && isAllowedByGraph;
         });
@@ -290,6 +327,7 @@ export const ConditionBuilder = ({
                 validQuestions={validQuestions}
                 fieldKeyMode={fieldKeyMode}
                 optionKeyMode={optionKeyMode}
+                builderMode={builderMode}
                 isRoot={true}
                 onRemove={() => { }} // Root cannot be removed
             />
@@ -298,14 +336,15 @@ export const ConditionBuilder = ({
 };
 
 // Recursive Group Component
-const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKeyMode, optionKeyMode }: {
+const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKeyMode, optionKeyMode, builderMode }: {
     group: LogicGroup,
     onChange: (g: LogicGroup) => void,
     validQuestions: Node[],
     isRoot?: boolean,
     onRemove: () => void,
     fieldKeyMode: FieldKeyMode,
-    optionKeyMode: OptionKeyMode
+    optionKeyMode: OptionKeyMode,
+    builderMode: BuilderMode
 }) => {
 
     const updateSelf = (updates: Partial<LogicGroup>) => {
@@ -399,6 +438,7 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
                                     validQuestions={validQuestions}
                                     fieldKeyMode={fieldKeyMode}
                                     optionKeyMode={optionKeyMode}
+                                    builderMode={builderMode}
                                     onRemove={() => removeChild(index)}
                                 />
                             ) : (
@@ -409,6 +449,7 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
                                     validQuestions={validQuestions}
                                     fieldKeyMode={fieldKeyMode}
                                     optionKeyMode={optionKeyMode}
+                                    builderMode={builderMode}
                                 />
                             )}
                         </div>
@@ -435,13 +476,14 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
     );
 };
 
-const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, optionKeyMode }: {
+const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, optionKeyMode, builderMode }: {
     rule: LogicRule;
     onUpdate: (r: LogicRule) => void;
     onRemove: () => void;
     validQuestions: Node[];
     fieldKeyMode: FieldKeyMode;
     optionKeyMode: OptionKeyMode;
+    builderMode: BuilderMode;
 }) => {
     // Local state for the tag input in 'in_range' mode
     const [tagInput, setTagInput] = React.useState('');
@@ -452,7 +494,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
         [validQuestions, rule.field, fieldKeyMode]
     );
     const selectedQuestionData = (selectedQuestion?.data || {}) as any;
-    const availableOperators = getOperatorsForNodeType(selectedQuestion?.type as string);
+    const availableOperators = getOperatorsForContext(selectedQuestion?.type as string, builderMode);
     const isScaleMultiMode =
         (selectedQuestion?.type === 'rating' || selectedQuestion?.type === 'slider')
             ? (selectedQuestionData.responseMode === 'multi' ||
@@ -466,6 +508,10 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
         isScaleMultiMode;
     const selectedType = selectedQuestion?.type;
     const isCustomDateOperator = isDateRelativeOperator(rule.operator) || isDatePartOperator(rule.operator);
+    const isAgeDobConsistencyOperator = isAgeDobOperator(rule.operator);
+    const isGenericFieldCompareOperator = isFieldCompareOperator(rule.operator);
+    const dobComparableQuestions = validQuestions.filter((n) => n.type === 'dateInput' && getQuestionKey(n, fieldKeyMode) !== rule.field);
+    const comparableQuestions = validQuestions.filter((n) => getQuestionKey(n, fieldKeyMode) !== rule.field);
 
     let questionOptions: any[] = [];
     if (selectedQuestion) {
@@ -520,12 +566,13 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                 onChange={(e) => {
                     const newFieldId = e.target.value;
                     const newQuestion = findQuestionByKey(validQuestions, newFieldId, fieldKeyMode);
-                    const allowedOps = getOperatorsForNodeType(newQuestion?.type as string);
+                    const allowedOps = getOperatorsForContext(newQuestion?.type as string, builderMode);
                     const currentOpValid = allowedOps.some(op => op.value === rule.operator);
                     onUpdate({
                         ...rule,
                         field: newFieldId,
                         subField: '',
+                        compareField: '',
                         operator: currentOpValid ? rule.operator : allowedOps[0]?.value || 'equals',
                         value: currentOpValid ? rule.value : getDefaultRuleValueForOperator(allowedOps[0]?.value || 'equals'),
                         valueType: 'static'
@@ -574,7 +621,9 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
             <select
                 className={cn(
                     "shrink-0 text-[10px] p-1.5 rounded border border-input bg-card h-7",
-                    selectedType === 'dateInput' ? "w-[190px]" : "w-[70px]"
+                    selectedType === 'dateInput' && builderMode !== 'validation'
+                        ? "w-[190px]"
+                        : (isAgeDobConsistencyOperator || isGenericFieldCompareOperator) ? "w-[160px]" : "w-[90px]"
                 )}
                 value={rule.operator}
                 onChange={(e) => {
@@ -584,11 +633,14 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                         ...rule,
                         operator: nextOperator,
                         value: nextValue,
-                        valueType: isDateRelativeOperator(nextOperator) || isDatePartOperator(nextOperator) ? 'static' : rule.valueType
+                        compareField: (isAgeDobOperator(nextOperator) || isFieldCompareOperator(nextOperator)) ? (rule.compareField || '') : '',
+                        valueType: isDateRelativeOperator(nextOperator) || isDatePartOperator(nextOperator) || isAgeDobOperator(nextOperator) || isFieldCompareOperator(nextOperator) || isLengthOperator(nextOperator)
+                            ? 'static'
+                            : rule.valueType
                     });
                 }}
             >
-                {selectedType === 'dateInput' ? (
+                {selectedType === 'dateInput' && builderMode !== 'validation' ? (
                     <>
                         <optgroup label="Basic">
                             {availableOperators
@@ -640,8 +692,63 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                     ['in_range', 'not_in_range', 'is_between'].includes(rule.operator) ? "basis-full w-full mt-1 order-last" : "flex-1 min-w-[120px]"
                 )}>
 
-                    {/* DATE RELATIVE */}
-                    {isDateRelativeOperator(rule.operator) ? (
+                    {/* AGE vs DOB CONSISTENCY */}
+                    {isAgeDobConsistencyOperator ? (
+                        <div className="flex gap-1 w-full items-center">
+                            <select
+                                className="flex-1 min-w-[120px] text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                value={rule.compareField || ''}
+                                onChange={(e) => onUpdate({ ...rule, compareField: e.target.value })}
+                            >
+                                <option value="">DOB field...</option>
+                                {dobComparableQuestions.map((n) => (
+                                    <option key={getQuestionKey(n, fieldKeyMode)} value={getQuestionKey(n, fieldKeyMode)}>
+                                        {String((n.data as any)?.label || n.id)}
+                                    </option>
+                                ))}
+                            </select>
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">tol</span>
+                            <input
+                                type="number"
+                                min={0}
+                                max={2}
+                                className="w-[68px] text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                value={typeof rule.value === 'object' && rule.value !== null ? (rule.value.toleranceYears ?? 1) : 1}
+                                onChange={(e) => {
+                                    const toleranceYears = Math.max(0, Math.min(2, Number(e.target.value || 0)));
+                                    onUpdate({ ...rule, value: { toleranceYears } });
+                                }}
+                            />
+                            <span className="text-[10px] text-muted-foreground whitespace-nowrap">yr</span>
+                        </div>
+                    ) : isGenericFieldCompareOperator ? (
+                        <div className="flex gap-1 w-full items-center">
+                            <select
+                                className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                value={rule.compareField || ''}
+                                onChange={(e) => onUpdate({ ...rule, compareField: e.target.value })}
+                            >
+                                <option value="">Compare field...</option>
+                                {comparableQuestions.map((n) => (
+                                    <option key={getQuestionKey(n, fieldKeyMode)} value={getQuestionKey(n, fieldKeyMode)}>
+                                        {String((n.data as any)?.label || n.id)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    ) : isLengthOperator(rule.operator) ? (
+                        <div className="flex gap-1 w-full items-center">
+                            <input
+                                type="number"
+                                min={0}
+                                className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                placeholder="Length"
+                                value={typeof rule.value === 'object' && rule.value !== null ? (rule.value.value ?? '') : rule.value}
+                                onChange={(e) => onUpdate({ ...rule, value: { value: Math.max(0, Number(e.target.value || 0)) } })}
+                            />
+                        </div>
+                    ) : isDateRelativeOperator(rule.operator) ? (
+                        /* DATE RELATIVE */
                         <div className="flex gap-1 w-full items-center">
                             <input
                                 type="number"
@@ -812,7 +919,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                         /* STANDARD: Select from options OR text/number input */
                         <>
                             <div className="flex gap-1 items-center w-full">
-                                {!isCustomDateOperator && (
+                                {!isCustomDateOperator && !isAgeDobConsistencyOperator && (
                                     <button
                                         className="shrink-0 p-1 rounded border border-input hover:bg-muted text-muted-foreground h-7 w-7 flex items-center justify-center"
                                         onClick={() => onUpdate({ ...rule, valueType: rule.valueType === 'static' ? 'variable' : 'static', value: '' })}
@@ -822,7 +929,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                     </button>
                                 )}
 
-                                {rule.valueType === 'variable' ? (
+                                {rule.valueType === 'variable' && !isAgeDobConsistencyOperator ? (
                                     <select
                                         className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
                                         value={rule.value}

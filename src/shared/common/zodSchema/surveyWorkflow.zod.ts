@@ -5,6 +5,7 @@ const logicRuleSchema = z.object({
     type: z.literal('rule'),
     field: z.string(),
     subField: z.string().optional(),
+    compareField: z.string().optional(),
     operator: z.string(),
     value: z.any(),
     valueType: z.enum(['static', 'variable']),

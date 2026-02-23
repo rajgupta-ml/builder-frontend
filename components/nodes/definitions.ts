@@ -279,6 +279,28 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         ]
     },
     {
+        type: 'validation',
+        label: 'Validation Gate',
+        description: 'Run cross-field validation and split flow',
+        icon: IconShieldLock,
+        category: 'logic',
+        properties: [
+            { name: 'label', label: 'Gate Label', type: 'text', placeholder: 'e.g., Age vs DOB Check', defaultValue: 'Validation Gate' },
+            { name: 'condition', label: 'Validation Rules', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } },
+            {
+                name: 'outcome',
+                label: 'Fail Outcome',
+                type: 'select',
+                defaultValue: 'security_terminate',
+                options: [
+                    { label: 'Security Terminate', value: 'security_terminate' },
+                    { label: 'Disqualified', value: 'disqualified' },
+                    { label: 'Dropped', value: 'dropped' }
+                ]
+            }
+        ]
+    },
+    {
         type: 'end',
         label: 'End Screen',
         description: 'Terminate the survey flow',
@@ -567,6 +589,7 @@ export interface LogicRule {
     type: 'rule';
     field: string;
     subField?: string;
+    compareField?: string;
     operator: string;
     value: any;
     valueType: 'static' | 'variable';

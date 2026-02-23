@@ -1,11 +1,12 @@
 import React, { memo } from 'react';
 import { NodeProps, Position, Handle, useReactFlow } from '@xyflow/react';
-import { IconArrowMerge, IconCheck, IconX, IconTrash } from '@tabler/icons-react';
+import { IconArrowMerge, IconShieldLock, IconTrash } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 
 const BranchNode = (props: NodeProps<any>) => {
-    const { selected, id, data } = props;
+    const { selected, id, type } = props;
     const { deleteElements } = useReactFlow();
+    const isValidation = type === 'validation';
 
     // Default delete action
     const handleDelete = (e: React.MouseEvent) => {
@@ -16,7 +17,9 @@ const BranchNode = (props: NodeProps<any>) => {
     return (
         <div className={cn(
             "group relative w-16 h-16 rounded-full flex items-center justify-center bg-card border-2 shadow-sm transition-all duration-200",
-            selected ? "border-purple-500 ring-4 ring-purple-500/10 shadow-xl" : "border-purple-500 hover:border-purple-600"
+            isValidation
+                ? (selected ? "border-amber-500 ring-4 ring-amber-500/10 shadow-xl" : "border-amber-500 hover:border-amber-600")
+                : (selected ? "border-purple-500 ring-4 ring-purple-500/10 shadow-xl" : "border-purple-500 hover:border-purple-600")
         )}>
             {/* Input Handle - Top */}
             <Handle
@@ -27,7 +30,11 @@ const BranchNode = (props: NodeProps<any>) => {
             />
 
             {/* Icon */}
-            <IconArrowMerge size={24} className="text-purple-500" />
+            {isValidation ? (
+                <IconShieldLock size={22} className="text-amber-600" />
+            ) : (
+                <IconArrowMerge size={24} className="text-purple-500" />
+            )}
 
             {/* True Handle - Right */}
             <Handle

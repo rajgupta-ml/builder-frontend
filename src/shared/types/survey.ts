@@ -68,6 +68,7 @@ export interface LogicRule {
     type: 'rule';
     field: string;
     subField?: string;
+    compareField?: string;
     operator: string;
     value: any;
     valueType?: 'static' | 'variable';

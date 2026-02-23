@@ -250,6 +250,7 @@ function FieldRenderer({
                     nodes={nodes}
                     edges={edges}
                     currentNodeId={nodeId}
+                    builderMode={nodeType === 'validation' ? 'validation' : 'default'}
                 />
             );
         case 'stepBuilder':

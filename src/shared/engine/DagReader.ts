@@ -52,7 +52,7 @@ export class DAGReader {
         if (next.kind === 'branch') {
             const condition = node.data?.condition as LogicGroup;
             if (!condition || !condition.children || condition.children.length === 0) {
-                throw new Error(`Branch node ${currentNodeId} has no condition defined.`);
+                throw new Error(`Decision node ${currentNodeId} has no condition defined.`);
             }
             const isTrue = this.evaluateCondition(condition, responses);
             potentialNextId = isTrue ? next.trueId : next.falseId;
@@ -252,6 +252,28 @@ export class DAGReader {
             if (operator.endsWith('_neq')) return actual !== expected;
             return false;
         };
+        const deriveAgeFromDob = (dob: Date, today: Date) => {
+            let age = today.getFullYear() - dob.getFullYear();
+            const hasHadBirthdayThisYear =
+                today.getMonth() > dob.getMonth() ||
+                (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+            if (!hasHadBirthdayThisYear) age -= 1;
+            return age;
+        };
+        const areComparableValuesEqual = (left: any, right: any) => {
+            if (Array.isArray(left) && Array.isArray(right)) {
+                if (left.length !== right.length) return false;
+                const lhs = left.map(normStr).sort();
+                const rhs = right.map(normStr).sort();
+                return lhs.every((v, idx) => v === rhs[idx]);
+            }
+            if (Array.isArray(left) || Array.isArray(right)) return false;
+            return normStr(left) === normStr(right);
+        };
+        const getComparableLength = (input: any): number | null => {
+            if (typeof input === 'string' || Array.isArray(input)) return input.length;
+            return null;
+        };
 
         switch (rule.operator) {
             case 'equals':
@@ -310,6 +332,43 @@ export class DAGReader {
             case 'date_year_eq':
             case 'date_year_neq':
                 return compareDateParts('year', rule.operator, Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue));
+            case 'age_matches_dob': {
+                const compareField = (rule as any).compareField;
+                if (!compareField || !(compareField in responses)) return false;
+                let dobValue = responses[compareField];
+                if (dobValue && typeof dobValue === 'object' && 'answer' in dobValue) {
+                    dobValue = dobValue.answer;
+                }
+                const dobDate = this.parseDateValue(dobValue);
+                const enteredAge = Number(value);
+                if (!dobDate || Number.isNaN(enteredAge)) return false;
+                const now = new Date();
+                const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const derivedAge = deriveAgeFromDob(dobDate, todayDate);
+                const toleranceYears = Math.max(
+                    0,
+                    Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.toleranceYears ?? 1 : 1)
+                );
+                return Math.abs(enteredAge - derivedAge) <= toleranceYears;
+            }
+            case 'fields_match':
+            case 'fields_not_match': {
+                const compareField = (rule as any).compareField;
+                if (!compareField || !(compareField in responses)) return false;
+                let compareValue = responses[compareField];
+                if (compareValue && typeof compareValue === 'object' && 'answer' in compareValue) {
+                    compareValue = compareValue.answer;
+                }
+                const isEqual = areComparableValuesEqual(value, compareValue);
+                return rule.operator === 'fields_match' ? isEqual : !isEqual;
+            }
+            case 'length_gte':
+            case 'length_lte': {
+                const actualLength = getComparableLength(value);
+                const threshold = Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue);
+                if (actualLength === null || Number.isNaN(threshold)) return false;
+                return rule.operator === 'length_gte' ? actualLength >= threshold : actualLength <= threshold;
+            }
             case 'is_set':
                 return value !== undefined && value !== null && value !== '';
             case 'is_empty':
