@@ -40,6 +40,7 @@ const ALL_OPERATORS = [
     { label: 'Is Empty', value: 'is_empty' },
     { label: 'Is Between', value: 'is_between' },
     { label: 'In Range List', value: 'in_range' },
+    { label: 'Not In Range List', value: 'not_in_range' },
     { label: 'is valid postal code for', value: 'is_postal_code' },
 ];
 
@@ -52,20 +53,20 @@ const OPERATORS_BY_NODE_TYPE: Record<string, string[]> = {
     ranking: ['equals', 'not_equals', 'is_set', 'is_empty'],
     consent: ['equals', 'not_equals', 'is_set', 'is_empty'],
     emojiRating: ['equals', 'not_equals', 'is_set', 'is_empty'],
-    cascadingChoice: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
-    matrixChoice: ['equals', 'not_equals', 'is_set', 'is_empty'],
+    cascadingChoice: ['equals', 'not_equals', 'contains', 'not_contains', 'gt', 'lt', 'is_set', 'is_empty'],
+    matrixChoice: ['equals', 'not_equals', 'gt', 'lt', 'is_set', 'is_empty'],
 
     // Numeric: comparison operators
-    numberInput: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
-    slider: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
-    rating: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
+    numberInput: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'in_range', 'not_in_range', 'is_set', 'is_empty'],
+    slider: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'in_range', 'not_in_range', 'is_set', 'is_empty'],
+    rating: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'in_range', 'not_in_range', 'is_set', 'is_empty'],
 
     // Text-based: string operators
     textInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
     emailInput: ['equals', 'not_equals', 'contains', 'not_contains', 'is_set', 'is_empty'],
 
     // Zip code: specialized for range lists
-    zipCodeInput: ['equals', 'not_equals', 'contains', 'not_contains', 'in_range', 'is_postal_code', 'is_set', 'is_empty'],
+    zipCodeInput: ['equals', 'not_equals', 'contains', 'not_contains', 'in_range', 'not_in_range', 'is_postal_code', 'is_set', 'is_empty'],
 
     // Date: comparison
     datePicker: ['equals', 'not_equals', 'gt', 'lt', 'is_between', 'is_set', 'is_empty'],
@@ -445,7 +446,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
             {!['is_set', 'is_empty'].includes(rule.operator) && (
                 <div className={cn(
                     "flex gap-1 items-center min-w-0 transition-all",
-                    ['in_range', 'is_between'].includes(rule.operator) ? "basis-full w-full mt-1 order-last" : "flex-1 min-w-[120px]"
+                    ['in_range', 'not_in_range', 'is_between'].includes(rule.operator) ? "basis-full w-full mt-1 order-last" : "flex-1 min-w-[120px]"
                 )}>
 
                     {/* IS BETWEEN: Dual Input */}
@@ -467,7 +468,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                 onChange={(e) => onUpdate({ ...rule, value: { ...(typeof rule.value === 'object' ? rule.value : {}), max: e.target.value } })}
                             />
                         </div>
-                    ) : rule.operator === 'in_range' ? (
+                    ) : ['in_range', 'not_in_range'].includes(rule.operator) ? (
                         /* IN RANGE: Multi-value Tag Input + File Upload */
                         <div className="flex flex-col gap-1 w-full">
                             <div

@@ -177,6 +177,26 @@ export class DAGReader {
             return String(v).toLowerCase().replace(/[’‘]/g, "'").trim();
         };
 
+        const getNumericComparableValue = (input: any): number => {
+            if (Array.isArray(input)) {
+                const lastFilled = [...input].reverse().find(item => item !== undefined && item !== null && item !== '');
+                return Number(lastFilled);
+            }
+            return Number(input);
+        };
+
+        const matchesRangeList = (candidate: any, rangeList: string): boolean => {
+            const ranges = rangeList.split(',').map(s => s.trim()).filter(Boolean);
+            return ranges.some(range => {
+                if (range.includes('-')) {
+                    const [start, end] = range.split('-').map(Number);
+                    const num = getNumericComparableValue(candidate);
+                    return !isNaN(num) && !isNaN(start) && !isNaN(end) && num >= start && num <= end;
+                }
+                return normStr(candidate) === normStr(range);
+            });
+        };
+
         switch (rule.operator) {
             case 'equals':
                 if (Array.isArray(value)) return value.some(v => normStr(v) === normStr(targetValue));
@@ -191,9 +211,9 @@ export class DAGReader {
                 if (Array.isArray(value)) return !value.some(v => normStr(v) === normStr(targetValue));
                 return !normStr(value).includes(normStr(targetValue));
             case 'gt':
-                return Number(value) > Number(targetValue);
+                return getNumericComparableValue(value) > Number(targetValue);
             case 'lt':
-                return Number(value) < Number(targetValue);
+                return getNumericComparableValue(value) < Number(targetValue);
             case 'is_set':
                 return value !== undefined && value !== null && value !== '';
             case 'is_empty':
@@ -208,15 +228,12 @@ export class DAGReader {
                 return false;
             case 'in_range':
                 if (typeof targetValue === 'string') {
-                    const ranges = targetValue.split(',').map(s => s.trim());
-                    return ranges.some(range => {
-                        if (range.includes('-')) {
-                            const [start, end] = range.split('-').map(Number);
-                            const num = Number(value);
-                            return !isNaN(num) && num >= start && num <= end;
-                        }
-                        return normStr(value) === normStr(range);
-                    });
+                    return matchesRangeList(value, targetValue);
+                }
+                return false;
+            case 'not_in_range':
+                if (typeof targetValue === 'string') {
+                    return !matchesRangeList(value, targetValue);
                 }
                 return false;
             default:
