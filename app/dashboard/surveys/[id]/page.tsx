@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -19,12 +19,12 @@ import { ShareModal } from '@/components/editor/ShareModal';
 import { AiImportModal } from '@/components/editor/AiImportModal';
 import { ValidationDrawer } from '@/components/editor/ValidationDrawer';
 import { OnboardingChecklist } from '@/components/editor/OnboardingChecklist';
-import { validateWorkflow } from '@/lib/validate-workflow';
 import { getNodeInitialData } from '@/components/nodes/definitions';
 import { generateUniqueId } from '@/lib/utils';
 import { toast } from 'sonner';
 import { NodeSearchPalette } from '@/components/editor/NodeSearchPalette';
 import type { Node as ReactFlowNode, XYPosition } from '@xyflow/react';
+import { surveyWorkflowApi, type WorkflowValidationIssue } from '@/api/surveyWorkflow';
 
 const DEFAULT_NODE_WIDTH = 260;
 const DEFAULT_NODE_HEIGHT = 140;
@@ -134,6 +134,9 @@ function SurveyFlow() {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [hasRunTest, setHasRunTest] = useState(false);
     const [hasConfiguredSettings, setHasConfiguredSettings] = useState(false);
+    const [validationIssues, setValidationIssues] = useState<WorkflowValidationIssue[]>([]);
+    const [validationPending, setValidationPending] = useState(false);
+    const validateRunRef = useRef(0);
 
     // Load Data
     useEffect(() => {
@@ -226,14 +229,48 @@ function SurveyFlow() {
     // Autosave Hook
     useAutosave(surveyId || "");
     const { confirmNavigation } = useUnsavedChangesGuard();
-    const validationResult = useMemo(() => validateWorkflow(nodes, edges), [nodes, edges]);
+    useEffect(() => {
+        if (!surveyId) return;
+        const timeout = setTimeout(async () => {
+            const runId = validateRunRef.current + 1;
+            validateRunRef.current = runId;
+            setValidationPending(true);
+            try {
+                const result = await surveyWorkflowApi.validateWorkflow({
+                    surveyId,
+                    designJson: { nodes, edges },
+                });
+                if (validateRunRef.current !== runId) return;
+                setValidationIssues(result.issues || []);
+            } catch {
+                if (validateRunRef.current !== runId) return;
+                setValidationIssues([
+                    {
+                        type: "error",
+                        code: "VALIDATION_API_FAILED",
+                        message: "Validation service unavailable. Please retry.",
+                    },
+                ]);
+            } finally {
+                if (validateRunRef.current === runId) {
+                    setValidationPending(false);
+                }
+            }
+        }, 300);
+        return () => clearTimeout(timeout);
+    }, [surveyId, nodes, edges]);
+
     const hasQuestionNode = useMemo(
-        () => nodes.some((node) => !['start', 'end', 'branch'].includes(node.type || '')),
+        () => nodes.some((node) => !['start', 'end', 'branch', 'validation'].includes(node.type || '')),
         [nodes]
     );
     const selectedNode = useMemo(
         () => nodes.find((node) => node.id === selectedNodeId) || null,
         [nodes, selectedNodeId]
+    );
+    const selectedNodeIssues = useMemo(
+        () => (selectedNodeId ? validationIssues.filter((issue) => issue.nodeId === selectedNodeId) : []),
+        [selectedNodeId, validationIssues]
     );
 
     const handleQuickAddFirstQuestion = () => {
@@ -347,7 +384,7 @@ function SurveyFlow() {
                 />
 
                 <ValidationDrawer
-                    issues={validationResult.errors}
+                    issues={validationIssues}
                     onFocusNode={(nodeId) => setSelectedNodeId(nodeId)}
                 />
 
@@ -373,6 +410,8 @@ function SurveyFlow() {
                         }
                         setHasRunTest(true);
                     }}
+                    validationIssues={validationIssues}
+                    validationPending={validationPending}
                 />
             </div>
 
@@ -402,6 +441,7 @@ function SurveyFlow() {
                 <PropertiesPanel
                     node={selectedNode}
                     nodes={nodes}
+                    issues={selectedNodeIssues}
                     readOnly={isReadOnly}
                     onChange={(fieldName, value) => {
                         if (isReadOnly || !selectedNodeId) return;

@@ -1,4 +1,5 @@
 import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
+import { featureFlags } from '@/lib/feature-flags';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
 export type PropertyType = 'text' | 'textarea' | 'number' | 'switch' | 'select' | 'color' | 'options' | 'condition' | 'stepBuilder' | 'fileTextarea' | 'file' | 'files' | 'emojiOptions';
@@ -42,6 +43,13 @@ const commonProperties: PropertyField[] = [
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Helper text for the user', defaultValue: '' },
     { name: 'isPii', label: 'Contains PII', type: 'switch', defaultValue: false, helperText: 'Encrypt this field and exclude it from analytics/export.' },
     { name: 'condition', label: 'When should this question be shown?', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] }, helperText: 'If no rules are added, this question will always be shown.' },
+];
+
+const MEDIA_INTERACTION_OPTIONS = [
+    { label: 'None (Display Only)', value: 'none' },
+    ...(!featureFlags.hideMediaInteractionText ? [{ label: 'Text Question', value: 'text' }] : []),
+    ...(!featureFlags.hideMediaInteractionRating ? [{ label: 'Slider Rating', value: 'slider' }] : []),
+    ...(!featureFlags.hideMediaInteractionChoice ? [{ label: 'Multiple Choice', value: 'choice' }] : [])
 ];
 
 export const NODE_DEFINITIONS: NodeDefinition[] = [
@@ -214,20 +222,40 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         icon: IconStar,
         category: 'choice',
         properties: [
+            {
+                name: 'responseMode',
+                label: 'Response Mode',
+                type: 'select',
+                defaultValue: 'single',
+                options: [
+                    { label: 'Single Question', value: 'single' },
+                    { label: 'Multiple Items', value: 'multi' }
+                ]
+            },
             ...commonProperties,
-            { name: 'items', label: 'Questions/Items', type: 'options', defaultValue: [] },
+            { name: 'items', label: 'Questions/Items', type: 'options', defaultValue: [], visible: (data: any) => data.responseMode === 'multi' },
             { name: 'maxRating', label: 'Max Stars', type: 'number', defaultValue: 5 }
         ]
     },
     {
         type: 'slider',
         label: 'Slider / Scale',
-        description: 'Rate multiple items on a scale',
+        description: 'Single or multi-item scale',
         icon: IconNumbers,
         category: 'choice',
         properties: [
+            {
+                name: 'responseMode',
+                label: 'Response Mode',
+                type: 'select',
+                defaultValue: 'single',
+                options: [
+                    { label: 'Single Question', value: 'single' },
+                    { label: 'Multiple Items', value: 'multi' }
+                ]
+            },
             ...commonProperties,
-            { name: 'items', label: 'Items to Rate', type: 'options', defaultValue: [] },
+            { name: 'items', label: 'Items to Rate', type: 'options', defaultValue: [], visible: (data: any) => data.responseMode === 'multi' },
             { name: 'min', label: 'Minimum', type: 'number', defaultValue: 0 },
             { name: 'max', label: 'Maximum', type: 'number', defaultValue: 10 },
             { name: 'step', label: 'Step', type: 'number', defaultValue: 1, min: 0 },
@@ -256,6 +284,28 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         category: 'logic',
         properties: [
             { name: 'condition', label: 'Logic Rule', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } }
+        ]
+    },
+    {
+        type: 'validation',
+        label: 'Validation Gate',
+        description: 'Run cross-field validation and split flow',
+        icon: IconShieldLock,
+        category: 'logic',
+        properties: [
+            { name: 'label', label: 'Gate Label', type: 'text', placeholder: 'e.g., Age vs DOB Check', defaultValue: 'Validation Gate' },
+            { name: 'condition', label: 'Validation Rules', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } },
+            {
+                name: 'outcome',
+                label: 'Fail Outcome',
+                type: 'select',
+                defaultValue: 'security_terminate',
+                options: [
+                    { label: 'Security Terminate', value: 'security_terminate' },
+                    { label: 'Disqualified', value: 'disqualified' },
+                    { label: 'Dropped', value: 'dropped' }
+                ]
+            }
         ]
     },
     {
@@ -297,12 +347,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Enable Interaction',
                 type: 'select',
                 defaultValue: 'none',
-                options: [
-                    { label: 'None (Display Only)', value: 'none' },
-                    { label: 'Text Question', value: 'text' },
-                    { label: 'Slider Rating', value: 'slider' },
-                    { label: 'Multiple Choice', value: 'choice' }
-                ],
+                options: MEDIA_INTERACTION_OPTIONS,
                 helperText: 'Add a question below this media'
             },
             {
@@ -310,20 +355,21 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Question / Text',
                 type: 'text',
                 placeholder: 'Type your text here...',
+                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
             },
             {
                 name: 'sliderConfig',
                 label: 'Slider Config (Min-Max)',
                 type: 'text',
                 placeholder: '0-10',
-                visible: (data) => data.interactionType === 'slider'
+                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
             },
             {
                 name: 'choices',
                 label: 'Choices',
                 type: 'options',
                 defaultValue: [],
-                visible: (data) => data.interactionType === 'choice'
+                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
             }
         ]
     },
@@ -341,32 +387,28 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Enable Interaction',
                 type: 'select',
                 defaultValue: 'none',
-                options: [
-                    { label: 'None (Display Only)', value: 'none' },
-                    { label: 'Text Question', value: 'text' },
-                    { label: 'Slider Rating', value: 'slider' },
-                    { label: 'Multiple Choice', value: 'choice' }
-                ]
+                options: MEDIA_INTERACTION_OPTIONS
             },
             {
                 name: 'questionLabel',
                 label: 'Question / Text',
                 type: 'text',
                 placeholder: 'Type your text here...',
+                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
             },
             {
                 name: 'sliderConfig',
                 label: 'Slider Config (Min-Max)',
                 type: 'text',
                 placeholder: '0-10',
-                visible: (data) => data.interactionType === 'slider'
+                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
             },
             {
                 name: 'choices',
                 label: 'Choices',
                 type: 'options',
                 defaultValue: [],
-                visible: (data) => data.interactionType === 'choice'
+                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
             }
         ]
     },
@@ -384,32 +426,28 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
                 label: 'Enable Interaction',
                 type: 'select',
                 defaultValue: 'none',
-                options: [
-                    { label: 'None (Display Only)', value: 'none' },
-                    { label: 'Text Question', value: 'text' },
-                    { label: 'Slider Rating', value: 'slider' },
-                    { label: 'Multiple Choice', value: 'choice' }
-                ]
+                options: MEDIA_INTERACTION_OPTIONS
             },
             {
                 name: 'questionLabel',
                 label: 'Question / Text',
                 type: 'text',
                 placeholder: 'Type your text here...',
+                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
             },
             {
                 name: 'sliderConfig',
                 label: 'Slider Config (Min-Max)',
                 type: 'text',
                 placeholder: '0-10',
-                visible: (data) => data.interactionType === 'slider'
+                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
             },
             {
                 name: 'choices',
                 label: 'Choices',
                 type: 'options',
                 defaultValue: [],
-                visible: (data) => data.interactionType === 'choice'
+                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
             }
         ]
     },
@@ -547,6 +585,7 @@ export interface LogicRule {
     type: 'rule';
     field: string;
     subField?: string;
+    compareField?: string;
     operator: string;
     value: any;
     valueType: 'static' | 'variable';

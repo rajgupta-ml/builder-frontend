@@ -68,7 +68,8 @@ export interface LogicRule {
     type: 'rule';
     field: string;
     subField?: string;
-    operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'gt' | 'lt' | 'is_set' | 'is_empty' | 'is_between' | 'in_range';
+    compareField?: string;
+    operator: string;
     value: any;
     valueType?: 'static' | 'variable';
 }

@@ -52,7 +52,7 @@ export class DAGReader {
         if (next.kind === 'branch') {
             const condition = node.data?.condition as LogicGroup;
             if (!condition || !condition.children || condition.children.length === 0) {
-                throw new Error(`Branch node ${currentNodeId} has no condition defined.`);
+                throw new Error(`Decision node ${currentNodeId} has no condition defined.`);
             }
             const isTrue = this.evaluateCondition(condition, responses);
             potentialNextId = isTrue ? next.trueId : next.falseId;
@@ -104,6 +104,47 @@ export class DAGReader {
         } else {
             return results.every(r => r === true);
         }
+    }
+
+    private parseDateValue(input: any): Date | null {
+        if (input === undefined || input === null || input === '') return null;
+        if (input instanceof Date && !Number.isNaN(input.getTime())) {
+            return new Date(input.getFullYear(), input.getMonth(), input.getDate());
+        }
+        if (typeof input === 'string') {
+            const match = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (match) {
+                const year = Number(match[1]);
+                const month = Number(match[2]) - 1;
+                const day = Number(match[3]);
+                const date = new Date(year, month, day);
+                if (
+                    date.getFullYear() === year &&
+                    date.getMonth() === month &&
+                    date.getDate() === day
+                ) {
+                    return date;
+                }
+                return null;
+            }
+        }
+        const parsed = new Date(input);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    }
+
+    private shiftDate(base: Date, amount: number, unit: string): Date {
+        const shifted = new Date(base.getTime());
+        if (unit === 'months') {
+            shifted.setMonth(shifted.getMonth() - amount);
+            return shifted;
+        }
+        if (unit === 'years') {
+            shifted.setFullYear(shifted.getFullYear() - amount);
+            return shifted;
+        }
+        shifted.setDate(shifted.getDate() - amount);
+        return shifted;
     }
 
     /**
@@ -177,11 +218,70 @@ export class DAGReader {
             return String(v).toLowerCase().replace(/[’‘]/g, "'").trim();
         };
 
+        const getNumericComparableValue = (input: any): number => {
+            if (Array.isArray(input)) {
+                const lastFilled = [...input].reverse().find(item => item !== undefined && item !== null && item !== '');
+                return Number(lastFilled);
+            }
+            return Number(input);
+        };
+
+        const matchesRangeList = (candidate: any, rangeList: string): boolean => {
+            const ranges = rangeList.split(',').map(s => s.trim()).filter(Boolean);
+            return ranges.some(range => {
+                if (range.includes('-')) {
+                    const [start, end] = range.split('-').map(Number);
+                    const num = getNumericComparableValue(candidate);
+                    return !isNaN(num) && !isNaN(start) && !isNaN(end) && num >= start && num <= end;
+                }
+                return normStr(candidate) === normStr(range);
+            });
+        };
+
+        const isDateInputField = fieldNode?.type === 'dateInput';
+        const answerDate = isDateInputField ? this.parseDateValue(value) : null;
+        const targetDate = isDateInputField ? this.parseDateValue(targetValue) : null;
+        const compareDateParts = (part: 'day' | 'month' | 'year', operator: string, expected: number) => {
+            if (!answerDate || Number.isNaN(expected)) return false;
+            const actual = part === 'day' ? answerDate.getDate() : part === 'month' ? answerDate.getMonth() + 1 : answerDate.getFullYear();
+            if (operator.endsWith('_lt')) return actual < expected;
+            if (operator.endsWith('_lte')) return actual <= expected;
+            if (operator.endsWith('_gt')) return actual > expected;
+            if (operator.endsWith('_gte')) return actual >= expected;
+            if (operator.endsWith('_eq')) return actual === expected;
+            if (operator.endsWith('_neq')) return actual !== expected;
+            return false;
+        };
+        const deriveAgeFromDob = (dob: Date, today: Date) => {
+            let age = today.getFullYear() - dob.getFullYear();
+            const hasHadBirthdayThisYear =
+                today.getMonth() > dob.getMonth() ||
+                (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+            if (!hasHadBirthdayThisYear) age -= 1;
+            return age;
+        };
+        const areComparableValuesEqual = (left: any, right: any) => {
+            if (Array.isArray(left) && Array.isArray(right)) {
+                if (left.length !== right.length) return false;
+                const lhs = left.map(normStr).sort();
+                const rhs = right.map(normStr).sort();
+                return lhs.every((v, idx) => v === rhs[idx]);
+            }
+            if (Array.isArray(left) || Array.isArray(right)) return false;
+            return normStr(left) === normStr(right);
+        };
+        const getComparableLength = (input: any): number | null => {
+            if (typeof input === 'string' || Array.isArray(input)) return input.length;
+            return null;
+        };
+
         switch (rule.operator) {
             case 'equals':
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() === targetDate.getTime();
                 if (Array.isArray(value)) return value.some(v => normStr(v) === normStr(targetValue));
                 return normStr(value) === normStr(targetValue);
             case 'not_equals':
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() !== targetDate.getTime();
                 if (Array.isArray(value)) return !value.some(v => normStr(v) === normStr(targetValue));
                 return normStr(value) !== normStr(targetValue);
             case 'contains':
@@ -191,9 +291,84 @@ export class DAGReader {
                 if (Array.isArray(value)) return !value.some(v => normStr(v) === normStr(targetValue));
                 return !normStr(value).includes(normStr(targetValue));
             case 'gt':
-                return Number(value) > Number(targetValue);
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() > targetDate.getTime();
+                return getNumericComparableValue(value) > Number(targetValue);
             case 'lt':
-                return Number(value) < Number(targetValue);
+                if (isDateInputField && answerDate && targetDate) return answerDate.getTime() < targetDate.getTime();
+                return getNumericComparableValue(value) < Number(targetValue);
+            case 'date_before_relative':
+            case 'date_before_or_equal_relative':
+            case 'date_after_relative':
+            case 'date_after_or_equal_relative': {
+                if (!answerDate || typeof targetValue !== 'object' || targetValue === null) return false;
+                const amount = Math.max(0, Number(targetValue.amount || 0));
+                const unit = ['days', 'months', 'years'].includes(targetValue.unit) ? targetValue.unit : 'days';
+                const today = new Date();
+                const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const thresholdDate = this.shiftDate(todayDate, amount, unit);
+                if (rule.operator === 'date_before_relative') return answerDate.getTime() < thresholdDate.getTime();
+                if (rule.operator === 'date_before_or_equal_relative') return answerDate.getTime() <= thresholdDate.getTime();
+                if (rule.operator === 'date_after_relative') return answerDate.getTime() > thresholdDate.getTime();
+                return answerDate.getTime() >= thresholdDate.getTime();
+            }
+            case 'date_day_lt':
+            case 'date_day_lte':
+            case 'date_day_gt':
+            case 'date_day_gte':
+            case 'date_day_eq':
+            case 'date_day_neq':
+                return compareDateParts('day', rule.operator, Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue));
+            case 'date_month_lt':
+            case 'date_month_lte':
+            case 'date_month_gt':
+            case 'date_month_gte':
+            case 'date_month_eq':
+            case 'date_month_neq':
+                return compareDateParts('month', rule.operator, Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue));
+            case 'date_year_lt':
+            case 'date_year_lte':
+            case 'date_year_gt':
+            case 'date_year_gte':
+            case 'date_year_eq':
+            case 'date_year_neq':
+                return compareDateParts('year', rule.operator, Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue));
+            case 'age_matches_dob': {
+                const compareField = (rule as any).compareField;
+                if (!compareField || !(compareField in responses)) return false;
+                let dobValue = responses[compareField];
+                if (dobValue && typeof dobValue === 'object' && 'answer' in dobValue) {
+                    dobValue = dobValue.answer;
+                }
+                const dobDate = this.parseDateValue(dobValue);
+                const enteredAge = Number(value);
+                if (!dobDate || Number.isNaN(enteredAge)) return false;
+                const now = new Date();
+                const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const derivedAge = deriveAgeFromDob(dobDate, todayDate);
+                const toleranceYears = Math.max(
+                    0,
+                    Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.toleranceYears ?? 1 : 1)
+                );
+                return Math.abs(enteredAge - derivedAge) <= toleranceYears;
+            }
+            case 'fields_match':
+            case 'fields_not_match': {
+                const compareField = (rule as any).compareField;
+                if (!compareField || !(compareField in responses)) return false;
+                let compareValue = responses[compareField];
+                if (compareValue && typeof compareValue === 'object' && 'answer' in compareValue) {
+                    compareValue = compareValue.answer;
+                }
+                const isEqual = areComparableValuesEqual(value, compareValue);
+                return rule.operator === 'fields_match' ? isEqual : !isEqual;
+            }
+            case 'length_gte':
+            case 'length_lte': {
+                const actualLength = getComparableLength(value);
+                const threshold = Number(typeof targetValue === 'object' && targetValue !== null ? targetValue.value : targetValue);
+                if (actualLength === null || Number.isNaN(threshold)) return false;
+                return rule.operator === 'length_gte' ? actualLength >= threshold : actualLength <= threshold;
+            }
             case 'is_set':
                 return value !== undefined && value !== null && value !== '';
             case 'is_empty':
@@ -208,15 +383,12 @@ export class DAGReader {
                 return false;
             case 'in_range':
                 if (typeof targetValue === 'string') {
-                    const ranges = targetValue.split(',').map(s => s.trim());
-                    return ranges.some(range => {
-                        if (range.includes('-')) {
-                            const [start, end] = range.split('-').map(Number);
-                            const num = Number(value);
-                            return !isNaN(num) && num >= start && num <= end;
-                        }
-                        return normStr(value) === normStr(range);
-                    });
+                    return matchesRangeList(value, targetValue);
+                }
+                return false;
+            case 'not_in_range':
+                if (typeof targetValue === 'string') {
+                    return !matchesRangeList(value, targetValue);
                 }
                 return false;
             default:

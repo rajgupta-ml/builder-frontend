@@ -38,7 +38,7 @@ export default function NodeViewer({
     const questionNumberMap = new Map<string, number>();
     let qCount = 0;
     sortedNodes.forEach(node => {
-        if (!['start', 'end', 'branch'].includes(node.type || '')) {
+        if (!['start', 'end', 'branch', 'validation'].includes(node.type || '')) {
             qCount++;
             questionNumberMap.set(node.id, qCount);
         }

@@ -4,9 +4,10 @@ import BaseNode from './BaseNode';
 import { IconStar } from '@tabler/icons-react';
 
 const RatingNode = (props: NodeProps<any>) => {
-    const { label, description, maxRating, items } = props.data;
+    const { label, description, maxRating, items, responseMode } = props.data;
     const max = maxRating || 5;
-    const hasCustomItems = Array.isArray(items) && items.length > 0;
+    const effectiveMode = responseMode === 'multi' || (responseMode !== 'single' && Array.isArray(items) && items.length > 0) ? 'multi' : 'single';
+    const hasCustomItems = effectiveMode === 'multi' && Array.isArray(items) && items.length > 0;
     const ratingItems = hasCustomItems ? items : [{ label: 'Rating', value: 'default' }];
 
     return (
@@ -36,9 +37,9 @@ const RatingNode = (props: NodeProps<any>) => {
                                 )}
                                 <div className="px-1 py-2">
                                     <div className="flex gap-1.5">
-                                    {Array.from({ length: max }).map((_, i) => (
+                                        {Array.from({ length: max }).map((_, i) => (
                                             <IconStar key={i} size={13} className="text-muted-foreground/30" />
-                                    ))}
+                                        ))}
                                     </div>
                                 </div>
                             </div>

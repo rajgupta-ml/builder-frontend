@@ -1,5 +1,5 @@
 import React from "react";
-import { useReactFlow, Node } from "@xyflow/react";
+import { useReactFlow, Node, Edge } from "@xyflow/react";
 import apiClient from "@/lib/api-client";
 import { getNodeDefinition, PropertyField } from "@/components/nodes/definitions";
 import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto } from "@tabler/icons-react";
@@ -8,37 +8,22 @@ import { ConditionBuilder } from "./ConditionBuilder";
 import { StepsBuilder } from "./StepsBuilder";
 import EmojiPicker from "./EmojiPicker";
 import { MediaPreview } from "../nodes/MediaPreview";
+import type { WorkflowValidationIssue } from "@/api/surveyWorkflow";
 
 // ... (imports remain same)
 
 interface PropertiesPanelProps {
     node: Node | null;
     nodes: Node[]; // Full list of nodes needed for logic builder
+    issues?: WorkflowValidationIssue[];
     onChange: (fieldName: string, value: any) => void;
     onClose: () => void;
     readOnly?: boolean;
 }
 
-const PII_HINT_REGEX =
-    /\b(email|e-mail|phone|mobile|contact|name|first name|last name|full name|address|street|city|state|zipcode|zip|postal|ssn|social security|dob|birth|passport|aadhaar|pan|tax id)\b/i;
-
-const isLikelyPiiNode = (node: Node): boolean => {
-    const data = (node.data || {}) as Record<string, unknown>;
-    const label = String(data.label || "").trim();
-    const description = String(data.description || "").trim();
-    if (node.type === "emailInput" || node.type === "zipCodeInput") return true;
-    if (PII_HINT_REGEX.test(label) || PII_HINT_REGEX.test(description)) return true;
-    if (node.type === "multiInput" && Array.isArray(data.fields)) {
-        return data.fields.some((field) => {
-            const fieldRecord = field as Record<string, unknown>;
-            const fieldLabel = String(fieldRecord?.label || "");
-            return PII_HINT_REGEX.test(fieldLabel);
-        });
-    }
-    return false;
-};
-
-export default function PropertiesPanel({ node, nodes, onChange, onClose, readOnly = false }: PropertiesPanelProps) {
+export default function PropertiesPanel({ node, nodes, issues = [], onChange, onClose, readOnly = false }: PropertiesPanelProps) {
+    const { getEdges } = useReactFlow();
+    const edges = getEdges();
 
     // Get the definition for this node type
     const definition = node ? getNodeDefinition(node.type || "") : null;
@@ -46,8 +31,6 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
     if (!node || !definition) {
         return null;
     }
-
-    const piiRecommended = !Boolean((node.data as any)?.isPii) && isLikelyPiiNode(node);
 
 
     return (
@@ -68,19 +51,25 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
 
             {/* Form Fields */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {piiRecommended && (
-                    <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
-                        <div>
-                            This node looks like it may collect personal data. Enable <strong>Contains PII</strong> to encrypt and exclude it from analytics exports.
+                {issues.length > 0 && (
+                    <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2">
+                        <p className="text-[11px] font-semibold mb-2">Validation</p>
+                        <div className="space-y-1.5">
+                            {issues.map((issue, idx) => (
+                                <div
+                                    key={`${issue.code}-${idx}`}
+                                    className={cn(
+                                        "rounded px-2 py-1 text-[11px] border",
+                                        issue.type === "error"
+                                            ? "border-destructive/40 bg-destructive/10 text-destructive"
+                                            : "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                                    )}
+                                >
+                                    <span className="font-semibold mr-1">{issue.type === "error" ? "Error:" : "Warning:"}</span>
+                                    {issue.message}
+                                </div>
+                            ))}
                         </div>
-                        {!readOnly && (
-                            <button
-                                onClick={() => onChange("isPii", true)}
-                                className="mt-2 inline-flex items-center rounded-md border border-amber-700/40 bg-amber-600/15 px-2 py-1 text-[11px] font-semibold text-amber-900 transition-colors hover:bg-amber-600/25 dark:text-amber-100"
-                            >
-                                Enable PII
-                            </button>
-                        )}
                     </div>
                 )}
                 {(() => {
@@ -93,18 +82,18 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
                     });
 
                     // Group properties by category
-                    const basicFields = ['label', 'description', 'questionLabel', 'url', 'urls', 'fields', 'isPii', 'welcomeMessage', 'message', 'buttonLabel', 'thankYouMessage'];
+                    const basicFields = ['responseMode', 'label', 'description', 'questionLabel', 'url', 'urls', 'fields', 'isPii', 'welcomeMessage', 'message', 'buttonLabel', 'thankYouMessage', "redirectUrl"];
                     const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps', 'allowedZips'];
                     const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices', 'multiple', 'maxRating', 'maxStars'];
-                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords', 'longAnswer', 'sitekey', 'redirectUrl', 'outcome', 'alt', 'interactionType', 'sliderConfig', 'autoplay'];
+                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords', 'longAnswer', 'sitekey', 'outcome', 'alt', 'interactionType', 'sliderConfig', 'autoplay'];
                     const logicFields = ['condition'];
 
                     const groupedProperties = {
-                        basic: definition.properties.filter(p => basicFields.includes(p.name)),
-                        options: definition.properties.filter(p => optionFields.includes(p.name)),
-                        choice: definition.properties.filter(p => choiceFields.includes(p.name)),
-                        advanced: definition.properties.filter(p => advancedFields.includes(p.name)),
-                        logic: definition.properties.filter(p => logicFields.includes(p.name)),
+                        basic: basicFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        options: optionFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        choice: choiceFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        advanced: advancedFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        logic: logicFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
                         other: definition.properties.filter(p =>
                             !basicFields.includes(p.name) &&
                             !optionFields.includes(p.name) &&
@@ -182,8 +171,10 @@ export default function PropertiesPanel({ node, nodes, onChange, onClose, readOn
                                                         onChange(field.name, val);
                                                     }}
                                                     nodes={nodes}
+                                                    edges={edges}
                                                     readOnly={readOnly}
                                                     nodeType={node.type}
+                                                    nodeId={node.id}
                                                 />
 
                                                 {field.helperText && (
@@ -225,22 +216,26 @@ function FieldRenderer({
     value,
     onChange,
     nodes,
+    edges,
     readOnly,
-    nodeType
+    nodeType,
+    nodeId
 }: {
     field: PropertyField,
     value: any,
     onChange: (val: any) => void,
     nodes: Node[],
+    edges: Edge[],
     readOnly?: boolean,
-    nodeType?: string
+    nodeType?: string,
+    nodeId?: string
 }) {
     if (readOnly) {
         // Logic fields and complex builders should be disabled
         if (['condition', 'stepBuilder', 'emojiOptions'].includes(field.type)) {
             return (
                 <div className="pointer-events-none opacity-60 grayscale">
-                    <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} readOnly={false} />
+                    <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} edges={edges} readOnly={false} nodeType={nodeType} nodeId={nodeId} />
                 </div>
             );
         }
@@ -253,6 +248,9 @@ function FieldRenderer({
                     value={value || { field: '', operator: 'equals', value: '' }}
                     onChange={onChange}
                     nodes={nodes}
+                    edges={edges}
+                    currentNodeId={nodeId}
+                    builderMode={nodeType === 'validation' ? 'validation' : 'default'}
                 />
             );
         case 'stepBuilder':
@@ -467,7 +465,7 @@ function FieldRenderer({
             );
         case 'options':
             const optionValues = Array.isArray(value) ? value : [];
-            const isRatingItemsField = nodeType === 'rating' && field.name === 'items';
+            const isScaleItemsField = (nodeType === 'rating' || nodeType === 'slider') && field.name === 'items';
             const handleOptionImageUpload = async (index: number) => {
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -517,7 +515,7 @@ function FieldRenderer({
                                         onChange(newOptions);
                                     }}
                                     className="flex-1 px-3 py-1.5 text-sm bg-background border border-input rounded-md focus:ring-1 focus:ring-primary outline-hidden disabled:opacity-50 disabled:cursor-not-allowed"
-                                    placeholder={isRatingItemsField ? `Item ${index + 1}` : `Option ${index + 1}`}
+                                    placeholder={isScaleItemsField ? `Item ${index + 1}` : `Option ${index + 1}`}
                                 />
                                 {!readOnly && (
                                     <div className="flex items-center shrink-0">
@@ -577,16 +575,16 @@ function FieldRenderer({
                                 onClick={() => onChange([
                                     ...optionValues,
                                     {
-                                        label: isRatingItemsField ? `Item ${optionValues.length + 1}` : `Option ${optionValues.length + 1}`,
-                                        value: isRatingItemsField ? `item${Date.now()}` : `opt${Date.now()}`
+                                        label: isScaleItemsField ? `Item ${optionValues.length + 1}` : `Option ${optionValues.length + 1}`,
+                                        value: isScaleItemsField ? `item${Date.now()}` : `opt${Date.now()}`
                                     }
                                 ])}
                                 className="text-xs text-primary hover:underline font-medium py-1 px-2"
                             >
-                                {isRatingItemsField ? '+ Add Item' : '+ Add Option'}
+                                {isScaleItemsField ? '+ Add Item' : '+ Add Option'}
                             </button>
                         ) : (
-                            isRatingItemsField ? (
+                            isScaleItemsField ? (
                                 <button
                                     onClick={() => onChange([
                                         { label: 'Overall Rating', value: `item${Date.now()}_overall` },
