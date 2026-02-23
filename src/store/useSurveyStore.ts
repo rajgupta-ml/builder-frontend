@@ -73,6 +73,48 @@ interface SurveyState {
     duplicateNode: () => void;
 }
 
+const newUuid = (): string => {
+    if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    return generateUniqueId('id');
+};
+
+const regenerateDuplicatedNodeDataIds = (source: Record<string, any>): Record<string, any> => {
+    const data = JSON.parse(JSON.stringify(source || {}));
+    data.technicalId = newUuid();
+
+    const withExportIds = (items: any[]) =>
+        items.map((item: any) => ({
+            ...item,
+            exportId: newUuid(),
+        }));
+
+    if (Array.isArray(data.options)) data.options = withExportIds(data.options);
+    if (Array.isArray(data.items)) data.items = withExportIds(data.items);
+    if (Array.isArray(data.rows)) data.rows = withExportIds(data.rows);
+    if (Array.isArray(data.columns)) data.columns = withExportIds(data.columns);
+    if (Array.isArray(data.choices)) data.choices = withExportIds(data.choices);
+
+    if (Array.isArray(data.fields)) {
+        data.fields = data.fields.map((field: any) => ({
+            ...field,
+            id: newUuid(),
+            exportId: newUuid(),
+        }));
+    }
+
+    if (Array.isArray(data.steps)) {
+        data.steps = data.steps.map((step: any) => ({
+            ...step,
+            exportId: newUuid(),
+            options: Array.isArray(step?.options) ? withExportIds(step.options) : [],
+        }));
+    }
+
+    return data;
+};
+
 export const useSurveyStore = create<SurveyState>((set, get) => ({
     nodes: [],
     edges: [],
@@ -498,9 +540,7 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 x: nodeToDuplicate.position.x + 40,
                 y: nodeToDuplicate.position.y + 40,
             },
-            data: {
-                ...nodeToDuplicate.data,
-            }
+            data: regenerateDuplicatedNodeDataIds(nodeToDuplicate.data || {})
         };
 
         // Deselect all existing nodes and add the new one

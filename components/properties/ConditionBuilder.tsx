@@ -334,6 +334,19 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
         () => findQuestionByKey(validQuestions, rule.field, fieldKeyMode),
         [validQuestions, rule.field, fieldKeyMode]
     );
+    const selectedQuestionData = (selectedQuestion?.data || {}) as any;
+    const isScaleMultiMode =
+        (selectedQuestion?.type === 'rating' || selectedQuestion?.type === 'slider')
+            ? (selectedQuestionData.responseMode === 'multi' ||
+                (selectedQuestionData.responseMode !== 'single' &&
+                    Array.isArray(selectedQuestionData.items) &&
+                    selectedQuestionData.items.length > 0))
+            : false;
+    const shouldShowSubField =
+        selectedQuestion?.type === 'matrixChoice' ||
+        selectedQuestion?.type === 'multiInput' ||
+        isScaleMultiMode;
+    const selectedType = selectedQuestion?.type;
 
     let questionOptions: any[] = [];
     if (selectedQuestion) {
@@ -410,19 +423,19 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
             </select>
 
             {/* Subfield if Matrix, Slider, Rating, or MultiInput */}
-            {(selectedQuestion?.type === 'matrixChoice' || selectedQuestion?.type === 'slider' || selectedQuestion?.type === 'rating' || selectedQuestion?.type === 'multiInput') && (
+            {shouldShowSubField && (
                 <select
                     className="flex-1 min-w-[100px] text-[10px] p-1.5 rounded border border-input bg-card h-7"
                     value={rule.subField || ''}
                     onChange={(e) => onUpdate({ ...rule, subField: e.target.value })}
                 >
                     <option value="">
-                        {selectedQuestion.type === 'matrixChoice' ? 'Row...' :
-                            selectedQuestion.type === 'multiInput' ? 'Field...' : 'Item...'}
+                        {selectedType === 'matrixChoice' ? 'Row...' :
+                            selectedType === 'multiInput' ? 'Field...' : 'Item...'}
                     </option>
-                    {(selectedQuestion.type === 'multiInput'
-                        ? (selectedQuestion.data.fields as any[] || [])
-                        : (selectedQuestion.data.items as any[] || selectedQuestion.data.rows as any[] || [])
+                    {(selectedType === 'multiInput'
+                        ? (selectedQuestionData.fields as any[] || [])
+                        : (selectedQuestionData.items as any[] || selectedQuestionData.rows as any[] || [])
                     ).map((sub: any, i: number) => (
                         <option key={i} value={getOptionKey(sub, optionKeyMode)}>
                             {sub.label || sub.text || sub.id}

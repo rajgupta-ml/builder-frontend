@@ -80,18 +80,18 @@ export default function PropertiesPanel({ node, nodes, issues = [], onChange, on
                     });
 
                     // Group properties by category
-                    const basicFields = ['label', 'description', 'questionLabel', 'url', 'urls', 'fields', 'isPii', 'welcomeMessage', 'message', 'buttonLabel', 'thankYouMessage'];
+                    const basicFields = ['responseMode', 'label', 'description', 'questionLabel', 'url', 'urls', 'fields', 'isPii', 'welcomeMessage', 'message', 'buttonLabel', 'thankYouMessage', "redirectUrl"];
                     const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps', 'allowedZips'];
                     const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices', 'multiple', 'maxRating', 'maxStars'];
-                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords', 'longAnswer', 'sitekey', 'redirectUrl', 'outcome', 'alt', 'interactionType', 'sliderConfig', 'autoplay'];
+                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords', 'longAnswer', 'sitekey', 'outcome', 'alt', 'interactionType', 'sliderConfig', 'autoplay'];
                     const logicFields = ['condition'];
 
                     const groupedProperties = {
-                        basic: definition.properties.filter(p => basicFields.includes(p.name)),
-                        options: definition.properties.filter(p => optionFields.includes(p.name)),
-                        choice: definition.properties.filter(p => choiceFields.includes(p.name)),
-                        advanced: definition.properties.filter(p => advancedFields.includes(p.name)),
-                        logic: definition.properties.filter(p => logicFields.includes(p.name)),
+                        basic: basicFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        options: optionFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        choice: choiceFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        advanced: advancedFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
+                        logic: logicFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
                         other: definition.properties.filter(p =>
                             !basicFields.includes(p.name) &&
                             !optionFields.includes(p.name) &&
@@ -454,7 +454,7 @@ function FieldRenderer({
             );
         case 'options':
             const optionValues = Array.isArray(value) ? value : [];
-            const isRatingItemsField = nodeType === 'rating' && field.name === 'items';
+            const isScaleItemsField = (nodeType === 'rating' || nodeType === 'slider') && field.name === 'items';
             const handleOptionImageUpload = async (index: number) => {
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -504,7 +504,7 @@ function FieldRenderer({
                                         onChange(newOptions);
                                     }}
                                     className="flex-1 px-3 py-1.5 text-sm bg-background border border-input rounded-md focus:ring-1 focus:ring-primary outline-hidden disabled:opacity-50 disabled:cursor-not-allowed"
-                                    placeholder={isRatingItemsField ? `Item ${index + 1}` : `Option ${index + 1}`}
+                                    placeholder={isScaleItemsField ? `Item ${index + 1}` : `Option ${index + 1}`}
                                 />
                                 {!readOnly && (
                                     <div className="flex items-center shrink-0">
@@ -564,16 +564,16 @@ function FieldRenderer({
                                 onClick={() => onChange([
                                     ...optionValues,
                                     {
-                                        label: isRatingItemsField ? `Item ${optionValues.length + 1}` : `Option ${optionValues.length + 1}`,
-                                        value: isRatingItemsField ? `item${Date.now()}` : `opt${Date.now()}`
+                                        label: isScaleItemsField ? `Item ${optionValues.length + 1}` : `Option ${optionValues.length + 1}`,
+                                        value: isScaleItemsField ? `item${Date.now()}` : `opt${Date.now()}`
                                     }
                                 ])}
                                 className="text-xs text-primary hover:underline font-medium py-1 px-2"
                             >
-                                {isRatingItemsField ? '+ Add Item' : '+ Add Option'}
+                                {isScaleItemsField ? '+ Add Item' : '+ Add Option'}
                             </button>
                         ) : (
-                            isRatingItemsField ? (
+                            isScaleItemsField ? (
                                 <button
                                     onClick={() => onChange([
                                         { label: 'Overall Rating', value: `item${Date.now()}_overall` },

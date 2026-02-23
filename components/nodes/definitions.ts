@@ -214,20 +214,40 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         icon: IconStar,
         category: 'choice',
         properties: [
+            {
+                name: 'responseMode',
+                label: 'Response Mode',
+                type: 'select',
+                defaultValue: 'single',
+                options: [
+                    { label: 'Single Question', value: 'single' },
+                    { label: 'Multiple Items', value: 'multi' }
+                ]
+            },
             ...commonProperties,
-            { name: 'items', label: 'Questions/Items', type: 'options', defaultValue: [] },
+            { name: 'items', label: 'Questions/Items', type: 'options', defaultValue: [], visible: (data: any) => data.responseMode === 'multi' },
             { name: 'maxRating', label: 'Max Stars', type: 'number', defaultValue: 5 }
         ]
     },
     {
         type: 'slider',
         label: 'Slider / Scale',
-        description: 'Rate multiple items on a scale',
+        description: 'Single or multi-item scale',
         icon: IconNumbers,
         category: 'choice',
         properties: [
+            {
+                name: 'responseMode',
+                label: 'Response Mode',
+                type: 'select',
+                defaultValue: 'single',
+                options: [
+                    { label: 'Single Question', value: 'single' },
+                    { label: 'Multiple Items', value: 'multi' }
+                ]
+            },
             ...commonProperties,
-            { name: 'items', label: 'Items to Rate', type: 'options', defaultValue: [] },
+            { name: 'items', label: 'Items to Rate', type: 'options', defaultValue: [], visible: (data: any) => data.responseMode === 'multi' },
             { name: 'min', label: 'Minimum', type: 'number', defaultValue: 0 },
             { name: 'max', label: 'Maximum', type: 'number', defaultValue: 10 },
             { name: 'step', label: 'Step', type: 'number', defaultValue: 1, min: 0 },

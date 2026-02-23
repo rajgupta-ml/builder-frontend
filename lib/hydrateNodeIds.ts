@@ -32,6 +32,14 @@ export function hydrateNodeIds(
                 exportId: runtimeData.items[i]?.exportId || item.exportId
             }));
         }
+        if ((node.type === 'rating' || node.type === 'slider')) {
+            if (runtimeData.responseMode === 'single' || runtimeData.responseMode === 'multi') {
+                nodeData.responseMode = runtimeData.responseMode;
+            } else {
+                const hasItems = Array.isArray(runtimeData.items) && runtimeData.items.length > 0;
+                nodeData.responseMode = hasItems ? 'multi' : 'single';
+            }
+        }
 
         // Copy exportIds for matrix rows and columns
         if (runtimeData.rows && Array.isArray(nodeData.rows)) {

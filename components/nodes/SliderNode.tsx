@@ -4,9 +4,10 @@ import BaseNode from './BaseNode';
 import { IconNumbers } from '@tabler/icons-react';
 
 const SliderNode = (props: NodeProps<any>) => {
-    const { label, description, required, min, max, step, items } = props.data;
+    const { label, description, required, min, max, step, items, responseMode } = props.data;
+    const effectiveMode = responseMode === 'multi' || (responseMode !== 'single' && Array.isArray(items) && items.length > 0) ? 'multi' : 'single';
 
-    const sliders = (items && items.length > 0) ? items : [{ label: 'Slider', value: 'default' }];
+    const sliders = (effectiveMode === 'multi' && items && items.length > 0) ? items : [{ label: 'Slider', value: 'default' }];
 
     return (
         <BaseNode
@@ -29,7 +30,7 @@ const SliderNode = (props: NodeProps<any>) => {
                 <div className="space-y-4">
                     {sliders.map((item: any, idx: number) => (
                         <div key={idx} className="space-y-2">
-                            {items && items.length > 0 && (
+                            {effectiveMode === 'multi' && items && items.length > 0 && (
                                 <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
                             )}
                             <div className="px-1 py-2">

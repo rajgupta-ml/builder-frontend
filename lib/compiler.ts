@@ -2,6 +2,11 @@ import { type Node as ReactFlowNode, type Edge as ReactFlowEdge } from '@xyflow/
 
 import { v4 as uuidv4 } from 'uuid'; // You'll need this
 
+const inferResponseMode = (data: any): 'single' | 'multi' => {
+    if (data?.responseMode === 'single' || data?.responseMode === 'multi') return data.responseMode;
+    return Array.isArray(data?.items) && data.items.length > 0 ? 'multi' : 'single';
+};
+
 export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge[]) => {
     const runtimeJson: Record<string, any> = {};
 
@@ -39,11 +44,14 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         }
 
         // Add stable IDs to rating and slider items
-        if (["rating", "slider"].includes(node.type as string) && nodeData.items && Array.isArray(nodeData.items)) {
-            nodeData.items = nodeData.items.map((item: any) => ({
-                ...item,
-                exportId: item.exportId || uuidv4()
-            }));
+        if (["rating", "slider"].includes(node.type as string)) {
+            nodeData.responseMode = inferResponseMode(nodeData);
+            if (nodeData.items && Array.isArray(nodeData.items)) {
+                nodeData.items = nodeData.items.map((item: any) => ({
+                    ...item,
+                    exportId: item.exportId || uuidv4()
+                }));
+            }
         }
 
         // Add stable IDs to matrix rows and columns
