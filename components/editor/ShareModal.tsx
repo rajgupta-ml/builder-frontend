@@ -2,6 +2,7 @@
 import { IconX, IconPlayerPlay, IconCopy, IconExternalLink, IconWorld, IconAlertCircle } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { safeOpenExternal } from '@/lib/safe-format';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface ShareModalProps {
     isOpen: boolean;
@@ -26,7 +27,8 @@ export function ShareModal({ isOpen, onClose, testLink, liveLink, isLive }: Shar
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <ModalPortal>
+            <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div
                 className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
@@ -83,6 +85,7 @@ export function ShareModal({ isOpen, onClose, testLink, liveLink, isLive }: Shar
                     </button>
                 </div>
             </div>
-        </div>
+            </div>
+        </ModalPortal>
     );
 }

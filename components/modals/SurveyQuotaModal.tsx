@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ConditionBuilder } from "../properties/ConditionBuilder";
 import { LogicGroup } from "../nodes/definitions";
 import { Node } from "@xyflow/react";
+import { ModalPortal } from "@/components/ui/ModalPortal";
 
 interface SurveyQuotaModalProps {
     isOpen: boolean;
@@ -204,15 +205,16 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
     };
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <motion.div
-                        initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.95, opacity: 0 }}
-                        className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
-                    >
+        <ModalPortal>
+            <AnimatePresence>
+                {isOpen && (
+                    <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90dvh]"
+                        >
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/30">
                             <div>
@@ -386,10 +388,11 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                 </>
                             )}
                         </div>
-                    </motion.div>
-                </div>
-            )}
-        </AnimatePresence>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </ModalPortal>
     );
 }
 
