@@ -63,6 +63,40 @@ type ResponsesPayload =
         };
     };
 
+const toValidTimestamp = (value: unknown): number | null => {
+    if (!value) return null;
+    const ms = new Date(value as string | number).getTime();
+    return Number.isNaN(ms) ? null : ms;
+};
+
+const getResponseDurationMs = (response: any): number => {
+    const startMs =
+        toValidTimestamp(response.startedAt) ??
+        toValidTimestamp(response.createdAt) ??
+        toValidTimestamp(response.timestamp);
+    if (startMs === null) return 0;
+
+    const endMs =
+        toValidTimestamp(response.completedAt) ??
+        toValidTimestamp(response.statusUpdatedAt) ??
+        toValidTimestamp(response.lastActivityAt) ??
+        toValidTimestamp(response.updatedAt) ??
+        toValidTimestamp(response.timestamp) ??
+        toValidTimestamp(response.createdAt) ??
+        toValidTimestamp(response.startedAt) ??
+        startMs;
+
+    return Math.max(0, endMs - startMs);
+};
+
+const formatDurationMs = (ms: number): string => {
+    const safeMs = Math.max(0, ms || 0);
+    const totalSeconds = Math.floor(safeMs / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}m ${secs}s`;
+};
+
 export default function SurveyMetricsPage() {
     const { id } = useParams() as { id: string };
     const router = useRouter();
@@ -125,11 +159,8 @@ export default function SurveyMetricsPage() {
                 : responsesData.meta?.orderedHeaders || [];
             // Inject duration calculation for frontend display
             const enrichedResponses = rData.map((r: any) => {
-                const durationSeconds = r.updatedAt && r.createdAt
-                    ? Math.floor((new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 1000)
-                    : 0;
-                const durationStr = durationSeconds > 0 ? `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s` : "N/A";
-                return { ...r, duration: durationStr };
+                const durationMs = getResponseDurationMs(r);
+                return { ...r, duration: formatDurationMs(durationMs) };
             });
 
             setResponses(enrichedResponses);
@@ -169,19 +200,41 @@ export default function SurveyMetricsPage() {
             toast.info("Resync started. Waiting for completion...");
 
             const finalOperation = await operationsApi.waitForOperation(accepted.operationId, {
-                timeoutMs: 120000,
-                intervalMs: 1500,
+                timeoutMs: 180000,
+                intervalMs: 2000,
             });
             if (finalOperation.status === "SUCCEEDED") {
                 const payload = (finalOperation.resultPayload || {}) as any;
-                toast.success(`Resync complete: applied ${payload.applied || 0}, skipped ${payload.skipped || 0}, failed ${payload.failed || 0}`);
+                if (payload.success === false) {
+                    if (payload.reason === "resync_already_running") {
+                        toast.info("A resync is already running. Showing latest available data.");
+                    } else {
+                        toast.warning(`Resync finished with issues: ${payload.reason || "unknown reason"}`);
+                    }
+                } else {
+                    toast.success(`Resync complete: applied ${payload.applied || 0}, skipped ${payload.skipped || 0}, failed ${payload.failed || 0}`);
+                }
             } else {
                 toast.warning(`Resync finished with issues: ${finalOperation.errorDetail || "unknown reason"}`);
             }
             await fetchData();
         } catch (error: any) {
             if (error?.code === "OPERATION_TIMEOUT") {
-                toast.warning("Resync is still running in background. Check status again in a few seconds.");
+                try {
+                    const statusData = await surveyResponseApi.getResyncStatus(id);
+                    const currentStatus = statusData?.status?.status;
+                    if (currentStatus === "running" || currentStatus === "queued") {
+                        toast.warning("Resync is still running in background. Latest metrics have been refreshed.");
+                    } else if (currentStatus === "completed") {
+                        toast.success("Resync completed in background.");
+                    } else if (currentStatus === "failed") {
+                        toast.warning(`Resync failed in background: ${statusData?.status?.reason || "unknown reason"}`);
+                    } else {
+                        toast.warning("Resync is still processing in background.");
+                    }
+                } catch {
+                    toast.warning("Resync is still running in background. Check status again in a few seconds.");
+                }
                 await fetchData();
                 return;
             }
@@ -205,18 +258,17 @@ export default function SurveyMetricsPage() {
             : 0
     );
 
-    // Calculate Average Completion Time
-    const completedResponses = responses.filter(r => r.status === 'COMPLETED' && r.createdAt && r.updatedAt);
+    // Average time is calculated only from COMPLETED respondents
+    const completedResponses = responses.filter(r => String(r.status || '').toUpperCase() === 'COMPLETED');
     const avgTimeMs = completedResponses.length > 0
         ? completedResponses.reduce((acc, curr) => {
-            const start = new Date(curr.createdAt).getTime();
-            const end = new Date(curr.updatedAt).getTime();
-            return acc + (end - start);
+            const duration = getResponseDurationMs(curr);
+            return acc + Math.max(0, duration);
         }, 0) / completedResponses.length
         : 0;
 
     const formatTime = (ms: number) => {
-        if (ms === 0) return "N/A";
+        if (ms <= 0) return "0s";
         const seconds = Math.floor(ms / 1000);
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -253,13 +305,41 @@ export default function SurveyMetricsPage() {
 
     // Dynamic Columns Identification from Ordered Headers
     // Filter out standard columns that we handle statically
-    const standardHeaders = ['Respondent ID', 'Date', 'Status', 'Outcome', 'Duration', 'id', 'mode', 'updatedAt', 'createdAt', 'respondentId', 'status', 'outcome', 'Response ID', 'Submitted At', 'Version', 'Survey Name'];
-    const dynamicHeaders = orderedHeaders.filter(h => !standardHeaders.includes(h));
+    const standardHeaders = [
+        'Respondent ID',
+        'Date',
+        'Status',
+        'Outcome',
+        'Duration',
+        'duration',
+        'durationMs',
+        'duration_ms',
+        'completedAt',
+        'statusUpdatedAt',
+        'lastActivityAt',
+        'completed_at',
+        'status_updated_at',
+        'last_activity_at',
+        'id',
+        'mode',
+        'updatedAt',
+        'createdAt',
+        'respondentId',
+        'status',
+        'outcome',
+        'Response ID',
+        'Submitted At',
+        'Version',
+        'Survey Name'
+    ];
+    const normalizedStandardHeaders = new Set(standardHeaders.map(h => h.trim().toLowerCase()));
+    const isStandardHeader = (header: string) => normalizedStandardHeaders.has(header.trim().toLowerCase());
+    const dynamicHeaders = orderedHeaders.filter(h => !isStandardHeader(h));
 
     // Fallback if orderedHeaders is missing
     const finalDynamicHeaders = dynamicHeaders.length > 0 ? dynamicHeaders : Array.from(new Set(
         responses.flatMap(r => Object.keys(r))
-    )).filter(k => !standardHeaders.includes(k)).sort();
+    )).filter(k => !isStandardHeader(k)).sort();
 
     // Filter Logic
     const filteredResponses = responses.filter(r => {
@@ -562,23 +642,27 @@ export default function SurveyMetricsPage() {
                         <IconClock size={18} className="text-muted-foreground" />
                         Mode Distribution
                     </h3>
-                    <div className="h-[300px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={modeData}
-                                    innerRadius={60}
-                                    outerRadius={80}
-                                    paddingAngle={5}
-                                    dataKey="value"
-                                >
-                                    <Cell fill="#10b981" />
-                                    <Cell fill="#6366f1" />
-                                </Pie>
-                                <Tooltip />
-                            </PieChart>
-                        </ResponsiveContainer>
-                        <div className="flex justify-center gap-6 mt-4">
+                    <div className="space-y-4">
+                        <div className="h-[240px] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                                    <Pie
+                                        data={modeData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={80}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        <Cell fill="#10b981" />
+                                        <Cell fill="#6366f1" />
+                                    </Pie>
+                                    <Tooltip />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div className="flex items-center justify-center gap-6 pt-1">
                             <div className="flex items-center gap-2 text-xs font-medium">
                                 <div className="w-3 h-3 rounded-full bg-emerald-500" /> Live
                             </div>
@@ -668,7 +752,7 @@ export default function SurveyMetricsPage() {
                             <tbody className="divide-y divide-border/60">
                                 {paginatedResponses.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5 + dynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground text-sm">
+                                        <td colSpan={5 + finalDynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground text-sm">
                                             No records intercepted.
                                         </td>
                                     </tr>
@@ -736,6 +820,7 @@ export default function SurveyMetricsPage() {
                         </span>
                         <div className="flex items-center gap-2">
                             <button
+                                title="Left Icon"
                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                 disabled={currentPage === 1}
                                 className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -759,6 +844,7 @@ export default function SurveyMetricsPage() {
                                 )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
                             </div>
                             <button
+                                title="Right Icon"
                                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                 disabled={currentPage === totalPages}
                                 className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -852,6 +938,7 @@ function FilterPopover({ value, onChange, type, options, placeholder }: {
     return (
         <div className="relative inline-block ml-1">
             <button
+                title="Filter Icon"
                 onClick={() => setIsOpen(!isOpen)}
                 className={cn(
                     "p-1.5 rounded-lg hover:bg-muted transition-colors",

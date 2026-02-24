@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import { toast } from "sonner";
 import { surveyWorkflowApi, type WorkflowImportJobStatus } from "@/api/surveyWorkflow";
+import { ModalPortal } from "@/components/ui/ModalPortal";
 
 type ImportStatus = "IDLE" | "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED";
 
@@ -233,17 +234,18 @@ export function AiImportModal({ isOpen, surveyId, onClose, onImported, onStatusC
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div
-        className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalPortal>
+      <div className="fixed inset-0 z-120 h-dvh w-screen flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div
+          className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
         <div className="flex items-center justify-between px-6 py-5 border-b border-border bg-muted/30">
           <div className="flex items-center gap-2">
             <IconSparkles size={18} className="text-primary" />
             <h3 className="font-semibold text-lg">Import Questionnaire with AI</h3>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-full">
+          <button title="X Icon" onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-full">
             <IconX size={20} />
           </button>
         </div>
@@ -380,7 +382,8 @@ export function AiImportModal({ isOpen, surveyId, onClose, onImported, onStatusC
             {isSubmitting ? "Starting..." : "Start AI Import"}
           </button>
         </div>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

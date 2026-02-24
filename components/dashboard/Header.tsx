@@ -4,12 +4,19 @@ import {
     IconSearch,
     IconPlus
 } from '@tabler/icons-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import NewSurveyModal from "@/components/SurveyModal";
 import { getStoredUserRole, hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 export const DashboardHeader = () => {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const searchParamsString = searchParams.toString();
+    const currentSearch = searchParams.get("search") ?? "";
     const [isModalOpen, setIsModalOpen] = React.useState(false);
     const [canCreateSurvey, setCanCreateSurvey] = React.useState(false);
+    const [searchValue, setSearchValue] = React.useState("");
 
     useEffect(() => {
         const storedUser = localStorage.getItem("user");
@@ -23,6 +30,28 @@ export const DashboardHeader = () => {
         const role = getStoredUserRole();
         setCanCreateSurvey(hasPermission(role, PERMISSIONS.SURVEY_CREATE));
     }, []);
+
+    useEffect(() => {
+        setSearchValue(currentSearch);
+    }, [currentSearch]);
+
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            if (searchValue === currentSearch) return;
+
+            const nextParams = new URLSearchParams(searchParamsString);
+            if (searchValue.trim()) {
+                nextParams.set("search", searchValue.trim());
+            } else {
+                nextParams.delete("search");
+            }
+
+            const queryString = nextParams.toString();
+            router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+        }, 300);
+
+        return () => clearTimeout(timeout);
+    }, [currentSearch, pathname, router, searchParamsString, searchValue]);
 
     return (
         <>
@@ -38,6 +67,8 @@ export const DashboardHeader = () => {
                     <input
                         type="text"
                         placeholder="Search records..."
+                        value={searchValue}
+                        onChange={(e) => setSearchValue(e.target.value)}
                         className="bg-transparent outline-none placeholder:text-muted-foreground/60 w-full"
                     />
                 </div>

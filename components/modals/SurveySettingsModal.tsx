@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { IconDeviceFloppy, IconExternalLink, IconAlertTriangle, IconX } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { safeOpenExternal } from "@/lib/safe-format";
+import { ModalPortal } from "@/components/ui/ModalPortal";
 
 interface SurveySettingsModalProps {
     isOpen: boolean;
@@ -122,15 +123,16 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
     };
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <motion.div
-                        initial={{ scale: 0.95, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.95, opacity: 0 }}
-                        className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
-                    >
+        <ModalPortal>
+            <AnimatePresence>
+                {isOpen && (
+                    <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-background border border-border shadow-2xl rounded-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90dvh]"
+                        >
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/30">
                             <div>
@@ -265,10 +267,11 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                 Save Changes
                             </button>
                         </div>
-                    </motion.div>
-                </div>
-            )}
-        </AnimatePresence>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </ModalPortal>
     );
 }
     const openPreview = (url: string) => {

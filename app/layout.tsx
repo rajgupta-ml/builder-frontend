@@ -6,6 +6,11 @@ import { ReliabilityProvider } from "@/components/providers/ReliabilityProvider"
 export const metadata: Metadata = {
   title: "AIM",
   description: "Survey Builder for AIM",
+  icons: {
+    icon: "/logo.jpg",
+    shortcut: "/logo.jpg",
+    apple: "/logo.jpg",
+  },
 };
 
 export default function RootLayout({

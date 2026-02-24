@@ -111,9 +111,6 @@ export default function IndustrialMinimalShowcase() {
                                         <h1 className="text-2xl font-semibold mb-2">Active Surveys</h1>
                                         <p className={`text-xs text-muted-foreground ${jetBrainsMono.className}`}>Overview of running data collection tasks.</p>
                                     </div>
-                                    <div className={`${jetBrainsMono.className} text-xs border border-border px-3 py-1 rounded shadow-sm flex items-center gap-2 text-muted-foreground`}>
-                                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full" /> System Nominal
-                                    </div>
                                 </header>
 
                                 <div className="border border-border/60 rounded-xl overflow-hidden bg-background">
@@ -189,7 +186,7 @@ export default function IndustrialMinimalShowcase() {
 
                         {/* Main */}
                         <div className="flex-1 flex flex-col relative overflow-hidden">
-                            <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] pointer-events-none -z-10" />
+                            <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-size-[64px_64px] pointer-events-none -z-10" />
 
                             <div className="h-20 border-b border-border flex items-center justify-between px-10 relative">
                                 <div className={`flex items-center gap-4 ${spaceMono.className} text-xs text-muted-foreground`}>
@@ -294,7 +291,7 @@ export default function IndustrialMinimalShowcase() {
 
                                     <div className="flex flex-col gap-1">
                                         <div className="flex px-4 py-2 border-b border-border/40 text-[10px] uppercase opacity-50 tracking-widest mb-2">
-                                            <div className="flex-[2]">Identifier Name</div>
+                                            <div className="flex-2">Identifier Name</div>
                                             <div className="flex-1">Status</div>
                                             <div className="flex-1 text-right">Data Points</div>
                                             <div className="flex-1 text-right">Timestamp</div>
@@ -302,7 +299,7 @@ export default function IndustrialMinimalShowcase() {
 
                                         {[1, 2, 3, 4, 5].map(i => (
                                             <div key={i} className="flex px-4 py-4 text-xs tracking-wide border-b border-transparent hover:border-border/40 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer group">
-                                                <div className="flex-[2] flex flex-col gap-1">
+                                                <div className="flex-2 flex flex-col gap-1">
                                                     <span className="uppercase font-medium">Customer Sat. Metric 0{i}</span>
                                                     <span className="text-[10px] opacity-50">UID: 984{i}-AB</span>
                                                 </div>
@@ -382,15 +379,12 @@ export default function IndustrialMinimalShowcase() {
                                 </div>
                             </div>
 
-                            <div className="p-10 flex-1 overflow-auto bg-[linear-gradient(var(--color-primary)_1px,transparent_1px),linear-gradient(90deg,var(--color-primary)_1px,transparent_1px)] bg-[size:40px_40px] [background-size:40px_40px] opacity-[0.99]" style={{ backgroundImage: "radial-gradient(var(--color-primary) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
+                            <div className="p-10 flex-1 overflow-auto bg-[linear-gradient(var(--color-primary)_1px,transparent_1px),linear-gradient(90deg,var(--color-primary)_1px,transparent_1px)] bg-size-[40px_40px] opacity-[0.99]" style={{ backgroundImage: "radial-gradient(var(--color-primary) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
                                 <div className="bg-background/95 backdrop-blur-sm border border-primary/20 rounded-2xl shadow-xl shadow-primary/5 p-8 h-full flex flex-col">
                                     <header className="mb-10 flex items-baseline justify-between border-b border-primary/20 pb-6">
                                         <div>
                                             <h1 className="text-3xl font-bold mb-2 text-foreground">Active Surveys</h1>
                                             <p className={`text-sm text-muted-foreground font-medium ${jetBrainsMono.className}`}>Overview of running data collection tasks.</p>
-                                        </div>
-                                        <div className={`${jetBrainsMono.className} text-xs bg-primary/10 text-primary border border-primary/30 px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 font-bold`}>
-                                            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" /> System Nominal
                                         </div>
                                     </header>
 

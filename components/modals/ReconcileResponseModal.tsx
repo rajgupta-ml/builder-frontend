@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { IconAlertTriangle, IconLoader, IconCheck, IconUpload, IconFileSpreadsheet, IconX } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "motion/react";
 import * as XLSX from 'xlsx';
+import { ModalPortal } from "@/components/ui/ModalPortal";
 
 interface ReconcileResponseModalProps {
     isOpen: boolean;
@@ -25,6 +26,13 @@ export const ReconcileResponseModal = ({
     const [parsedIds, setParsedIds] = useState<string[]>([]);
     const [fileName, setFileName] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const headerTokens = new Set([
+        'id',
+        'responseid',
+        'response id',
+        'respondentid',
+        'respondent id',
+    ]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -52,6 +60,33 @@ export const ReconcileResponseModal = ({
         }
     };
 
+    const normalizeIds = (rawValues: unknown[]): string[] => {
+        const seen = new Set<string>();
+        const parsed: string[] = [];
+
+        for (const raw of rawValues) {
+            if (raw === null || raw === undefined) continue;
+            const normalized = String(raw).replace(/\uFEFF/g, '').trim();
+            if (!normalized) continue;
+
+            const tokens = normalized
+                .split(/[\r\n,;\t ]+/)
+                .map((token) => token.trim().replace(/^['"]+|['"]+$/g, ''))
+                .filter(Boolean);
+
+            for (const token of tokens) {
+                const lower = token.toLowerCase();
+                if (headerTokens.has(lower)) continue;
+                if (!seen.has(token)) {
+                    seen.add(token);
+                    parsed.push(token);
+                }
+            }
+        }
+
+        return parsed;
+    };
+
     const parseFile = (file: File): Promise<string[]> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -62,27 +97,30 @@ export const ReconcileResponseModal = ({
                     let ids: string[] = [];
 
                     if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                        const workbook = XLSX.read(data, { type: 'binary' });
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-                        // Flatten and filter
-                        ids = (jsonData as any[][]).flat().map(String).filter(id => id && id.trim().length > 0);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const rawCells: unknown[] = [];
+
+                        for (const sheetName of workbook.SheetNames) {
+                            const sheet = workbook.Sheets[sheetName];
+                            const rows = XLSX.utils.sheet_to_json(sheet, {
+                                header: 1,
+                                raw: false,
+                                defval: '',
+                            }) as unknown[][];
+                            for (const row of rows) {
+                                rawCells.push(...row);
+                            }
+                        }
+
+                        ids = normalizeIds(rawCells);
                     } else {
-                        // CSV or TXT
-                        const text = data as string;
-                        // Split by newlines, commas, or semicolons
-                        ids = text.split(/[\r\n,;]+/).map(id => id.trim()).filter(id => id.length > 0);
+                        const text = typeof data === 'string'
+                            ? data
+                            : new TextDecoder().decode(data as ArrayBuffer);
+                        ids = normalizeIds([text]);
                     }
 
-                    // Basic cleanup: remove headers if they look like "id" or "responseId"
-                    // And typically IDs shouldn't contain spaces, but let's just create unique set
-                    const uniqueIds = Array.from(new Set(ids)).filter(id =>
-                        id.toLowerCase() !== 'id' &&
-                        id.toLowerCase() !== 'responseid' &&
-                        id.toLowerCase() !== 'respondentid'
-                    );
-
-                    resolve(uniqueIds);
+                    resolve(ids);
                 } catch (err) {
                     reject(err);
                 }
@@ -91,7 +129,7 @@ export const ReconcileResponseModal = ({
             reader.onerror = (err) => reject(err);
 
             if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                reader.readAsBinaryString(file);
+                reader.readAsArrayBuffer(file);
             } else {
                 reader.readAsText(file);
             }
@@ -150,23 +188,24 @@ export const ReconcileResponseModal = ({
     if (!isOpen) return null;
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <>
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={handleClose}
-                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
-                    />
-                    <div className="fixed inset-0 flex items-center justify-center p-4 z-50 pointer-events-none">
+        <ModalPortal>
+            <AnimatePresence>
+                {isOpen && (
+                    <>
                         <motion.div
-                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                            className="bg-card w-full max-w-md rounded-2xl shadow-xl overflow-hidden pointer-events-auto border border-border"
-                        >
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={handleClose}
+                            className="fixed inset-0 z-120 h-dvh w-screen bg-black/50 backdrop-blur-sm"
+                        />
+                        <div className="fixed inset-0 z-120 h-dvh w-screen flex items-center justify-center p-4 pointer-events-none">
+                            <motion.div
+                                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                                className="bg-card w-full max-w-md rounded-2xl shadow-xl overflow-hidden pointer-events-auto border border-border"
+                            >
                             {!result ? (
                                 <div className="p-6">
                                     <div className="flex items-center gap-4 mb-6">
@@ -187,6 +226,7 @@ export const ReconcileResponseModal = ({
                                             onClick={() => fileInputRef.current?.click()}
                                         >
                                             <input
+                                            title="file handler"
                                                 type="file"
                                                 ref={fileInputRef}
                                                 className="hidden"
@@ -212,6 +252,7 @@ export const ReconcileResponseModal = ({
                                                     </div>
                                                 </div>
                                                 <button
+                                                    title="X Icon"
                                                     onClick={handleReset}
                                                     className="p-1 hover:bg-muted rounded-full"
                                                 >
@@ -278,6 +319,14 @@ export const ReconcileResponseModal = ({
                                             <span className="text-xs text-muted-foreground uppercase font-bold">Disqualified Incremented</span>
                                             <div className="text-xl font-black text-foreground">{result?.data?.incrementedDisqualified || 0}</div>
                                         </div>
+                                        <div>
+                                            <span className="text-xs text-muted-foreground uppercase font-bold">Requested IDs</span>
+                                            <div className="text-xl font-black text-foreground">{result?.data?.requestedIds?.length || 0}</div>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-muted-foreground uppercase font-bold">Matched Inputs</span>
+                                            <div className="text-xl font-black text-foreground">{result?.data?.matchedInputIds?.length || 0}</div>
+                                        </div>
                                         <div className="col-span-2">
                                             <span className="text-xs text-muted-foreground uppercase font-bold">Quotas Freed</span>
                                             <div className="flex flex-wrap gap-2 mt-1">
@@ -301,10 +350,11 @@ export const ReconcileResponseModal = ({
                                     </button>
                                 </div>
                             )}
-                        </motion.div>
-                    </div>
-                </>
-            )}
-        </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    </>
+                )}
+            </AnimatePresence>
+        </ModalPortal>
     );
 };
