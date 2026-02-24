@@ -8,6 +8,8 @@ import { surveyResponseApi } from "@/api/surveyResponse";
 import type { Surveys } from "@/src/shared/types/survey";
 import { toUserMessage } from "@/lib/api-error";
 import { toast } from "sonner";
+import { jetBrainsMono } from "@/app/dashboard/layout";
+import { AnimatePresence, motion } from "framer-motion";
 
 type SurveyModeMetrics = {
     mode: string;
@@ -130,69 +132,118 @@ export default function GlobalMetricsPage() {
 
     return (
         <div className="p-8 md:p-12 w-full max-w-7xl mx-auto space-y-6">
-            <div className="flex items-center gap-3">
+            <motion.div
+                className="flex items-center gap-3"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+            >
                 <IconChartBar size={24} className="text-muted-foreground" />
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight">Global Analytics</h1>
                     <p className="text-sm text-muted-foreground">All surveys with aggregate metrics and quick drill-down.</p>
                 </div>
-            </div>
+            </motion.div>
 
-            <div className="bg-background border border-border/60 rounded-xl overflow-hidden shadow-sm">
-                {loading ? (
-                    <div className="p-12 text-center text-muted-foreground">Loading analytics...</div>
-                ) : error ? (
-                    <div className="p-12 text-center space-y-4">
-                        <p className="text-sm text-muted-foreground">{error}</p>
-                        <button
-                            onClick={() => window.location.reload()}
-                            className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+            <div className="bg-background border border-border/60 rounded-xl overflow-visible">
+                <AnimatePresence mode="wait">
+                    {loading ? (
+                        <motion.div
+                            key="loading"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="p-12 text-center text-muted-foreground"
                         >
-                            Retry
-                        </button>
-                    </div>
-                ) : rows.length === 0 ? (
-                    <div className="p-12 text-center text-muted-foreground">No surveys found.</div>
-                ) : (
-                    <>
+                            Loading analytics...
+                        </motion.div>
+                    ) : error ? (
+                        <motion.div
+                            key="error"
+                            initial={{ opacity: 0, scale: 0.98 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.98 }}
+                            className="p-12 text-center space-y-4"
+                        >
+                            <p className="text-sm text-muted-foreground">{error}</p>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+                            >
+                                Retry
+                            </button>
+                        </motion.div>
+                    ) : rows.length === 0 ? (
+                        <motion.div
+                            key="empty"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="p-12 text-center text-muted-foreground"
+                        >
+                            No surveys found.
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key="table"
+                            initial="hidden"
+                            animate="visible"
+                            exit="hidden"
+                            variants={{
+                                visible: { transition: { staggerChildren: 0.05 } },
+                            }}
+                        >
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left table-auto border-separate border-spacing-0">
+                            <table className="w-full text-left table-fixed">
                                 <thead>
-                                    <tr className="bg-muted/30 text-muted-foreground text-xs font-medium">
-                                        <th className="px-6 py-3 border-b border-border/60 min-w-[260px]">Survey</th>
-                                        <th className="px-6 py-3 border-b border-border/60">Views</th>
-                                        <th className="px-6 py-3 border-b border-border/60">Starts</th>
-                                        <th className="px-6 py-3 border-b border-border/60">Completes</th>
-                                        <th className="px-6 py-3 border-b border-border/60">Dropped</th>
-                                        <th className="px-6 py-3 border-b border-border/60">Disqualified</th>
-                                        <th className="px-6 py-3 border-b border-border/60">IR</th>
-                                        <th className="px-6 py-3 border-b border-border/60 text-right">Action</th>
+                                    <tr
+                                        className={`border-b border-border/60 bg-muted/30 text-[10px] uppercase text-muted-foreground tracking-wider ${jetBrainsMono.className}`}
+                                    >
+                                        <th className="px-6 py-4 font-normal min-w-[260px]">Survey</th>
+                                        <th className="px-6 py-4 font-normal">Views</th>
+                                        <th className="px-6 py-4 font-normal">Starts</th>
+                                        <th className="px-6 py-4 font-normal">Completes</th>
+                                        <th className="px-6 py-4 font-normal">Dropped</th>
+                                        <th className="px-6 py-4 font-normal">Disqualified</th>
+                                        <th className="px-6 py-4 font-normal">IR</th>
+                                        <th className="px-6 py-4 font-normal text-right">Action</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    {pagedRows.map((row) => (
-                                        <tr key={row.id} className="hover:bg-primary/5 transition-colors">
-                                            <td className="px-6 py-3 border-b border-border/60">
+                                <tbody className="divide-y divide-border/60">
+                                    {pagedRows.map((row, i) => (
+                                        <motion.tr
+                                            key={row.id}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ delay: i * 0.05 }}
+                                            className="hover:bg-primary/5 transition-colors group cursor-pointer relative"
+                                            onClick={() => router.push(`/dashboard/surveys/${row.id}/metrics`)}
+                                        >
+                                            <td className="px-6 py-4 border-l-2 border-transparent group-hover:border-primary transition-colors">
                                                 <div className="flex flex-col">
-                                                    <span className="text-sm font-semibold text-foreground">{row.name}</span>
-                                                    <span className="text-xs text-muted-foreground font-mono">ID-{row.id.slice(-8).toUpperCase()}</span>
+                                                    <span className="text-sm font-medium text-foreground truncate">{row.name}</span>
+                                                    <span className={`text-xs text-muted-foreground group-hover:text-primary/80 transition-colors ${jetBrainsMono.className}`}>
+                                                        ID-{row.id.slice(-8).toUpperCase()}
+                                                    </span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-3 border-b border-border/60 text-sm">{row.views}</td>
-                                            <td className="px-6 py-3 border-b border-border/60 text-sm">{row.starts}</td>
-                                            <td className="px-6 py-3 border-b border-border/60 text-sm">{row.completes}</td>
-                                            <td className="px-6 py-3 border-b border-border/60 text-sm">{row.dropped}</td>
-                                            <td className="px-6 py-3 border-b border-border/60 text-sm">{row.disqualified}</td>
-                                            <td className="px-6 py-3 border-b border-border/60 text-sm">{row.ir.toFixed(1)}%</td>
-                                            <td className="px-6 py-3 border-b border-border/60 text-right">
+                                            <td className={`px-6 py-4 text-sm ${jetBrainsMono.className}`}>{row.views}</td>
+                                            <td className={`px-6 py-4 text-sm ${jetBrainsMono.className}`}>{row.starts}</td>
+                                            <td className={`px-6 py-4 text-sm ${jetBrainsMono.className}`}>{row.completes}</td>
+                                            <td className={`px-6 py-4 text-sm ${jetBrainsMono.className}`}>{row.dropped}</td>
+                                            <td className={`px-6 py-4 text-sm ${jetBrainsMono.className}`}>{row.disqualified}</td>
+                                            <td className={`px-6 py-4 text-sm ${jetBrainsMono.className}`}>{row.ir.toFixed(1)}%</td>
+                                            <td className="px-6 py-4 text-right">
                                                 <button
-                                                    onClick={() => router.push(`/dashboard/surveys/${row.id}/metrics`)}
-                                                    className="px-3 py-1.5 text-xs font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        router.push(`/dashboard/surveys/${row.id}/metrics`);
+                                                    }}
+                                                    className={`px-3 py-1.5 text-xs border border-border/60 rounded-md hover:bg-muted transition-colors ${jetBrainsMono.className}`}
                                                 >
                                                     View Details
                                                 </button>
                                             </td>
-                                        </tr>
+                                        </motion.tr>
                                     ))}
                                 </tbody>
                             </table>
@@ -221,8 +272,9 @@ export default function GlobalMetricsPage() {
                                 </div>
                             </div>
                         )}
-                    </>
-                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );
