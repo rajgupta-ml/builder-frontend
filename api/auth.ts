@@ -48,5 +48,50 @@ export const authApi = {
       throw new Error("Invalid auth payload");
     }
     return parsed.data;
-  }
+  },
+
+  updateMe: async (payload: { name: string }): Promise<{ user: User; message: string }> => {
+    const response = await apiClient.patch("/auth/me", payload);
+    const parsed = z.object({
+      message: z.string(),
+      user: userSchema,
+    }).safeParse(response.data);
+    if (!parsed.success) {
+      reportError({
+        kind: "api",
+        message: "Invalid update profile response shape",
+        details: { endpoint: "/auth/me" },
+      });
+      throw new Error("Invalid update profile payload");
+    }
+    return parsed.data;
+  },
+
+  changePassword: async (payload: { currentPassword: string; newPassword: string }): Promise<{ message: string }> => {
+    const response = await apiClient.patch("/auth/me/password", payload);
+    const parsed = z.object({ message: z.string() }).safeParse(response.data);
+    if (!parsed.success) {
+      reportError({
+        kind: "api",
+        message: "Invalid change password response shape",
+        details: { endpoint: "/auth/me/password" },
+      });
+      throw new Error("Invalid change password payload");
+    }
+    return parsed.data;
+  },
+
+  logout: async (): Promise<{ message: string }> => {
+    const response = await apiClient.post("/auth/logout");
+    const parsed = z.object({ message: z.string() }).safeParse(response.data);
+    if (!parsed.success) {
+      reportError({
+        kind: "api",
+        message: "Invalid logout response shape",
+        details: { endpoint: "/auth/logout" },
+      });
+      throw new Error("Invalid logout payload");
+    }
+    return parsed.data;
+  },
 };
