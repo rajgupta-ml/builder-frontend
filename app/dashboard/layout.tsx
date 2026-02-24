@@ -18,6 +18,7 @@ export default function DashboardLayout({
     // Hide sidebar and header for the builder page specifically
     // Pattern: /dashboard/surveys/[uuid] (but not /metrics)
     const isBuilder = /^\/dashboard\/surveys\/[^\/]+$/.test(pathname);
+    const showHeader = pathname === "/dashboard" || pathname === "/dashboard/metrics";
 
     if (isBuilder) {
         return (
@@ -35,7 +36,7 @@ export default function DashboardLayout({
                 <DashboardSidebar />
                 <div className="flex-1 flex flex-col overflow-hidden bg-background relative">
                     <div className="relative z-10 flex flex-col h-full">
-                        <DashboardHeader />
+                        {showHeader && <DashboardHeader />}
                         <main className="flex-1 overflow-y-auto w-full relative">
                             {children}
                         </main>

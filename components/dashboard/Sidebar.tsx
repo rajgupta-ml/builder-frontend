@@ -4,11 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from "@/lib/utils";
 import {
-    IconLayoutDashboard,
     IconChartBar,
-    IconUsers,
     IconSettings,
-    IconHelpCircle,
     IconClipboardList,
     IconChevronLeft,
     IconChevronRight
@@ -54,12 +51,10 @@ export const DashboardSidebar = () => {
     const menuItems = [
         { href: '/dashboard', icon: IconClipboardList, label: 'My Surveys' },
         { href: '/dashboard/metrics', icon: IconChartBar, label: 'Global Analytics' },
-        { href: '/dashboard/users', icon: IconUsers, label: 'Respondents' },
     ];
 
     const bottomItems = [
         { href: '/dashboard/settings', icon: IconSettings, label: 'Settings' },
-        { href: '/dashboard/help', icon: IconHelpCircle, label: 'Help & Support' },
     ];
 
     return (

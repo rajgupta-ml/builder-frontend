@@ -6,6 +6,7 @@ import { reportError } from "@/lib/error-reporter";
 
 type RequestOptions = {
   signal?: AbortSignal;
+  search?: string;
 };
 
 export interface AcceptedOperation {
@@ -18,7 +19,10 @@ export interface AcceptedOperation {
 export const surveyApi = {
   // Done
   getSurveys: async (options?: RequestOptions): Promise<Surveys[]> => {
-    const response = await apiClient.get<{ data: Surveys[] }>("/surveys", options);
+    const response = await apiClient.get<{ data: Surveys[] }>("/surveys", {
+      signal: options?.signal,
+      params: options?.search ? { search: options.search } : undefined,
+    });
     const parsed = z.object({ data: z.array(z.unknown()) }).safeParse(response.data);
     if (!parsed.success) {
       reportError({
@@ -69,6 +73,11 @@ export const surveyApi = {
   // Done
   deleteSurvey: async (id: string): Promise<void> => {
     await apiClient.delete(`/surveys/${id}`);
+  },
+
+  duplicateSurvey: async (id: string): Promise<Survey> => {
+    const response = await apiClient.post<{ data: Survey }>(`/surveys/${id}/duplicate`);
+    return response.data.data;
   },
 
   publish: async (surveyId: string, mode: 'LIVE' | 'TEST'): Promise<AcceptedOperation> => {
