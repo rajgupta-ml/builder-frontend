@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { quotaApi } from "@/api/quota";
 import { SurveyQuota } from "@/src/shared/types/survey";
 import { surveyWorkflowApi } from "@/api/surveyWorkflow";
@@ -45,6 +45,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
             children: []
         }
     });
+    const ruleLookupMaps = useMemo(() => buildRuleLookupMaps(flowNodes), [flowNodes]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -208,7 +209,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
         <ModalPortal>
             <AnimatePresence>
                 {isOpen && (
-                    <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="fixed inset-0 z-120 h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                         <motion.div
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
@@ -230,7 +231,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                         <IconPlus size={16} /> Add Rule
                                     </button>
                                 )}
-                                <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+                                <button title="X Icon" onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
                                     <IconX size={20} />
                                 </button>
                             </div>
@@ -348,7 +349,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                                         </div>
                                                         <div className="bg-muted/30 p-3 rounded-xl border border-border/50">
                                                             <p className="text-sm font-medium leading-relaxed">
-                                                                {summarizeRule(quota.rule, flowNodes)}
+                                                                {summarizeRule(quota.rule, flowNodes, ruleLookupMaps)}
                                                             </p>
                                                         </div>
                                                         <div className="flex items-center gap-4 text-xs font-bold">
@@ -396,8 +397,88 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
     );
 }
 
-function summarizeRule(item: any, nodes: Node[]): React.ReactNode {
+const UUID_LIKE_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-9a-f][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isTechnicalIdLike = (value: unknown): value is string => {
+    return typeof value === "string" && UUID_LIKE_REGEX.test(value.trim());
+};
+
+const normalizeLabel = (value: unknown, fallback: string): string => {
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+    return fallback;
+};
+
+type RuleLookupMaps = {
+    fieldLabelByKey: Map<string, string>;
+    valueLabelByKey: Map<string, string>;
+};
+
+const buildRuleLookupMaps = (nodes: Node[]): RuleLookupMaps => {
+    const fieldLabelByKey = new Map<string, string>();
+    const valueLabelByKey = new Map<string, string>();
+
+    const setField = (key: unknown, label: string) => {
+        if (typeof key !== "string" || !key.trim()) return;
+        if (!fieldLabelByKey.has(key)) fieldLabelByKey.set(key, label);
+    };
+
+    const setValue = (key: unknown, label: string) => {
+        if (typeof key !== "string" || !key.trim()) return;
+        if (!valueLabelByKey.has(key)) valueLabelByKey.set(key, label);
+    };
+
+    for (const n of nodes) {
+        const data: any = n.data || {};
+        const nodeLabel = normalizeLabel(data.label || data.question || data.title, "Question");
+
+        setField(n.id, nodeLabel);
+        setField(data.id, nodeLabel);
+        setField(data.technicalId, nodeLabel);
+        setField(data.exportId, nodeLabel);
+
+        const options = Array.isArray(data.options) ? data.options : [];
+        for (const opt of options) {
+            const label = normalizeLabel(opt?.label || opt?.text || opt?.title, "Option");
+            setValue(opt?.exportId, label);
+            setValue(opt?.id, label);
+            setValue(opt?.value, label);
+        }
+
+        const items = Array.isArray(data.items) ? data.items : [];
+        for (const opt of items) {
+            const label = normalizeLabel(opt?.label || opt?.text || opt?.title, "Option");
+            setValue(opt?.exportId, label);
+            setValue(opt?.id, label);
+            setValue(opt?.value, label);
+        }
+
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        for (const row of rows) {
+            const label = normalizeLabel(row?.label || row?.text || row?.title, "Row");
+            setField(row?.exportId, `${nodeLabel} - ${label}`);
+            setField(row?.id, `${nodeLabel} - ${label}`);
+            setField(row?.value, `${nodeLabel} - ${label}`);
+            setValue(row?.exportId, label);
+            setValue(row?.id, label);
+            setValue(row?.value, label);
+        }
+
+        const fields = Array.isArray(data.fields) ? data.fields : [];
+        for (const f of fields) {
+            const label = normalizeLabel(f?.label || f?.text || f?.title, "Field");
+            setField(f?.exportId, `${nodeLabel} - ${label}`);
+            setField(f?.id, `${nodeLabel} - ${label}`);
+            setValue(f?.exportId, label);
+            setValue(f?.id, label);
+        }
+    }
+
+    return { fieldLabelByKey, valueLabelByKey };
+};
+
+function summarizeRule(item: any, nodes: Node[], lookup?: RuleLookupMaps): React.ReactNode {
     if (!item) return "No rule";
+    const maps = lookup || buildRuleLookupMaps(nodes);
 
     if (item.type === 'group') {
         if (!item.children || item.children.length === 0) return "Always Matches";
@@ -406,7 +487,7 @@ function summarizeRule(item: any, nodes: Node[]): React.ReactNode {
                 {item.children.map((child: any, i: number) => (
                     <span key={child.id} className="flex items-center gap-1.5">
                         <span className="border border-border rounded-lg p-1.5 bg-background shadow-xs">
-                            {summarizeRule(child, nodes)}
+                            {summarizeRule(child, nodes, maps)}
                         </span>
                         {i < item.children.length - 1 && (
                             <span className="text-[10px] font-black bg-primary text-white px-2 py-0.5 rounded shadow-sm">{item.logicType}</span>
@@ -416,98 +497,25 @@ function summarizeRule(item: any, nodes: Node[]): React.ReactNode {
             </span>
         );
     }
-
-    // Deep search for the node and label corresponding to the field
-    let node: Node | undefined;
-    let foundLabel: string | undefined;
-
-    for (const n of nodes) {
-        const data: any = n.data || {};
-
-        // 1. Check Main Node (Technical ID, Export ID, Node ID)
-        if ((data.technicalId && data.technicalId === item.field) ||
-            (data.exportId && data.exportId === item.field) ||
-            n.id === item.field ||
-            (data.id && data.id === item.field)) {
-            node = n;
-            foundLabel = data.label || data.question || data.title;
-            break;
-        }
-
-        // 2. Check Matrix Rows (Field often refers to a generic Row ID in some schemas, or specific Row ExportID)
-        if (Array.isArray(data.rows)) {
-            const row = data.rows.find((r: any) => r.exportId === item.field || r.id === item.field || r.value === item.field);
-            if (row) {
-                node = n;
-                foundLabel = `${data.label || 'Matrix'} - ${row.label}`;
-                break;
-            }
-        }
-
-        // 3. Check Rating Items
-        if (Array.isArray(data.items)) {
-            const rItem = data.items.find((i: any) => i.exportId === item.field || i.id === item.field || i.value === item.field);
-            if (rItem) {
-                node = n;
-                if (data.items.length > 1) {
-                    foundLabel = `${data.label} - ${rItem.label}`;
-                } else {
-                    foundLabel = data.label || rItem.label;
-                }
-                break;
-            }
-        }
-
-        // 4. Check Multi-Input Fields
-        if (Array.isArray(data.fields)) {
-            const field = data.fields.find((f: any) => f.exportId === item.field || f.id === item.field);
-            if (field) {
-                node = n;
-                foundLabel = `${data.label} - ${field.label}`;
-                break;
-            }
-        }
-    }
-
-    // Logging to debug if node is found
-    if (!node) {
-        // console.warn('[QuotaModal] Node Not Found:', item.field);
-        // console.log('Debug Nodes:', nodes.map(n => ({ id: n.id, tech: (n.data as any)?.technicalId })));
-    }
-
-    const label = foundLabel || node?.data?.label || node?.data?.question || node?.data?.title || item.field || 'Question';
+    const label =
+        (typeof item.field === "string" ? maps.fieldLabelByKey.get(item.field) : undefined) ||
+        (typeof item.field === "string" && !isTechnicalIdLike(item.field) ? item.field : undefined) ||
+        "Unknown field";
 
     // Resolve value label if possible
     let displayValue = item.value;
 
-    if (node && (typeof item.value === 'string' || typeof item.value === 'number')) {
-        const data: any = node.data || {};
-        let foundOption: any = null;
-
-        // Check options (Choice, Dropdown, Ranking)
-        if (Array.isArray(data.options)) {
-            foundOption = data.options.find((o: any) => o.exportId === item.value || o.id === item.value || o.value === item.value);
-        }
-
-        // Check items (Rating)
-        if (!foundOption && Array.isArray(data.items)) {
-            foundOption = data.items.find((i: any) => i.exportId === item.value || i.id === item.value || i.value === item.value);
-        }
-
-        // Check rows (Matrix)
-        if (!foundOption && Array.isArray(data.rows)) {
-            foundOption = data.rows.find((r: any) => r.exportId === item.value || r.id === item.value || r.value === item.value);
-        }
-
-        if (foundOption) {
-            displayValue = foundOption.label || foundOption.text || foundOption.title || displayValue;
-        }
+    if (typeof item.value === "string" || typeof item.value === "number") {
+        const rawValue = String(item.value);
+        const mapped =
+            maps.valueLabelByKey.get(rawValue) ||
+            maps.fieldLabelByKey.get(rawValue);
+        displayValue = mapped || (isTechnicalIdLike(rawValue) ? "Unknown option" : rawValue);
     } else if (typeof item.value === 'object' && item.value !== null) {
         if (item.operator === 'is_between') {
             displayValue = `${item.value.min} to ${item.value.max}`;
         } else {
-            // For other complex values, try to display meaningfully
-            displayValue = JSON.stringify(item.value);
+            displayValue = "Complex value";
         }
     }
 

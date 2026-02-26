@@ -126,7 +126,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
         <ModalPortal>
             <AnimatePresence>
                 {isOpen && (
-                    <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="fixed inset-0 z-120 h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                         <motion.div
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
@@ -139,7 +139,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                 <h3 className="text-xl font-bold">Survey Settings</h3>
                                 <p className="text-xs text-muted-foreground">Configure limits and redirects for this survey.</p>
                             </div>
-                            <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+                            <button title="X Icon" onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
                                 <IconX size={20} />
                             </button>
                         </div>
@@ -181,7 +181,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     value={formData.overQuotaUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, overQuotaUrl: e.target.value }))}
                                                 />
-                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.overQuotaUrl)}>
+                                                <button title="External Link" className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.overQuotaUrl)}>
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
@@ -205,7 +205,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     value={formData.redirectUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, redirectUrl: e.target.value }))}
                                                 />
-                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.redirectUrl)}>
+                                                <button title="External Link" className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.redirectUrl)}>
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
@@ -221,7 +221,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     value={formData.securityTerminateUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, securityTerminateUrl: e.target.value }))}
                                                 />
-                                                <button className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.securityTerminateUrl)}>
+                                                <button title="External Link" className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.securityTerminateUrl)}>
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
