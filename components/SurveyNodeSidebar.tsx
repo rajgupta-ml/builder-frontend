@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import logo from "@/public/logo.jpg";
 import {
     IconSearch,
     IconChevronDown,
@@ -106,8 +108,15 @@ export default function SurveyNodeSidebar({
                         "flex items-center gap-3 overflow-hidden transition-all duration-300",
                         isCollapsed ? "w-0 h-0 opacity-0 hidden" : "w-auto opacity-100"
                     )}>
-                        <div className="h-9 w-9 rounded-lg overflow-hidden shrink-0 shadow-sm border border-border/10">
-                            <img src="/logo.jpg" alt="AIM" className="h-full w-full object-contain" />
+                        <div className="h-9 w-9 border border-border flex items-center justify-center bg-muted/20 rounded-sm overflow-hidden relative shrink-0">
+                            <Image
+                                src={logo}
+                                alt="Survey Studios Logo"
+                                width={28}
+                                height={28}
+                                priority
+                                className="object-contain"
+                            />
                         </div>
                         <span className="font-bold text-lg tracking-tight whitespace-nowrap">Builder</span>
                     </div>
