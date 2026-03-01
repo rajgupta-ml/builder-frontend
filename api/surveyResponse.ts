@@ -10,6 +10,24 @@ type RequestOptions = {
     signal?: AbortSignal;
 };
 
+type ResponseFeedOptions = RequestOptions & {
+    page?: number;
+    limit?: number;
+    respondentId?: string;
+    status?: string;
+};
+
+export interface PaginatedFeedResult<T = any> {
+    data: T[];
+    meta: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+        orderedHeaders?: string[];
+    };
+}
+
 export const surveyResponseApi = {
     getMetrics: async (surveyId: string, options?: RequestOptions): Promise<{ modes: any[] }> => {
         const response = await apiClient.get(`/responses/metrics/${surveyId}`, options);
@@ -26,21 +44,54 @@ export const surveyResponseApi = {
         return payload && Array.isArray(payload.modes) ? payload : { modes: [] };
     },
 
-    getResponses: async (surveyId: string, mode?: 'LIVE' | 'TEST', options?: RequestOptions) => {
+    getResponses: async (surveyId: string, mode?: 'LIVE' | 'TEST', options?: ResponseFeedOptions): Promise<PaginatedFeedResult> => {
         const response = await apiClient.get(`/responses/responses/${surveyId}`, {
             ...options,
-            params: mode ? { mode } : undefined,
+            params: {
+                ...(mode ? { mode } : {}),
+                ...(options?.page ? { page: options.page } : {}),
+                ...(options?.limit ? { limit: options.limit } : {}),
+                ...(options?.respondentId ? { respondentId: options.respondentId } : {}),
+                ...(options?.status ? { status: options.status } : {}),
+            },
         });
-        const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
+        const parsed = z.object({
+            data: z.object({
+                data: z.array(z.unknown()),
+                meta: z.object({
+                    page: z.number().int().positive(),
+                    limit: z.number().int().positive(),
+                    total: z.number().int().nonnegative(),
+                    totalPages: z.number().int().positive(),
+                }).optional(),
+            }),
+        }).safeParse(response.data);
         if (!parsed.success) {
             reportError({
                 kind: "api",
                 message: "Invalid responses payload shape",
                 details: { endpoint: `/responses/responses/${surveyId}` },
             });
-            return [];
+            return {
+                data: [],
+                meta: {
+                    page: options?.page || 1,
+                    limit: options?.limit || 10,
+                    total: 0,
+                    totalPages: 1,
+                },
+            };
         }
-        return parsed.data.data;
+        const payload = parsed.data.data;
+        return {
+            data: payload.data,
+            meta: payload.meta || {
+                page: options?.page || 1,
+                limit: options?.limit || 10,
+                total: payload.data.length,
+                totalPages: 1,
+            },
+        };
     },
 
     getAllUserResponses: async (options?: RequestOptions) => {

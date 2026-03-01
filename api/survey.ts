@@ -7,7 +7,21 @@ import { reportError } from "@/lib/error-reporter";
 type RequestOptions = {
   signal?: AbortSignal;
   search?: string;
+  page?: number;
+  limit?: number;
 };
+
+export interface PaginatedMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  meta: PaginatedMeta;
+}
 
 export interface AcceptedOperation {
   operationId: string;
@@ -18,21 +32,49 @@ export interface AcceptedOperation {
 
 export const surveyApi = {
   // Done
-  getSurveys: async (options?: RequestOptions): Promise<Surveys[]> => {
-    const response = await apiClient.get<{ data: Surveys[] }>("/surveys", {
+  getSurveys: async (options?: RequestOptions): Promise<PaginatedResult<Surveys>> => {
+    const response = await apiClient.get<{ data: Surveys[]; meta?: Partial<PaginatedMeta> }>("/surveys", {
       signal: options?.signal,
-      params: options?.search ? { search: options.search } : undefined,
+      params: {
+        ...(options?.search ? { search: options.search } : {}),
+        ...(options?.page ? { page: options.page } : {}),
+        ...(options?.limit ? { limit: options.limit } : {}),
+      },
     });
-    const parsed = z.object({ data: z.array(z.unknown()) }).safeParse(response.data);
+    const parsed = z.object({
+      data: z.array(z.unknown()),
+      meta: z.object({
+        page: z.number().int().positive(),
+        limit: z.number().int().positive(),
+        total: z.number().int().nonnegative(),
+        totalPages: z.number().int().positive(),
+      }).optional(),
+    }).safeParse(response.data);
     if (!parsed.success) {
       reportError({
         kind: "api",
         message: "Invalid surveys response shape",
         details: { endpoint: "/surveys" },
       });
-      return [];
+      return {
+        data: [],
+        meta: {
+          page: options?.page || 1,
+          limit: options?.limit || 20,
+          total: 0,
+          totalPages: 1,
+        },
+      };
     }
-    return parsed.data.data as Surveys[];
+    return {
+      data: parsed.data.data as Surveys[],
+      meta: parsed.data.meta || {
+        page: options?.page || 1,
+        limit: options?.limit || 20,
+        total: parsed.data.data.length,
+        totalPages: 1,
+      },
+    };
   },
 
   // Done

@@ -54,15 +54,6 @@ interface MetricData {
     avgTime: number;
 }
 
-type ResponsesPayload =
-    | any[]
-    | {
-        data?: any[];
-        meta?: {
-            orderedHeaders?: string[];
-        };
-    };
-
 const toValidTimestamp = (value: unknown): number | null => {
     if (!value) return null;
     const ms = new Date(value as string | number).getTime();
@@ -120,6 +111,12 @@ export default function SurveyMetricsPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [filters, setFilters] = useState<Record<string, string>>({});
     const itemsPerPage = 10;
+    const [feedMeta, setFeedMeta] = useState({
+        page: 1,
+        limit: itemsPerPage,
+        total: 0,
+        totalPages: 1,
+    });
     const fetchRunRef = useRef(0);
 
     const fetchData = async (signal?: AbortSignal) => {
@@ -147,16 +144,20 @@ export default function SurveyMetricsPage() {
 
             setLoading(false);
             setResponsesLoading(true);
-            const results = await Promise.all([
-                surveyResponseApi.getResponses(id, viewMode, { signal })
-            ]);
+            const selectedMode = filters["mode"] === "LIVE" || filters["mode"] === "TEST"
+                ? (filters["mode"] as "LIVE" | "TEST")
+                : viewMode;
+            const responsesData = await surveyResponseApi.getResponses(id, selectedMode, {
+                signal,
+                page: currentPage,
+                limit: itemsPerPage,
+                respondentId: filters["respondentId"] || undefined,
+                status: filters["status"] || undefined,
+            });
             if (signal?.aborted || fetchRunRef.current !== runId) return;
-            const responsesData = results[0] as ResponsesPayload;
 
-            const rData = Array.isArray(responsesData) ? responsesData : responsesData.data || [];
-            const orderedHeadersFromResponse = Array.isArray(responsesData)
-                ? []
-                : responsesData.meta?.orderedHeaders || [];
+            const rData = responsesData.data || [];
+            const orderedHeadersFromResponse = responsesData.meta?.orderedHeaders || [];
             // Inject duration calculation for frontend display
             const enrichedResponses = rData.map((r: any) => {
                 const durationMs = getResponseDurationMs(r);
@@ -165,6 +166,12 @@ export default function SurveyMetricsPage() {
 
             setResponses(enrichedResponses);
             setOrderedHeaders(orderedHeadersFromResponse);
+            setFeedMeta({
+                page: responsesData.meta.page,
+                limit: responsesData.meta.limit,
+                total: responsesData.meta.total,
+                totalPages: responsesData.meta.totalPages,
+            });
         } catch (error) {
             if (signal?.aborted || fetchRunRef.current !== runId) return;
             console.error("Failed to fetch dashboard data:", error);
@@ -185,7 +192,7 @@ export default function SurveyMetricsPage() {
         setUserRole(getStoredUserRole());
         fetchData(controller.signal);
         return () => controller.abort();
-    }, [id, viewMode]);
+    }, [id, viewMode, currentPage, filters["respondentId"], filters["status"], filters["mode"]]);
 
     const canManageSurvey = hasPermission(userRole, PERMISSIONS.SURVEY_EDIT);
     const canManageQuotas = hasPermission(userRole, PERMISSIONS.QUOTA_MANAGE);
@@ -341,19 +348,6 @@ export default function SurveyMetricsPage() {
         responses.flatMap(r => Object.keys(r))
     )).filter(k => !isStandardHeader(k)).sort();
 
-    // Filter Logic
-    const filteredResponses = responses.filter(r => {
-        // Mode filter is primary
-        if (r.mode !== viewMode) return false;
-        if (filters['mode'] && r.mode !== filters['mode']) return false;
-
-        // Check filtering for static columns
-        if (filters['respondentId'] && !(r.respondentId || "Anonymous").toLowerCase().includes(filters['respondentId'].toLowerCase())) return false;
-        if (filters['status'] && !(r.status || "").toLowerCase().includes(filters['status'].toLowerCase())) return false;
-
-        return true;
-    });
-
     const handleFilterChange = (key: string, value: string) => {
         setFilters(prev => ({
             ...prev,
@@ -361,13 +355,6 @@ export default function SurveyMetricsPage() {
         }));
         setCurrentPage(1);
     };
-
-    // Pagination Logic
-    const totalPages = Math.ceil(filteredResponses.length / itemsPerPage);
-    const paginatedResponses = filteredResponses.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
 
 
 
@@ -750,14 +737,14 @@ export default function SurveyMetricsPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border/60">
-                                {paginatedResponses.length === 0 ? (
+                                {responses.length === 0 ? (
                                     <tr>
                                         <td colSpan={5 + finalDynamicHeaders.length} className="px-6 py-12 text-center text-muted-foreground text-sm">
                                             No records intercepted.
                                         </td>
                                     </tr>
                                 ) : (
-                                    paginatedResponses.map((resp, idx) => (
+                                    responses.map((resp, idx) => (
                                         <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-primary/5 transition-colors group">
                                             <td className="px-6 py-3 border-b border-border/60 border-l-2 group-hover:border-primary transition-colors">
                                                 <div className="flex flex-col">
@@ -813,10 +800,10 @@ export default function SurveyMetricsPage() {
                 )}
 
                 {/* Pagination Controls */}
-                {totalPages > 1 && (
+                {feedMeta.totalPages > 1 && (
                     <div className="px-6 py-4 bg-muted/20 border-t border-border flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">
-                            Showing <span className="font-bold text-foreground">{filteredResponses.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to <span className="font-bold text-foreground">{Math.min(currentPage * itemsPerPage, filteredResponses.length)}</span> of <span className="font-bold text-foreground">{filteredResponses.length}</span> responses
+                            Showing <span className="font-bold text-foreground">{feedMeta.total > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0}</span> to <span className="font-bold text-foreground">{Math.min(currentPage * itemsPerPage, feedMeta.total)}</span> of <span className="font-bold text-foreground">{feedMeta.total}</span> responses
                         </span>
                         <div className="flex items-center gap-2">
                             <button
@@ -828,7 +815,7 @@ export default function SurveyMetricsPage() {
                                 <IconChevronLeft size={16} />
                             </button>
                             <div className="flex items-center gap-1">
-                                {[...Array(totalPages)].map((_, i) => (
+                                {[...Array(feedMeta.totalPages)].map((_, i) => (
                                     <button
                                         key={i}
                                         onClick={() => setCurrentPage(i + 1)}
@@ -841,12 +828,12 @@ export default function SurveyMetricsPage() {
                                     >
                                         {i + 1}
                                     </button>
-                                )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
+                                )).slice(Math.max(0, currentPage - 3), Math.min(feedMeta.totalPages, currentPage + 2))}
                             </div>
                             <button
                                 title="Right Icon"
-                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(p => Math.min(feedMeta.totalPages, p + 1))}
+                                disabled={currentPage === feedMeta.totalPages}
                                 className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 <IconChevronRight size={16} />
