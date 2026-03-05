@@ -259,10 +259,13 @@ export default function SurveyMetricsPage() {
 
     const totalMetrics = activeMetrics; // For backward compatibility with variable names below
 
+    const screenedCount =
+        totalMetrics.completes +
+        totalMetrics.disqualified +
+        totalMetrics.overQuota +
+        totalMetrics.securityTerminate;
     const totalIR = totalMetrics.ir > 0 ? totalMetrics.ir : (
-        (totalMetrics.completes + totalMetrics.disqualified) > 0
-            ? (totalMetrics.completes / (totalMetrics.completes + totalMetrics.disqualified)) * 100
-            : 0
+        screenedCount > 0 ? (totalMetrics.completes / screenedCount) * 100 : 0
     );
 
     // Average time is calculated only from COMPLETED respondents

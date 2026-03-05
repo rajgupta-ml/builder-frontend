@@ -64,8 +64,12 @@ const toAnalyticsRow = (survey: Surveys, modes: SurveyModeMetrics[]): SurveyAnal
         }
     );
 
-    const denominator = totals.completes + totals.disqualified;
-    const ir = denominator > 0 ? (totals.completes / denominator) * 100 : 0;
+    const screenedCount =
+        totals.completes +
+        totals.disqualified +
+        totals.overQuota +
+        totals.securityTerminate;
+    const ir = screenedCount > 0 ? (totals.completes / screenedCount) * 100 : 0;
 
     return {
         id: survey.id,
