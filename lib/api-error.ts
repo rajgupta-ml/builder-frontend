@@ -12,6 +12,7 @@ export interface NormalizedApiError {
   title?: string;
   detail?: string;
   requestId?: string;
+  traceId?: string;
   errors?: ApiValidationIssue[];
   isNetworkError: boolean;
   isTimeout: boolean;
@@ -44,6 +45,7 @@ export const parseApiError = (error: unknown): NormalizedApiError => {
         title?: string;
         detail?: string;
         requestId?: string;
+        traceId?: string;
         errors?: ApiValidationIssue[];
       }
     | undefined;
@@ -54,6 +56,7 @@ export const parseApiError = (error: unknown): NormalizedApiError => {
     title: payload?.title,
     detail: payload?.detail ?? error.message,
     requestId: payload?.requestId,
+    traceId: payload?.traceId,
     errors: payload?.errors,
     isNetworkError: !error.response,
     isTimeout: error.code === "ECONNABORTED",

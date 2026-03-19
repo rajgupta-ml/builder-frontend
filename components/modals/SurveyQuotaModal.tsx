@@ -208,7 +208,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
         <ModalPortal>
             <AnimatePresence>
                 {isOpen && (
-                    <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="fixed inset-0 z-120 h-dvh w-screen flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                         <motion.div
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
@@ -230,7 +230,7 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
                                         <IconPlus size={16} /> Add Rule
                                     </button>
                                 )}
-                                <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+                                <button title="X Icon" onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
                                     <IconX size={20} />
                                 </button>
                             </div>

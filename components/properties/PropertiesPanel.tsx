@@ -34,7 +34,7 @@ export default function PropertiesPanel({ node, nodes, issues = [], onChange, on
 
 
     return (
-        <aside className="w-[320px] h-full bg-background border-l border-border flex flex-col shadow-xl z-20 transition-all duration-300">
+        <aside className="w-xs h-full bg-background border-l border-border flex flex-col shadow-xl z-20 transition-all duration-300">
             {/* Header */}
             <div className="h-14 flex items-center justify-between px-4 border-b border-border bg-muted/10 shrink-0">
                 <div className="flex items-center gap-2">
@@ -44,7 +44,7 @@ export default function PropertiesPanel({ node, nodes, issues = [], onChange, on
                     <span className="font-semibold text-sm tracking-tight">{definition.label}</span>
                     {readOnly && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-md border border-border text-muted-foreground">Read Only</span>}
                 </div>
-                <button onClick={onClose} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors">
+                <button title="X Icon" onClick={onClose} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors">
                     <IconX size={16} />
                 </button>
             </div>
@@ -409,6 +409,7 @@ function FieldRenderer({
                                 <MediaPreview storageKey={storageKey} type="image" className="w-full h-full" />
                                 {!readOnly && (
                                     <button
+                                        title="Delete Image"
                                         onClick={() => {
                                             const newFiles = value.filter((_: any, i: number) => i !== idx);
                                             onChange(newFiles);
@@ -433,6 +434,7 @@ function FieldRenderer({
         case 'number':
             return (
                 <input
+                    title="Input"
                     type="number"
                     disabled={readOnly}
                     value={value || ""}
@@ -446,6 +448,7 @@ function FieldRenderer({
             return (
                 <div className="flex items-center gap-2">
                     <button
+                        title="Switch"
                         disabled={readOnly}
                         onClick={() => onChange(!value)}
                         className={cn(
@@ -618,6 +621,7 @@ function FieldRenderer({
             return (
                 <div className="relative">
                     <select
+                        title="Select"
                         disabled={readOnly}
                         value={value || ""}
                         onChange={(e) => onChange(e.target.value)}

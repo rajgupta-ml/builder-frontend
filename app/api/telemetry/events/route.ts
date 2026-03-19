@@ -6,12 +6,8 @@ const eventSchema = z.object({
   ts: z.string().optional(),
   env: z.string().optional(),
   kind: z.string(),
-  message: z.string(),
-  stack: z.string().optional(),
+  message: z.string().optional(),
   route: z.string().optional(),
-  status: z.number().optional(),
-  code: z.string().optional(),
-  requestId: z.string().optional(),
   traceId: z.string().optional(),
   details: z.record(z.string(), z.unknown()).optional(),
 });
@@ -22,19 +18,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true }, { status: 202 });
   }
 
-  let payload: unknown;
-  try {
-    payload = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
+  const payload = await req.json().catch(() => null);
   const parsed = eventSchema.safeParse(payload);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid event shape" }, { status: 400 });
   }
-
-  const axiomPayload = [{ ...parsed.data, ts: parsed.data.ts || new Date().toISOString() }];
 
   try {
     const headers = new Headers({
@@ -48,7 +36,7 @@ export async function POST(req: Request) {
     await fetch(`${ingestBaseUrl}/${encodeURIComponent(env.AXIOM_DATASET)}`, {
       method: "POST",
       headers,
-      body: JSON.stringify(axiomPayload),
+      body: JSON.stringify([{ ...parsed.data, ts: parsed.data.ts || new Date().toISOString() }]),
       cache: "no-store",
     });
   } catch {
@@ -57,4 +45,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true }, { status: 202 });
 }
-

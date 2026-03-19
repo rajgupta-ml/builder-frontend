@@ -367,6 +367,7 @@ export default function Dashboard() {
             </span>
             <div className="flex items-center gap-2">
               <button
+                title="Previous Page"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
                 className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -374,6 +375,7 @@ export default function Dashboard() {
                 <IconChevronLeft size={16} />
               </button>
               <button
+                title="Next Page"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
                 className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
