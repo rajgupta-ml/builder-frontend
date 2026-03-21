@@ -409,7 +409,7 @@ function FieldRenderer({
                                 <MediaPreview storageKey={storageKey} type="image" className="w-full h-full" />
                                 {!readOnly && (
                                     <button
-                                        title="Delete Image"
+                                        title="Trash Icon"
                                         onClick={() => {
                                             const newFiles = value.filter((_: any, i: number) => i !== idx);
                                             onChange(newFiles);
@@ -434,7 +434,7 @@ function FieldRenderer({
         case 'number':
             return (
                 <input
-                    title="Input"
+                    title="Number Input"
                     type="number"
                     disabled={readOnly}
                     value={value || ""}
@@ -448,7 +448,7 @@ function FieldRenderer({
             return (
                 <div className="flex items-center gap-2">
                     <button
-                        title="Switch"
+                        title="Enabled/Disabled Button"
                         disabled={readOnly}
                         onClick={() => onChange(!value)}
                         className={cn(
@@ -621,7 +621,7 @@ function FieldRenderer({
             return (
                 <div className="relative">
                     <select
-                        title="Select"
+                        title="Select Dropdown"
                         disabled={readOnly}
                         value={value || ""}
                         onChange={(e) => onChange(e.target.value)}
