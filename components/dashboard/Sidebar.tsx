@@ -1,7 +1,9 @@
 "use client";
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import logo from "@/public/logo.jpg"
 import { cn } from "@/lib/utils";
 import {
     IconChartBar,
@@ -65,10 +67,19 @@ export const DashboardSidebar = () => {
             )}
         >
             {/* Logo Area */}
-            <div className="h-16 flex items-center px-6 gap-3 overflow-hidden">
-                <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+            <div className="h-16 flex items-center px-[22px] overflow-hidden">
+                <div className="w-9 h-9 flex items-center justify-center bg-muted/20 rounded-sm overflow-hidden relative shrink-0">
+                    <Image
+                        src={logo}
+                        alt="Survey Studios Logo"
+                        width={28}
+                        height={28}
+                        priority
+                        className="object-contain"
+                    />
+                </div>
                 {!collapsed && (
-                    <span className="font-medium tracking-tight">Survey_Studio</span>
+                    <span className="font-bold truncate">Survey Studios</span>
                 )}
             </div>
 

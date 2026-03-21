@@ -4,8 +4,8 @@ import { Toaster } from "sonner";
 import { ReliabilityProvider } from "@/components/providers/ReliabilityProvider";
 
 export const metadata: Metadata = {
-  title: "AIM",
-  description: "Survey Builder for AIM",
+  title: "Survey Studios",
+  description: "The next generation survey building platform.",
   icons: {
     icon: "/logo.jpg",
     shortcut: "/logo.jpg",

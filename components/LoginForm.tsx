@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 
 import { authApi } from "@/api/auth";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import logo from "@/public/logo.jpg"
 import { toast } from "sonner";
 import { toUserMessage } from "@/lib/api-error";
 
@@ -73,12 +75,20 @@ export default function LoginForm() {
   return (
     <div className="border border-border mx-auto w-full max-w-md rounded-none p-4 md:rounded-2xl md:p-8 bg-card text-card-foreground shadow-sm">
       <div className="flex items-center gap-3 mb-4">
-        <img src="/logo.jpg" alt="AIM" className="h-10 w-10 object-contain rounded-xl shadow-xs" />
-        <h2 className="text-2xl font-bold">AIM</h2>
+        <div className="w-10 h-10 border border-border flex items-center justify-center bg-muted/20 rounded-sm overflow-hidden relative shrink-0">
+          <Image
+            src={logo}
+            alt="Survey Studios Logo"
+            width={32}
+            height={32}
+            priority
+            className="object-contain"
+          />
+        </div>
+        <h2 className="text-2xl font-bold">Survey Studios</h2>
       </div>
       <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        Login to AIM if you can because we don&apos;t have a login flow
-        Contact AIM for login credentials
+        Access the Survey Studio to build and manage your research workflows.
       </p>
 
       <form className="my-8" onSubmit={handleSubmit}>

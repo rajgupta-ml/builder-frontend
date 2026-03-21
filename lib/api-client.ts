@@ -1,6 +1,8 @@
 import axios from "axios";
 import { reportApiError } from "@/lib/error-reporter";
 import { getPublicEnv } from "@/lib/env";
+import { captureException } from "@/lib/observability";
+import { getOrCreateTraceId, TRACE_ID_HEADER } from "@/lib/trace";
 
 const { NEXT_PUBLIC_API_URL } = getPublicEnv();
 const API_URL = NEXT_PUBLIC_API_URL;
@@ -64,6 +66,8 @@ const refreshAccessToken = async (): Promise<string | null> => {
 
 apiClient.interceptors.request.use(
   (config) => {
+    config.headers = config.headers ?? {};
+    config.headers[TRACE_ID_HEADER] = getOrCreateTraceId();
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -84,6 +88,10 @@ apiClient.interceptors.response.use(
 
     if (!originalRequest) {
       reportApiError(error, { phase: "response", reason: "missing_config" });
+      void captureException(error, {
+        operation: "api.response.missing_config",
+        traceId: getOrCreateTraceId(),
+      });
       return Promise.reject(error);
     }
 
@@ -121,7 +129,17 @@ apiClient.interceptors.response.use(
       clearAuthStateAndRedirect();
     }
 
-    if (!isAborted) {
+    if (!isAborted && (!status || status >= 500)) {
+      void captureException(error, {
+        operation: originalRequest.url || "api.request",
+        traceId: error?.response?.data?.traceId || getOrCreateTraceId(),
+        requestId: error?.response?.data?.requestId,
+        extra: {
+          status,
+          method,
+          retryCount,
+        },
+      });
       reportApiError(error, {
         phase: "response",
         method,

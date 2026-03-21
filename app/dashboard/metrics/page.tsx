@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { IconChartBar, IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { surveyApi } from "@/api/survey";
@@ -64,8 +64,12 @@ const toAnalyticsRow = (survey: Surveys, modes: SurveyModeMetrics[]): SurveyAnal
         }
     );
 
-    const denominator = totals.completes + totals.disqualified;
-    const ir = denominator > 0 ? (totals.completes / denominator) * 100 : 0;
+    const screenedCount =
+        totals.completes +
+        totals.disqualified +
+        totals.overQuota +
+        totals.securityTerminate;
+    const ir = screenedCount > 0 ? (totals.completes / screenedCount) * 100 : 0;
 
     return {
         id: survey.id,
@@ -83,6 +87,8 @@ export default function GlobalMetricsPage() {
     const [error, setError] = useState<string | null>(null);
     const [rows, setRows] = useState<SurveyAnalyticsRow[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalSurveys, setTotalSurveys] = useState(0);
     const searchTerm = searchParams.get("search")?.trim() ?? "";
 
     useEffect(() => {
@@ -90,9 +96,16 @@ export default function GlobalMetricsPage() {
         const fetchAll = async () => {
             setLoading(true);
             setError(null);
-            setCurrentPage(1);
             try {
-                const surveys = await surveyApi.getSurveys({ signal: controller.signal, search: searchTerm });
+                const surveysResult = await surveyApi.getSurveys({
+                    signal: controller.signal,
+                    search: searchTerm,
+                    page: currentPage,
+                    limit: PAGE_SIZE,
+                });
+                const surveys = surveysResult.data;
+                setTotalPages(surveysResult.meta.totalPages || 1);
+                setTotalSurveys(surveysResult.meta.total || surveys.length);
                 const results = await Promise.allSettled(
                     surveys.map(async (survey) => {
                         const metrics = await surveyResponseApi.getMetrics(survey.id, { signal: controller.signal });
@@ -122,13 +135,11 @@ export default function GlobalMetricsPage() {
 
         void fetchAll();
         return () => controller.abort();
-    }, [searchTerm]);
+    }, [searchTerm, currentPage]);
 
-    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    const pagedRows = useMemo(
-        () => rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-        [rows, currentPage]
-    );
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
 
     return (
         <div className="p-8 md:p-12 w-full max-w-7xl mx-auto space-y-6">
@@ -140,7 +151,7 @@ export default function GlobalMetricsPage() {
                 <IconChartBar size={24} className="text-muted-foreground" />
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight">Global Analytics</h1>
-                    <p className="text-sm text-muted-foreground">All surveys with aggregate metrics and quick drill-down.</p>
+                    <p className="text-sm text-muted-foreground">All surveys with aggregate metrics and quick drill-down. ({totalSurveys} total)</p>
                 </div>
             </motion.div>
 
@@ -209,7 +220,7 @@ export default function GlobalMetricsPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/60">
-                                    {pagedRows.map((row, i) => (
+                                    {rows.map((row, i) => (
                                         <motion.tr
                                             key={row.id}
                                             initial={{ opacity: 0, y: 10 }}

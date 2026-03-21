@@ -9,6 +9,8 @@ import {
   IconLayoutList,
   IconDotsVertical,
   IconCopy,
+  IconChevronLeft,
+  IconChevronRight,
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Surveys } from "@/src/shared/types/survey";
@@ -32,6 +34,10 @@ export default function Dashboard() {
   const [canCreateSurvey, setCanCreateSurvey] = useState(false);
   const [canDeleteSurvey, setCanDeleteSurvey] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalSurveys, setTotalSurveys] = useState(0);
+  const pageSize = 10;
   const searchTerm = searchParams.get("search")?.trim() ?? "";
 
   useEffect(() => {
@@ -43,8 +49,12 @@ export default function Dashboard() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    fetchSurveys(searchTerm, controller.signal);
+    fetchSurveys(searchTerm, currentPage, controller.signal);
     return () => controller.abort();
+  }, [searchTerm, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
   }, [searchTerm]);
 
   useEffect(() => {
@@ -58,13 +68,15 @@ export default function Dashboard() {
     return () => document.removeEventListener("mousedown", onDocumentClick);
   }, []);
 
-  const fetchSurveys = async (search: string, signal?: AbortSignal) => {
+  const fetchSurveys = async (search: string, page: number, signal?: AbortSignal) => {
     if (!signal?.aborted) {
       setFetchError(null);
     }
     try {
-      const data = await surveyApi.getSurveys({ signal, search });
-      setSurveys(data);
+      const result = await surveyApi.getSurveys({ signal, search, page, limit: pageSize });
+      setSurveys(result.data);
+      setTotalPages(result.meta.totalPages || 1);
+      setTotalSurveys(result.meta.total || result.data.length);
     } catch (error) {
       if (signal?.aborted) return;
       console.error("Failed to fetch surveys:", error);
@@ -96,7 +108,7 @@ export default function Dashboard() {
             Active Surveys
           </h1>
           <p className="text-xs text-muted-foreground">
-            Overview of running data collection tasks. ({surveys.length} total)
+            Overview of running data collection tasks. ({totalSurveys} total)
           </p>
         </motion.div>
       </div>
@@ -135,7 +147,7 @@ export default function Dashboard() {
               <button
                 onClick={() => {
                   setLoading(true);
-                  fetchSurveys(searchTerm);
+                  fetchSurveys(searchTerm, currentPage);
                 }}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:opacity-90 transition-all"
               >
@@ -271,7 +283,7 @@ export default function Dashboard() {
                                           survey.id,
                                         );
                                       toast.success("Survey duplicated");
-                                      await fetchSurveys(searchTerm);
+                                      await fetchSurveys(searchTerm, currentPage);
                                       router.push(
                                         `/dashboard/surveys/${duplicated.id}`,
                                       );
@@ -299,7 +311,7 @@ export default function Dashboard() {
                                     try {
                                       await surveyApi.deleteSurvey(survey.id);
                                       toast.success("Survey record deleted");
-                                      fetchSurveys(searchTerm);
+                                      fetchSurveys(searchTerm, currentPage);
                                     } catch (err) {
                                       toast.error("Deletion failed");
                                     }
@@ -348,6 +360,31 @@ export default function Dashboard() {
             </motion.div>
           )}
         </AnimatePresence>
+        {totalPages > 1 && !loading && !fetchError && (
+          <div className="mt-4 px-1 flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              Page {currentPage} of {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                title="Previous Page"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <IconChevronLeft size={16} />
+              </button>
+              <button
+                title="Next Page"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <IconChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
