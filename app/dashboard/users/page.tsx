@@ -184,6 +184,7 @@ export default function RespondentsPage() {
                         </span>
                         <div className="flex items-center gap-2">
                             <button
+                                title='Previous Page'
                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                 disabled={currentPage === 1}
                                 className="p-2 border border-border rounded-lg hover:bg-muted disabled:opacity-30 transition-all font-bold text-xs"
@@ -207,6 +208,7 @@ export default function RespondentsPage() {
                                 )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
                             </div>
                             <button
+                                title='Next Page'
                                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                 disabled={currentPage === totalPages}
                                 className="p-2 border border-border rounded-lg hover:bg-muted disabled:opacity-30 transition-all font-bold text-xs"

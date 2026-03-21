@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { reportError } from "@/lib/error-reporter";
+import { captureException, initBehaviorTracking } from "@/lib/observability";
 
 const GENERIC_MESSAGE = "Something unexpected happened. Please retry.";
 
@@ -10,6 +10,8 @@ export function ReliabilityProvider({ children }: { children: React.ReactNode })
   const lastToastRef = useRef<{ key: string; ts: number }>({ key: "", ts: 0 });
 
   useEffect(() => {
+    initBehaviorTracking();
+
     const shouldNotify = (key: string) => {
       const now = Date.now();
       if (lastToastRef.current.key === key && now - lastToastRef.current.ts < 3000) {
@@ -24,11 +26,10 @@ export function ReliabilityProvider({ children }: { children: React.ReactNode })
       if (shouldNotify(key)) {
         toast.error(GENERIC_MESSAGE);
       }
-      reportError({
-        kind: "runtime",
-        message: event.message || "Unhandled runtime error",
-        stack: event.error?.stack,
-        details: {
+      void captureException(event.error ?? new Error(event.message), {
+        operation: "window.error",
+        route: window.location.pathname,
+        extra: {
           filename: event.filename,
           lineno: event.lineno,
           colno: event.colno,
@@ -47,10 +48,9 @@ export function ReliabilityProvider({ children }: { children: React.ReactNode })
       if (shouldNotify(reason)) {
         toast.error(GENERIC_MESSAGE);
       }
-      reportError({
-        kind: "unhandled_rejection",
-        message: reason,
-        stack: event.reason instanceof Error ? event.reason.stack : undefined,
+      void captureException(event.reason, {
+        operation: "window.unhandledrejection",
+        route: window.location.pathname,
       });
     };
 
