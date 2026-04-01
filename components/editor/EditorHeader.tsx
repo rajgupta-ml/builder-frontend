@@ -124,8 +124,8 @@ export function EditorHeader({
     const handleQuickTest = async () => {
         await publish(surveyId, 'TEST');
         const testLink = survey?.testSlug
-            ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${survey.testSlug}`
-            : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:5173'}/s/${surveyId}?mode=test`;
+            ? `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:3101'}/s/${survey.testSlug}`
+            : `${process.env.NEXT_PUBLIC_SURVEY_URL || 'http://localhost:3101'}/s/${surveyId}?mode=test`;
         window.open(testLink, '_blank');
         onRunTest?.();
         toast.success("Opened test survey in a new tab.");
