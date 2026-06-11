@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { surveyApi } from "@/api/survey";
 import { Survey } from "@/src/shared/types/survey";
 import { surveyResponseApi } from "@/api/surveyResponse";
+import type { MetricsRealtimePayload } from "@/api/surveyResponse";
 import { operationsApi } from "@/api/operations";
 import { toast } from "sonner";
 import {
@@ -50,6 +51,7 @@ interface MetricData {
     disqualified: number;
     overQuota: number;
     securityTerminate: number;
+    qualityTerminate: number;
     ir: number;
     avgTime: number;
 }
@@ -110,6 +112,9 @@ export default function SurveyMetricsPage() {
     // Pagination & Search State
     const [currentPage, setCurrentPage] = useState(1);
     const [filters, setFilters] = useState<Record<string, string>>({});
+    const modeFilter = filters["mode"] || "";
+    const respondentIdFilter = filters["respondentId"] || "";
+    const statusFilter = filters["status"] || "";
     const itemsPerPage = 10;
     const [feedMeta, setFeedMeta] = useState({
         page: 1,
@@ -118,8 +123,10 @@ export default function SurveyMetricsPage() {
         totalPages: 1,
     });
     const fetchRunRef = useRef(0);
+    const responsesFetchRunRef = useRef(0);
+    const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const fetchData = async (signal?: AbortSignal) => {
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
         const runId = fetchRunRef.current + 1;
         fetchRunRef.current = runId;
         setLoading(true);
@@ -144,15 +151,15 @@ export default function SurveyMetricsPage() {
 
             setLoading(false);
             setResponsesLoading(true);
-            const selectedMode = filters["mode"] === "LIVE" || filters["mode"] === "TEST"
-                ? (filters["mode"] as "LIVE" | "TEST")
+            const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                ? (modeFilter as "LIVE" | "TEST")
                 : viewMode;
             const responsesData = await surveyResponseApi.getResponses(id, selectedMode, {
                 signal,
                 page: currentPage,
                 limit: itemsPerPage,
-                respondentId: filters["respondentId"] || undefined,
-                status: filters["status"] || undefined,
+                respondentId: respondentIdFilter || undefined,
+                status: statusFilter || undefined,
             });
             if (signal?.aborted || fetchRunRef.current !== runId) return;
 
@@ -184,7 +191,65 @@ export default function SurveyMetricsPage() {
                 setResponsesLoading(false);
             }
         }
-    };
+    }, [currentPage, id, modeFilter, respondentIdFilter, statusFilter, viewMode]);
+
+    const fetchResponsesOnly = useCallback(async (signal?: AbortSignal) => {
+        const runId = responsesFetchRunRef.current + 1;
+        responsesFetchRunRef.current = runId;
+        setResponsesLoading(true);
+        try {
+            const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                ? (modeFilter as "LIVE" | "TEST")
+                : viewMode;
+            const responsesData = await surveyResponseApi.getResponses(id, selectedMode, {
+                signal,
+                page: currentPage,
+                limit: itemsPerPage,
+                respondentId: respondentIdFilter || undefined,
+                status: statusFilter || undefined,
+            });
+            if (signal?.aborted || responsesFetchRunRef.current !== runId) return;
+
+            const enrichedResponses = (responsesData.data || []).map((r: any) => {
+                const durationMs = getResponseDurationMs(r);
+                return { ...r, duration: formatDurationMs(durationMs) };
+            });
+
+            setResponses(enrichedResponses);
+            setOrderedHeaders(responsesData.meta?.orderedHeaders || []);
+            setFeedMeta({
+                page: responsesData.meta.page,
+                limit: responsesData.meta.limit,
+                total: responsesData.meta.total,
+                totalPages: responsesData.meta.totalPages,
+            });
+        } catch (error) {
+            if (signal?.aborted || responsesFetchRunRef.current !== runId) return;
+            console.warn("Failed to refresh realtime response feed:", error);
+        } finally {
+            if (!signal?.aborted && responsesFetchRunRef.current === runId) {
+                setResponsesLoading(false);
+            }
+        }
+    }, [currentPage, id, modeFilter, respondentIdFilter, statusFilter, viewMode]);
+
+    const applyRealtimeMetricsUpdate = useCallback((payload: MetricsRealtimePayload) => {
+        setMetrics((current) => {
+            const nextMetric: MetricData = {
+                mode: payload.mode,
+                ...payload.metrics,
+            };
+            const index = current.findIndex((metric) => metric.mode === payload.mode);
+            if (index === -1) return [...current, nextMetric];
+
+            const next = [...current];
+            next[index] = {
+                ...current[index]!,
+                ...nextMetric,
+            };
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         if (!id) return;
@@ -192,7 +257,54 @@ export default function SurveyMetricsPage() {
         setUserRole(getStoredUserRole());
         fetchData(controller.signal);
         return () => controller.abort();
-    }, [id, viewMode, currentPage, filters["respondentId"], filters["status"], filters["mode"]]);
+    }, [fetchData, id]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        let stopped = false;
+        let activeController: AbortController | null = null;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const connect = () => {
+            activeController = new AbortController();
+            void surveyResponseApi.subscribeToMetricsUpdates(id, {
+                signal: activeController.signal,
+                onMetricsUpdated: (payload) => {
+                    if (payload.surveyId !== id) return;
+                    applyRealtimeMetricsUpdate(payload);
+
+                    const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                        ? modeFilter
+                        : viewMode;
+                    if (currentPage === 1 && payload.mode === selectedMode) {
+                        if (realtimeRefreshTimerRef.current) {
+                            clearTimeout(realtimeRefreshTimerRef.current);
+                        }
+                        realtimeRefreshTimerRef.current = setTimeout(() => {
+                            void fetchResponsesOnly();
+                        }, 600);
+                    }
+                },
+            }).catch((error) => {
+                if (stopped || activeController?.signal.aborted) return;
+                console.warn("Metrics stream disconnected. Reconnecting...", error);
+                reconnectTimer = setTimeout(connect, 3000);
+            });
+        };
+
+        connect();
+
+        return () => {
+            stopped = true;
+            activeController?.abort();
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            if (realtimeRefreshTimerRef.current) {
+                clearTimeout(realtimeRefreshTimerRef.current);
+                realtimeRefreshTimerRef.current = null;
+            }
+        };
+    }, [applyRealtimeMetricsUpdate, currentPage, fetchResponsesOnly, id, modeFilter, viewMode]);
 
     const canManageSurvey = hasPermission(userRole, PERMISSIONS.SURVEY_EDIT);
     const canManageQuotas = hasPermission(userRole, PERMISSIONS.QUOTA_MANAGE);

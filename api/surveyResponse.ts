@@ -5,6 +5,7 @@ import { z } from "zod";
 import { reportError } from "@/lib/error-reporter";
 import type { AcceptedOperation } from "./survey";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { getPublicEnv } from "@/lib/env";
 
 type RequestOptions = {
     signal?: AbortSignal;
@@ -28,6 +29,46 @@ export interface PaginatedFeedResult<T = any> {
     };
 }
 
+export type MetricsRealtimePayload = {
+    surveyId: string;
+    mode: "LIVE" | "TEST";
+    metrics: {
+        views: number;
+        starts: number;
+        completes: number;
+        dropped: number;
+        disqualified: number;
+        overQuota: number;
+        securityTerminate: number;
+        qualityTerminate: number;
+        ir: number;
+        avgTime: number;
+    };
+    eventsRead?: number;
+    updatedAt: string;
+};
+
+type MetricsStreamHandlers = {
+    signal?: AbortSignal;
+    onMetricsUpdated: (payload: MetricsRealtimePayload) => void;
+    onConnected?: () => void;
+};
+
+const parseSseFrame = (frame: string) => {
+    let event = "message";
+    const dataLines: string[] = [];
+
+    for (const line of frame.split(/\r?\n/)) {
+        if (line.startsWith("event:")) {
+            event = line.slice("event:".length).trim();
+        } else if (line.startsWith("data:")) {
+            dataLines.push(line.slice("data:".length).trimStart());
+        }
+    }
+
+    return { event, data: dataLines.join("\n") };
+};
+
 export const surveyResponseApi = {
     getMetrics: async (surveyId: string, options?: RequestOptions): Promise<{ modes: any[] }> => {
         const response = await apiClient.get(`/responses/metrics/${surveyId}`, options);
@@ -42,6 +83,65 @@ export const surveyResponseApi = {
         }
         const payload = parsed.data.data as any;
         return payload && Array.isArray(payload.modes) ? payload : { modes: [] };
+    },
+
+    subscribeToMetricsUpdates: async (
+        surveyId: string,
+        handlers: MetricsStreamHandlers
+    ): Promise<void> => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        if (!token) {
+            throw new Error("Missing auth token for metrics stream");
+        }
+
+        const { NEXT_PUBLIC_API_URL } = getPublicEnv();
+        const response = await fetch(`${NEXT_PUBLIC_API_URL}/responses/metrics/${surveyId}/stream`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "text/event-stream",
+            },
+            signal: handlers.signal,
+        });
+
+        if (!response.ok || !response.body) {
+            throw new Error(`Metrics stream failed with status ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const frames = buffer.split(/\r?\n\r?\n/);
+            buffer = frames.pop() || "";
+
+            for (const frame of frames) {
+                const { event, data } = parseSseFrame(frame);
+                if (!data) continue;
+
+                if (event === "connected") {
+                    handlers.onConnected?.();
+                    continue;
+                }
+
+                if (event !== "metrics.updated") continue;
+
+                try {
+                    handlers.onMetricsUpdated(JSON.parse(data) as MetricsRealtimePayload);
+                } catch (error) {
+                    reportError({
+                        kind: "api",
+                        message: "Invalid metrics stream payload",
+                        details: { endpoint: `/responses/metrics/${surveyId}/stream`, error },
+                    });
+                }
+            }
+        }
     },
 
     getResponses: async (surveyId: string, mode?: 'LIVE' | 'TEST', options?: ResponseFeedOptions): Promise<PaginatedFeedResult> => {
