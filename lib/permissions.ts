@@ -10,6 +10,7 @@ export const PERMISSIONS = {
   QUOTA_MANAGE: "quota.manage",
   RESPONSE_READ: "response.read",
   RESPONSE_EXPORT: "response.export",
+  RESPONSE_SHARE: "response.share",
   RESPONSE_RESYNC: "response.resync",
   PRIVACY_MANAGE: "privacy.manage",
   TEST_RUN: "test.run",
@@ -30,6 +31,7 @@ const rolePermissions: Record<UserRole, Set<Permission>> = {
     PERMISSIONS.WORKFLOW_EDIT,
     PERMISSIONS.QUOTA_MANAGE,
     PERMISSIONS.RESPONSE_READ,
+    PERMISSIONS.RESPONSE_SHARE,
     PERMISSIONS.TEST_RUN,
   ]),
   DEMO_USER: new Set([
@@ -39,6 +41,7 @@ const rolePermissions: Record<UserRole, Set<Permission>> = {
     PERMISSIONS.WORKFLOW_EDIT,
     PERMISSIONS.QUOTA_MANAGE,
     PERMISSIONS.RESPONSE_READ,
+    PERMISSIONS.RESPONSE_SHARE,
   ]),
 };
 

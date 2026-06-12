@@ -1,10 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { surveyApi } from "@/api/survey";
 import { Survey } from "@/src/shared/types/survey";
 import { surveyResponseApi } from "@/api/surveyResponse";
+import type { MetricsRealtimePayload } from "@/api/surveyResponse";
 import { operationsApi } from "@/api/operations";
+import { sharedDashboardApi, sharedExportApi, type SharedExportFormat, type SharedExportMode } from "@/api/sharedLinks";
 import { toast } from "sonner";
 import {
     IconClick,
@@ -17,7 +19,13 @@ import {
     IconChevronLeft,
     IconChevronRight,
     IconFilter,
-    IconSettings
+    IconSettings,
+    IconShieldLock,
+    IconMailForward,
+    IconLink,
+    IconLayoutDashboard,
+    IconShare,
+    IconX
 } from "@tabler/icons-react";
 import { motion } from "motion/react";
 import {
@@ -36,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { SurveySettingsModal } from "@/components/modals/SurveySettingsModal";
 import { SurveyQuotaModal } from "@/components/modals/SurveyQuotaModal";
 import { ReconcileResponseModal } from "@/components/modals/ReconcileResponseModal";
+import { ModalPortal } from "@/components/ui/ModalPortal";
 import { safeDateTime, safeIdShort } from "@/lib/safe-format";
 import { toUserMessage } from "@/lib/api-error";
 import { getStoredUserRole, hasPermission, PERMISSIONS } from "@/lib/permissions";
@@ -50,6 +59,7 @@ interface MetricData {
     disqualified: number;
     overQuota: number;
     securityTerminate: number;
+    qualityTerminate: number;
     ir: number;
     avgTime: number;
 }
@@ -102,14 +112,29 @@ export default function SurveyMetricsPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isSecureShareOpen, setIsSecureShareOpen] = useState(false);
+    const [secureShareMode, setSecureShareMode] = useState<"EXPORT" | "DASHBOARD">("EXPORT");
     const [isReconcileOpen, setIsReconcileOpen] = useState(false);
     const [resyncing, setResyncing] = useState(false);
     const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
+    const [shareEmail, setShareEmail] = useState("");
+    const [shareFormat, setShareFormat] = useState<SharedExportFormat>("csv");
+    const [shareMode, setShareMode] = useState<SharedExportMode>("LIVE");
+    const [sendShareEmail, setSendShareEmail] = useState(true);
+    const [shareBusy, setShareBusy] = useState(false);
+    const [lastShareUrl, setLastShareUrl] = useState<string | null>(null);
+    const [dashboardShareEmail, setDashboardShareEmail] = useState("");
+    const [sendDashboardShareEmail, setSendDashboardShareEmail] = useState(true);
+    const [dashboardShareBusy, setDashboardShareBusy] = useState(false);
+    const [lastDashboardShareUrl, setLastDashboardShareUrl] = useState<string | null>(null);
 
     // Pagination State
     // Pagination & Search State
     const [currentPage, setCurrentPage] = useState(1);
     const [filters, setFilters] = useState<Record<string, string>>({});
+    const modeFilter = filters["mode"] || "";
+    const respondentIdFilter = filters["respondentId"] || "";
+    const statusFilter = filters["status"] || "";
     const itemsPerPage = 10;
     const [feedMeta, setFeedMeta] = useState({
         page: 1,
@@ -118,8 +143,10 @@ export default function SurveyMetricsPage() {
         totalPages: 1,
     });
     const fetchRunRef = useRef(0);
+    const responsesFetchRunRef = useRef(0);
+    const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const fetchData = async (signal?: AbortSignal) => {
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
         const runId = fetchRunRef.current + 1;
         fetchRunRef.current = runId;
         setLoading(true);
@@ -144,15 +171,15 @@ export default function SurveyMetricsPage() {
 
             setLoading(false);
             setResponsesLoading(true);
-            const selectedMode = filters["mode"] === "LIVE" || filters["mode"] === "TEST"
-                ? (filters["mode"] as "LIVE" | "TEST")
+            const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                ? (modeFilter as "LIVE" | "TEST")
                 : viewMode;
             const responsesData = await surveyResponseApi.getResponses(id, selectedMode, {
                 signal,
                 page: currentPage,
                 limit: itemsPerPage,
-                respondentId: filters["respondentId"] || undefined,
-                status: filters["status"] || undefined,
+                respondentId: respondentIdFilter || undefined,
+                status: statusFilter || undefined,
             });
             if (signal?.aborted || fetchRunRef.current !== runId) return;
 
@@ -184,7 +211,65 @@ export default function SurveyMetricsPage() {
                 setResponsesLoading(false);
             }
         }
-    };
+    }, [currentPage, id, modeFilter, respondentIdFilter, statusFilter, viewMode]);
+
+    const fetchResponsesOnly = useCallback(async (signal?: AbortSignal) => {
+        const runId = responsesFetchRunRef.current + 1;
+        responsesFetchRunRef.current = runId;
+        setResponsesLoading(true);
+        try {
+            const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                ? (modeFilter as "LIVE" | "TEST")
+                : viewMode;
+            const responsesData = await surveyResponseApi.getResponses(id, selectedMode, {
+                signal,
+                page: currentPage,
+                limit: itemsPerPage,
+                respondentId: respondentIdFilter || undefined,
+                status: statusFilter || undefined,
+            });
+            if (signal?.aborted || responsesFetchRunRef.current !== runId) return;
+
+            const enrichedResponses = (responsesData.data || []).map((r: any) => {
+                const durationMs = getResponseDurationMs(r);
+                return { ...r, duration: formatDurationMs(durationMs) };
+            });
+
+            setResponses(enrichedResponses);
+            setOrderedHeaders(responsesData.meta?.orderedHeaders || []);
+            setFeedMeta({
+                page: responsesData.meta.page,
+                limit: responsesData.meta.limit,
+                total: responsesData.meta.total,
+                totalPages: responsesData.meta.totalPages,
+            });
+        } catch (error) {
+            if (signal?.aborted || responsesFetchRunRef.current !== runId) return;
+            console.warn("Failed to refresh realtime response feed:", error);
+        } finally {
+            if (!signal?.aborted && responsesFetchRunRef.current === runId) {
+                setResponsesLoading(false);
+            }
+        }
+    }, [currentPage, id, modeFilter, respondentIdFilter, statusFilter, viewMode]);
+
+    const applyRealtimeMetricsUpdate = useCallback((payload: MetricsRealtimePayload) => {
+        setMetrics((current) => {
+            const nextMetric: MetricData = {
+                mode: payload.mode,
+                ...payload.metrics,
+            };
+            const index = current.findIndex((metric) => metric.mode === payload.mode);
+            if (index === -1) return [...current, nextMetric];
+
+            const next = [...current];
+            next[index] = {
+                ...current[index]!,
+                ...nextMetric,
+            };
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         if (!id) return;
@@ -192,12 +277,128 @@ export default function SurveyMetricsPage() {
         setUserRole(getStoredUserRole());
         fetchData(controller.signal);
         return () => controller.abort();
-    }, [id, viewMode, currentPage, filters["respondentId"], filters["status"], filters["mode"]]);
+    }, [fetchData, id]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        let stopped = false;
+        let activeController: AbortController | null = null;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const connect = () => {
+            activeController = new AbortController();
+            void surveyResponseApi.subscribeToMetricsUpdates(id, {
+                signal: activeController.signal,
+                onMetricsUpdated: (payload) => {
+                    if (payload.surveyId !== id) return;
+                    applyRealtimeMetricsUpdate(payload);
+
+                    const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                        ? modeFilter
+                        : viewMode;
+                    if (currentPage === 1 && payload.mode === selectedMode) {
+                        if (realtimeRefreshTimerRef.current) {
+                            clearTimeout(realtimeRefreshTimerRef.current);
+                        }
+                        realtimeRefreshTimerRef.current = setTimeout(() => {
+                            void fetchResponsesOnly();
+                        }, 600);
+                    }
+                },
+            }).catch((error) => {
+                if (stopped || activeController?.signal.aborted) return;
+                console.warn("Metrics stream disconnected. Reconnecting...", error);
+                reconnectTimer = setTimeout(connect, 3000);
+            });
+        };
+
+        connect();
+
+        return () => {
+            stopped = true;
+            activeController?.abort();
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            if (realtimeRefreshTimerRef.current) {
+                clearTimeout(realtimeRefreshTimerRef.current);
+                realtimeRefreshTimerRef.current = null;
+            }
+        };
+    }, [applyRealtimeMetricsUpdate, currentPage, fetchResponsesOnly, id, modeFilter, viewMode]);
 
     const canManageSurvey = hasPermission(userRole, PERMISSIONS.SURVEY_EDIT);
     const canManageQuotas = hasPermission(userRole, PERMISSIONS.QUOTA_MANAGE);
     const canExport = hasPermission(userRole, PERMISSIONS.RESPONSE_EXPORT);
+    const canShareResponses = hasPermission(userRole, PERMISSIONS.RESPONSE_SHARE);
     const canResync = hasPermission(userRole, PERMISSIONS.RESPONSE_RESYNC);
+
+    const copyGeneratedLink = async (url: string) => {
+        if (typeof navigator === "undefined" || !navigator.clipboard) return false;
+        try {
+            await navigator.clipboard.writeText(url);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    const handleCreateSharedExport = async () => {
+        const recipientEmail = shareEmail.trim();
+        if (!id || !recipientEmail || shareBusy) return;
+
+        try {
+            setShareBusy(true);
+            const result = await sharedExportApi.create({
+                surveyId: id,
+                recipientEmail,
+                format: shareFormat,
+                mode: shareMode,
+                sendEmail: sendShareEmail,
+            });
+            const url = result.shareUrl || result.url || null;
+            setLastShareUrl(url);
+            const copied = url ? await copyGeneratedLink(url) : false;
+            if (sendShareEmail && result.emailSent === false) {
+                toast.warning(copied
+                    ? "Secure export link generated and copied, but email delivery failed."
+                    : "Secure export link generated, but email delivery failed.");
+            } else {
+                toast.success(copied ? "Secure export link generated and copied." : "Secure export link generated.");
+            }
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to generate secure export link"));
+        } finally {
+            setShareBusy(false);
+        }
+    };
+
+    const handleCreateSharedDashboard = async () => {
+        const recipientEmail = dashboardShareEmail.trim();
+        if (!id || !recipientEmail || dashboardShareBusy) return;
+
+        try {
+            setDashboardShareBusy(true);
+            const result = await sharedDashboardApi.create({
+                surveyId: id,
+                recipientEmail,
+                sendEmail: sendDashboardShareEmail,
+            });
+            const url = result.shareUrl || result.url || null;
+            setLastDashboardShareUrl(url);
+            const copied = url ? await copyGeneratedLink(url) : false;
+            if (sendDashboardShareEmail && result.emailSent === false) {
+                toast.warning(copied
+                    ? "Secure dashboard link generated and copied, but email delivery failed."
+                    : "Secure dashboard link generated, but email delivery failed.");
+            } else {
+                toast.success(copied ? "Secure dashboard link generated and copied." : "Secure dashboard link generated.");
+            }
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to generate secure dashboard link"));
+        } finally {
+            setDashboardShareBusy(false);
+        }
+    };
 
     const handleForceResync = async () => {
         if (!id || resyncing) return;
@@ -413,6 +614,19 @@ export default function SurveyMetricsPage() {
                     >
                         <IconRefresh size={18} strokeWidth={1.5} />
                     </button>
+
+                    {canShareResponses && (
+                        <button
+                            onClick={() => {
+                                setSecureShareMode("EXPORT");
+                                setIsSecureShareOpen(true);
+                            }}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
+                            title="Secure Share"
+                        >
+                            <IconShare size={18} strokeWidth={1.5} />
+                        </button>
+                    )}
 
                     {canManageSurvey && (
                         <button
@@ -845,6 +1059,222 @@ export default function SurveyMetricsPage() {
                     </div>
                 )}
             </div>
+
+            {isSecureShareOpen && (
+                <ModalPortal>
+                    <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/45 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                        <button
+                            className="absolute inset-0 cursor-default"
+                            onClick={() => setIsSecureShareOpen(false)}
+                            aria-label="Close secure share modal"
+                        />
+                        <div className="relative w-full max-w-xl bg-background border border-border/70 rounded-xl shadow-2xl overflow-hidden">
+                            <div className="px-6 py-5 border-b border-border/60 flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                    <div className={cn(
+                                        "flex h-10 w-10 items-center justify-center rounded-lg border",
+                                        secureShareMode === "EXPORT"
+                                            ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                            : "bg-sky-50 text-sky-600 border-sky-200"
+                                    )}>
+                                        {secureShareMode === "EXPORT" ? (
+                                            <IconMailForward size={20} strokeWidth={1.8} />
+                                        ) : (
+                                            <IconLayoutDashboard size={20} strokeWidth={1.8} />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-semibold text-foreground">Secure Sharing</h3>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Recipient-bound links with email OTP verification.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    title="Close"
+                                    onClick={() => setIsSecureShareOpen(false)}
+                                    className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                >
+                                    <IconX size={18} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-5">
+                                <div className="grid grid-cols-2 gap-1 rounded-lg border border-border/70 bg-muted/20 p-1">
+                                    <button
+                                        onClick={() => setSecureShareMode("EXPORT")}
+                                        className={cn(
+                                            "h-10 rounded-md text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                                            secureShareMode === "EXPORT"
+                                                ? "bg-background text-foreground shadow-sm border border-border/70"
+                                                : "text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        <IconMailForward size={16} strokeWidth={1.8} />
+                                        Channel Export
+                                    </button>
+                                    <button
+                                        onClick={() => setSecureShareMode("DASHBOARD")}
+                                        className={cn(
+                                            "h-10 rounded-md text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                                            secureShareMode === "DASHBOARD"
+                                                ? "bg-background text-foreground shadow-sm border border-border/70"
+                                                : "text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        <IconLayoutDashboard size={16} strokeWidth={1.8} />
+                                        Client Dashboard
+                                    </button>
+                                </div>
+
+                                <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
+                                    <div className="mb-4">
+                                        <h4 className="text-sm font-semibold text-foreground">
+                                            {secureShareMode === "EXPORT" ? "Secure Channel Export" : "Secure Client Dashboard"}
+                                        </h4>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            {secureShareMode === "EXPORT"
+                                                ? "Generate a single-use response export for one authorized recipient."
+                                                : "Generate a live client-facing dashboard link for one authorized recipient."}
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <label className="block">
+                                            <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                                                {secureShareMode === "EXPORT" ? "Recipient email" : "Client email"}
+                                            </span>
+                                            <input
+                                                type="email"
+                                                placeholder={secureShareMode === "EXPORT" ? "recipient@work.com" : "client@work.com"}
+                                                value={secureShareMode === "EXPORT" ? shareEmail : dashboardShareEmail}
+                                                onChange={(event) => {
+                                                    if (secureShareMode === "EXPORT") {
+                                                        setShareEmail(event.target.value);
+                                                    } else {
+                                                        setDashboardShareEmail(event.target.value);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "w-full h-11 rounded-lg border border-border/70 bg-background px-3 text-sm outline-none transition focus:ring-2",
+                                                    secureShareMode === "EXPORT"
+                                                        ? "focus:border-emerald-500 focus:ring-emerald-500/15"
+                                                        : "focus:border-sky-500 focus:ring-sky-500/15"
+                                                )}
+                                            />
+                                        </label>
+
+                                        {secureShareMode === "EXPORT" && (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <label className="block">
+                                                    <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Format</span>
+                                                    <select
+                                                        value={shareFormat}
+                                                        onChange={(event) => setShareFormat(event.target.value as SharedExportFormat)}
+                                                        className="w-full h-11 rounded-lg border border-border/70 bg-background px-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15"
+                                                    >
+                                                        <option value="csv">CSV Format</option>
+                                                        <option value="xlsx">XLSX Format</option>
+                                                        <option value="spss">SPSS Format</option>
+                                                        <option value="json">JSON Format</option>
+                                                    </select>
+                                                </label>
+                                                <label className="block">
+                                                    <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Dataset</span>
+                                                    <select
+                                                        value={shareMode}
+                                                        onChange={(event) => setShareMode(event.target.value as SharedExportMode)}
+                                                        className="w-full h-11 rounded-lg border border-border/70 bg-background px-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15"
+                                                    >
+                                                        <option value="LIVE">Live Data</option>
+                                                        <option value="TEST">Test Data</option>
+                                                    </select>
+                                                </label>
+                                            </div>
+                                        )}
+
+                                        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2">
+                                            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={secureShareMode === "EXPORT" ? sendShareEmail : sendDashboardShareEmail}
+                                                    onChange={(event) => {
+                                                        if (secureShareMode === "EXPORT") {
+                                                            setSendShareEmail(event.target.checked);
+                                                        } else {
+                                                            setSendDashboardShareEmail(event.target.checked);
+                                                        }
+                                                    }}
+                                                    className={cn(
+                                                        "h-4 w-4",
+                                                        secureShareMode === "EXPORT" ? "accent-emerald-600" : "accent-sky-600"
+                                                    )}
+                                                />
+                                                Auto-dispatch email
+                                            </label>
+                                            <span className="text-xs text-muted-foreground">
+                                                {secureShareMode === "EXPORT" ? "72h TTL" : "Until archive"}
+                                            </span>
+                                        </div>
+
+                                        <button
+                                            onClick={secureShareMode === "EXPORT" ? handleCreateSharedExport : handleCreateSharedDashboard}
+                                            disabled={
+                                                secureShareMode === "EXPORT"
+                                                    ? !shareEmail.trim() || shareBusy
+                                                    : !dashboardShareEmail.trim() || dashboardShareBusy
+                                            }
+                                            className={cn(
+                                                "w-full h-11 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                                                secureShareMode === "EXPORT"
+                                                    ? (!shareEmail.trim() || shareBusy
+                                                        ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                        : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm")
+                                                    : (!dashboardShareEmail.trim() || dashboardShareBusy
+                                                        ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                        : "bg-sky-600 text-white hover:bg-sky-700 shadow-sm")
+                                            )}
+                                        >
+                                            <IconLink size={17} strokeWidth={1.8} />
+                                            {secureShareMode === "EXPORT"
+                                                ? (shareBusy ? "Generating..." : "Generate Access Link")
+                                                : (dashboardShareBusy ? "Generating..." : "Generate Dashboard Link")}
+                                        </button>
+
+                                        {secureShareMode === "EXPORT" && lastShareUrl && (
+                                            <button
+                                                onClick={() => void copyGeneratedLink(lastShareUrl).then((copied) => {
+                                                    if (copied) toast.success("Link copied.");
+                                                    else toast.info("Copy unavailable.");
+                                                })}
+                                                className="group w-full rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3 text-left hover:bg-emerald-50 transition"
+                                                title={lastShareUrl}
+                                            >
+                                                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-emerald-700">Generated export link</span>
+                                                <span className="block truncate text-xs font-mono text-emerald-900 group-hover:underline">{lastShareUrl}</span>
+                                            </button>
+                                        )}
+
+                                        {secureShareMode === "DASHBOARD" && lastDashboardShareUrl && (
+                                            <button
+                                                onClick={() => void copyGeneratedLink(lastDashboardShareUrl).then((copied) => {
+                                                    if (copied) toast.success("Link copied.");
+                                                    else toast.info("Copy unavailable.");
+                                                })}
+                                                className="group w-full rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-3 text-left hover:bg-sky-50 transition"
+                                                title={lastDashboardShareUrl}
+                                            >
+                                                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-sky-700">Generated dashboard link</span>
+                                                <span className="block truncate text-xs font-mono text-sky-900 group-hover:underline">{lastDashboardShareUrl}</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </ModalPortal>
+            )}
 
             <SurveySettingsModal
                 isOpen={isSettingsOpen}
