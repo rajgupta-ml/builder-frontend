@@ -101,6 +101,7 @@ export const surveyResponseApi = {
                 Authorization: `Bearer ${token}`,
                 Accept: "text/event-stream",
             },
+            cache: "no-store",
             signal: handlers.signal,
         });
 
