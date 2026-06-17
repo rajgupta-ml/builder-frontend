@@ -1,4 +1,5 @@
 import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
+import { plainTextManifest } from '@surveystudio/node-registery/builder';
 import { featureFlags } from '@/lib/feature-flags';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
@@ -27,6 +28,18 @@ export interface NodeDefinition {
     component?: React.ComponentType<any>;
     properties: PropertyField[];
 }
+
+const definitionFromManifest = (
+    manifest: Pick<NodeDefinition, 'type' | 'label' | 'description' | 'category' | 'properties'>,
+    icon: React.ElementType
+): NodeDefinition => ({
+    type: manifest.type,
+    label: manifest.label,
+    description: manifest.description,
+    category: manifest.category,
+    properties: manifest.properties as PropertyField[],
+    icon,
+});
 
 // Category Configuration
 export const CATEGORY_CONFIG: Record<NodeCategory, { label: string, icon: React.ElementType }> = {
@@ -489,19 +502,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
         ]
     },
     // New Nodes
-    {
-        type: 'plainText',
-        label: 'Info / Text',
-        description: 'Display text with a continue button',
-        icon: IconInfoCircle,
-        category: 'media',
-        properties: [
-            { name: 'label', label: 'Field Label', type: 'text', placeholder: 'Info Screen' },
-            { name: 'description', label: 'Content', type: 'textarea', placeholder: 'Enter your message here...', defaultValue: '' },
-            { name: 'buttonLabel', label: 'Button Label', type: 'text', defaultValue: 'Continue' },
-            { name: 'condition', label: 'Logic Rule', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } }
-        ]
-    },
+    definitionFromManifest(plainTextManifest, IconInfoCircle),
     {
         type: 'emojiRating',
         label: 'Emoji Rating',

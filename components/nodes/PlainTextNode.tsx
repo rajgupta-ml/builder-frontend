@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
+import { PlainTextNode as PlainTextPrimitive } from '@surveystudio/node-registery/ui';
 import BaseNode from './BaseNode';
 import { IconTextCaption } from '@tabler/icons-react';
 
@@ -14,21 +15,21 @@ const PlainTextNode = (props: NodeProps<any>) => {
             icon={IconTextCaption}
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-3">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-foreground">
+            <PlainTextPrimitive.Root className="space-y-3">
+                <PlainTextPrimitive.Content className="space-y-1">
+                    <PlainTextPrimitive.Title className="text-sm font-medium text-foreground">
                         {label || "Info Screen"}
-                    </label>
-                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded-md whitespace-pre-wrap max-h-24 overflow-hidden text-ellipsis">
+                    </PlainTextPrimitive.Title>
+                    <PlainTextPrimitive.Description className="text-xs text-muted-foreground bg-muted p-2 rounded-md whitespace-pre-wrap max-h-24 overflow-hidden text-ellipsis">
                         {description || "No content provided..."}
-                    </div>
-                </div>
-                <div className="flex justify-end">
-                    <button className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded" disabled>
+                    </PlainTextPrimitive.Description>
+                </PlainTextPrimitive.Content>
+                <PlainTextPrimitive.Actions className="flex justify-end">
+                    <PlainTextPrimitive.Button className="text-xs bg-primary text-primary-foreground px-3 py-1 rounded" disabled>
                         {buttonLabel || "Continue"}
-                    </button>
-                </div>
-            </div>
+                    </PlainTextPrimitive.Button>
+                </PlainTextPrimitive.Actions>
+            </PlainTextPrimitive.Root>
         </BaseNode>
     );
 };
