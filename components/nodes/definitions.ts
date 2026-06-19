@@ -1,5 +1,5 @@
 import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
-import { consentManifest, dateInputManifest, dropdownManifest, emailInputManifest, multiInputManifest, multipleChoiceManifest, numberInputManifest, plainTextManifest, rankingManifest, ratingManifest, singleChoiceManifest, sliderManifest, textInputManifest, zipCodeInputManifest } from '@surveystudio/node-registery/builder';
+import { audioManifest, branchManifest, captchaManifest, cascadingChoiceManifest, consentManifest, dateInputManifest, dropdownManifest, emailInputManifest, emojiRatingManifest, endManifest, imageManifest, matrixChoiceManifest, multiInputManifest, multipleChoiceManifest, numberInputManifest, plainTextManifest, rankingManifest, ratingManifest, singleChoiceManifest, sliderManifest, startManifest, textInputManifest, validationManifest, videoManifest, zipCodeInputManifest } from '@surveystudio/node-registery/builder';
 import { featureFlags } from '@/lib/feature-flags';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
@@ -12,7 +12,7 @@ export interface PropertyField {
     placeholder?: string;
     helperText?: string;
     defaultValue?: any;
-    options?: { label: string, value: string }[]; // For select type
+    options?: readonly { label: string, value: string }[]; // For select type
     onBulkAdd?: (options: { label: string, value: string }[]) => void;
     visible?: (data: any) => boolean;
     min?: number;
@@ -80,20 +80,34 @@ const MEDIA_INTERACTION_OPTIONS = [
     ...(!featureFlags.hideMediaInteractionChoice ? [{ label: 'Multiple Choice', value: 'choice' }] : [])
 ];
 
+const withMediaFeatureFlags = (
+    manifest: Pick<NodeDefinition, 'type' | 'label' | 'description' | 'category' | 'properties'>
+) => {
+    const filteredProperties = (manifest.properties as PropertyField[])
+        .filter((property) => {
+            if (property.name === 'questionLabel') return !featureFlags.hideMediaInteractionText;
+            if (property.name === 'sliderConfig') return !featureFlags.hideMediaInteractionRating;
+            if (property.name === 'choices') return !featureFlags.hideMediaInteractionChoice;
+            return true;
+        })
+        .map((property) => {
+            if (property.name !== 'interactionType') return property;
+            return {
+                ...property,
+                options: MEDIA_INTERACTION_OPTIONS,
+            };
+        });
+
+    return {
+        ...manifest,
+        properties: filteredProperties,
+    };
+};
+
 export const NODE_DEFINITIONS: NodeDefinition[] = [
     // Inputs
     definitionFromManifest(withBuilderCommonProperties(textInputManifest), IconTextCaption),
-    {
-        type: 'captcha',
-        label: 'Captcha',
-        description: 'Verify the user is human using Turnstile',
-        icon: IconShieldLock,
-        category: 'input',
-        properties: [
-            ...commonProperties,
-            { name: 'sitekey', label: 'Turnstile Site Key', type: 'text', placeholder: '1x00000000000000000000AA', helperText: 'Your Cloudflare Turnstile Site Key' }
-        ]
-    },
+    definitionFromManifest(captchaManifest, IconShieldLock),
     definitionFromManifest(withBuilderCommonProperties(multiInputManifest), IconForms),
     definitionFromManifest(withBuilderCommonProperties(numberInputManifest), IconNumbers),
     definitionFromManifest(withBuilderCommonProperties(emailInputManifest), IconMail),
@@ -109,244 +123,25 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
 
 
     // Flow
-    {
-        type: 'start',
-        label: 'Start',
-        description: 'Entry point of the survey',
-        icon: IconArrowMerge, // IconPlayerPlay
-        category: 'flow',
-        properties: [
-            { name: 'welcomeMessage', label: 'Welcome Message', type: 'textarea', placeholder: 'e.g., Welcome to our survey! Click below to start.' }
-        ] // No properties for Start usually
-    },
+    definitionFromManifest(startManifest, IconArrowMerge),
 
     // Logic
-    {
-        type: 'branch',
-        label: 'Branch',
-        description: 'Split flow based on conditions',
-        icon: IconArrowMerge,
-        category: 'logic',
-        properties: [
-            { name: 'condition', label: 'Logic Rule', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } }
-        ]
-    },
-    {
-        type: 'validation',
-        label: 'Validation Gate',
-        description: 'Run cross-field validation and split flow',
-        icon: IconShieldLock,
-        category: 'logic',
-        properties: [
-            { name: 'label', label: 'Gate Label', type: 'text', placeholder: 'e.g., Age vs DOB Check', defaultValue: 'Validation Gate' },
-            { name: 'condition', label: 'Validation Rules', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] } },
-            {
-                name: 'outcome',
-                label: 'Fail Outcome',
-                type: 'select',
-                defaultValue: 'security_terminate',
-                options: [
-                    { label: 'Security Terminate', value: 'security_terminate' },
-                    { label: 'Disqualified', value: 'disqualified' },
-                    { label: 'Dropped', value: 'dropped' }
-                ]
-            }
-        ]
-    },
-    {
-        type: 'end',
-        label: 'End Screen',
-        description: 'Terminate the survey flow',
-        icon: IconForbid,
-        category: 'flow',
-        properties: [
-            { name: 'message', label: 'Thank You Message', type: 'textarea', placeholder: 'Thank you for completing the survey!' },
-            { name: 'redirectUrl', label: 'Redirect URL', type: 'text', placeholder: 'https://...' },
-            {
-                name: 'outcome',
-                label: 'Session Outcome',
-                type: 'select',
-                defaultValue: 'completed',
-                options: [
-                    { label: 'Completed', value: 'completed' },
-                    { label: 'Disqualified', value: 'disqualified' },
-                    { label: 'Quality Terminate', value: 'quality_terminate' },
-                    { label: 'Security Terminate', value: 'security_terminate' }
-                ]
-            }
-        ]
-    },
+    definitionFromManifest(branchManifest, IconArrowMerge),
+    definitionFromManifest(validationManifest, IconShieldLock),
+    definitionFromManifest(endManifest, IconForbid),
 
     // Media
-    {
-        type: 'image',
-        label: 'Image',
-        description: 'Display an image',
-        icon: IconPhoto,
-        category: 'media',
-        properties: [
-            { name: 'urls', label: 'Images', type: 'files', defaultValue: [] },
-            { name: 'alt', label: 'Alt Text', type: 'text' },
-            {
-                name: 'interactionType',
-                label: 'Enable Interaction',
-                type: 'select',
-                defaultValue: 'none',
-                options: MEDIA_INTERACTION_OPTIONS,
-                helperText: 'Add a question below this media'
-            },
-            {
-                name: 'questionLabel',
-                label: 'Question / Text',
-                type: 'text',
-                placeholder: 'Type your text here...',
-                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
-            },
-            {
-                name: 'sliderConfig',
-                label: 'Slider Config (Min-Max)',
-                type: 'text',
-                placeholder: '0-10',
-                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
-            },
-            {
-                name: 'choices',
-                label: 'Choices',
-                type: 'options',
-                defaultValue: [],
-                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
-            }
-        ]
-    },
-    {
-        type: 'video',
-        label: 'Video',
-        description: 'Embed a video',
-        icon: IconPhoto,
-        category: 'media',
-        properties: [
-            { name: 'url', label: 'Video URL', type: 'file', placeholder: 'Upload or paste URL...' },
-            { name: 'autoplay', label: 'Autoplay', type: 'switch', defaultValue: false },
-            {
-                name: 'interactionType',
-                label: 'Enable Interaction',
-                type: 'select',
-                defaultValue: 'none',
-                options: MEDIA_INTERACTION_OPTIONS
-            },
-            {
-                name: 'questionLabel',
-                label: 'Question / Text',
-                type: 'text',
-                placeholder: 'Type your text here...',
-                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
-            },
-            {
-                name: 'sliderConfig',
-                label: 'Slider Config (Min-Max)',
-                type: 'text',
-                placeholder: '0-10',
-                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
-            },
-            {
-                name: 'choices',
-                label: 'Choices',
-                type: 'options',
-                defaultValue: [],
-                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
-            }
-        ]
-    },
-    {
-        type: 'audio',
-        label: 'Audio',
-        description: 'Play an audio clip',
-        icon: IconPhoto,
-        category: 'media',
-        properties: [
-            { name: 'url', label: 'Audio URL', type: 'file', placeholder: 'Upload or paste URL...' },
-            { name: 'autoplay', label: 'Autoplay', type: 'switch', defaultValue: false },
-            {
-                name: 'interactionType',
-                label: 'Enable Interaction',
-                type: 'select',
-                defaultValue: 'none',
-                options: MEDIA_INTERACTION_OPTIONS
-            },
-            {
-                name: 'questionLabel',
-                label: 'Question / Text',
-                type: 'text',
-                placeholder: 'Type your text here...',
-                visible: (data) => !featureFlags.hideMediaInteractionText && data.interactionType === 'text'
-            },
-            {
-                name: 'sliderConfig',
-                label: 'Slider Config (Min-Max)',
-                type: 'text',
-                placeholder: '0-10',
-                visible: (data) => !featureFlags.hideMediaInteractionRating && data.interactionType === 'slider'
-            },
-            {
-                name: 'choices',
-                label: 'Choices',
-                type: 'options',
-                defaultValue: [],
-                visible: (data) => !featureFlags.hideMediaInteractionChoice && data.interactionType === 'choice'
-            }
-        ]
-    },
+    definitionFromManifest(withMediaFeatureFlags(imageManifest), IconPhoto),
+    definitionFromManifest(withMediaFeatureFlags(videoManifest), IconPhoto),
+    definitionFromManifest(withMediaFeatureFlags(audioManifest), IconPhoto),
 
     // Special Inputs
     definitionFromManifest(withBuilderCommonProperties(zipCodeInputManifest), IconForms),
-    {
-        type: 'matrixChoice',
-        label: 'Grid / Matrix',
-        description: 'Grid of rows and columns',
-        icon: IconListCheck,
-        category: 'choice',
-        properties: [
-            ...commonProperties,
-            { name: 'rows', label: 'Rows (Questions)', type: 'options', defaultValue: [] },
-            { name: 'columns', label: 'Columns (Options)', type: 'options', defaultValue: [] },
-            { name: 'multiple', label: 'Allow Multiple', type: 'switch', defaultValue: false }
-        ]
-    },
-    {
-        type: 'cascadingChoice',
-        label: 'Multi-Step Select',
-        description: 'Conditional drill-down options',
-        icon: IconListDetails,
-        category: 'choice',
-        properties: [
-            ...commonProperties,
-            { name: 'steps', label: 'Steps', type: 'stepBuilder', defaultValue: [] }
-        ]
-    },
+    definitionFromManifest(withBuilderCommonProperties(matrixChoiceManifest), IconListCheck),
+    definitionFromManifest(withBuilderCommonProperties(cascadingChoiceManifest), IconListDetails),
     // New Nodes
     definitionFromManifest(plainTextManifest, IconInfoCircle),
-    {
-        type: 'emojiRating',
-        label: 'Emoji Rating',
-        description: 'Rate using emojis',
-        icon: IconMoodSmile,
-        category: 'choice',
-        properties: [
-            ...commonProperties,
-            {
-                name: 'options',
-                label: 'Emojis',
-                type: 'emojiOptions',
-                defaultValue: [
-                    { label: 'Angry', value: '😠' },
-                    { label: 'Sad', value: '🙁' },
-                    { label: 'Neutral', value: '😐' },
-                    { label: 'Happy', value: '🙂' },
-                    { label: 'Love', value: '😍' }
-                ]
-            }
-        ]
-    },
+    definitionFromManifest(emojiRatingManifest, IconMoodSmile),
 ];
 
 export const EU_COUNTRY_CODES = [
