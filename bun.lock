@@ -6,7 +6,7 @@
       "dependencies": {
         "@radix-ui/react-label": "^2.1.8",
         "@sentry/browser": "^10.12.0",
-        "@surveystudio/node-registery": "^1.1.0",
+        "@surveystudio/node-registery": "^1.2.0",
         "@tabler/icons-react": "^3.36.1",
         "@types/uuid": "^11.0.0",
         "@xyflow/react": "^12.10.0",
@@ -234,7 +234,7 @@
 
     "@standard-schema/utils": ["@standard-schema/utils@0.3.0", "", {}, "sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g=="],
 
-    "@surveystudio/node-registery": ["@surveystudio/node-registery@1.1.0", "", { "peerDependencies": { "react": ">=18", "react-dom": ">=18" }, "optionalPeers": ["react", "react-dom"] }, "sha512-phJZVD6blTkbytESmBTylziJNR/E1xZ2S6Plu3S+Gyr9X86hxPsWQLPxkykC8ZH8jaIJv8n9Ltq71ODn6Obpvg=="],
+    "@surveystudio/node-registery": ["@surveystudio/node-registery@1.2.0", "", { "peerDependencies": { "react": ">=18", "react-dom": ">=18" }, "optionalPeers": ["react", "react-dom"] }, "sha512-OsOp/sSet+/1roWs4VfdqtjjcO2Cx6hPKc6prOtAP8k5f9+xEplkAsTtOm/hw8uIR7Tv5i0snv3RY1QQzE/tHw=="],
 
     "@swc/helpers": ["@swc/helpers@0.5.15", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g=="],
 

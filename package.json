@@ -9,8 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@sentry/browser": "^10.12.0",
     "@radix-ui/react-label": "^2.1.8",
+    "@sentry/browser": "^10.12.0",
+    "@surveystudio/node-registery": "^1.2.0",
     "@tabler/icons-react": "^3.36.1",
     "@types/uuid": "^11.0.0",
     "@xyflow/react": "^12.10.0",
@@ -32,8 +33,7 @@
     "uuid": "^13.0.0",
     "xlsx": "^0.18.5",
     "zod": "^3.23.8",
-    "zustand": "^5.0.11",
-    "@surveystudio/node-registery": "^1.1.0"
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
