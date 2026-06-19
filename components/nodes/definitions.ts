@@ -1,5 +1,5 @@
 import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
-import { dateInputManifest, emailInputManifest, multiInputManifest, numberInputManifest, plainTextManifest, textInputManifest, zipCodeInputManifest } from '@surveystudio/node-registery/builder';
+import { consentManifest, dateInputManifest, dropdownManifest, emailInputManifest, multiInputManifest, multipleChoiceManifest, numberInputManifest, plainTextManifest, rankingManifest, ratingManifest, singleChoiceManifest, sliderManifest, textInputManifest, zipCodeInputManifest } from '@surveystudio/node-registery/builder';
 import { featureFlags } from '@/lib/feature-flags';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
@@ -98,135 +98,15 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     definitionFromManifest(withBuilderCommonProperties(numberInputManifest), IconNumbers),
     definitionFromManifest(withBuilderCommonProperties(emailInputManifest), IconMail),
     definitionFromManifest(withBuilderCommonProperties(dateInputManifest), IconCalendar),
-    {
-        type: 'singleChoice',
-        label: 'Single Choice',
-        description: 'Select one option from a list',
-        icon: IconListDetails,
-        category: 'choice',
-        properties: [
-            ...commonProperties,
-            { name: 'options', label: 'Options', type: 'options', defaultValue: [] },
-            { name: 'bulkOptions', label: 'Bulk Add (one per line)', type: 'textarea', placeholder: 'Option A\nOption B\nOption C...', helperText: 'Paste a list to replace all options above' },
-            { name: 'allowOther', label: 'Allow "Other" Option', type: 'switch', defaultValue: false },
-            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', placeholder: 'Other (Please specify)', helperText: 'Label for the open-ended option' },
-            { name: 'allowNone', label: 'Allow "None of these"', type: 'switch', defaultValue: false },
-            { name: 'noneLabel', label: '"None" Label', type: 'text', placeholder: 'None of these', visible: (data: any) => data.allowNone },
-            { name: 'randomizeOptions', label: 'Randomize Options', type: 'switch', defaultValue: false, helperText: 'Shuffle options for every viewer' }
-        ]
-    },
-    {
-        type: 'ranking',
-        label: 'Ranking',
-        description: 'Rank options in order',
-        icon: IconListNumbers,
-        category: 'choice',
-        properties: [
-            ...commonProperties,
-            { name: 'options', label: 'Items to Rank', type: 'options', defaultValue: [] },
-            {
-                name: 'displayMode',
-                label: 'Display Mode',
-                type: 'select',
-                options: [
-                    { label: 'Drag and Drop', value: 'drag' },
-                    { label: 'Select Rank', value: 'select' }
-                ],
-                defaultValue: 'drag'
-            }
-        ]
-    },
-    {
-        type: 'consent',
-        label: 'Consent',
-        description: 'Terms and agreement checkbox',
-        icon: IconCheckbox,
-        category: 'choice',
-        properties: [
-            { name: 'label', label: 'Title', type: 'text', placeholder: 'Terms of Service' },
-            { name: 'description', label: 'Terms Text', type: 'textarea', placeholder: 'I agree to the terms and conditions...' },
-            { name: 'checkboxLabel', label: 'Checkbox Label', type: 'text', placeholder: 'I agree' },
-        ]
-    },
-    {
-        type: 'multipleChoice',
-        label: 'Multiple Choice',
-        description: 'Select multiple options',
-        icon: IconCheckbox,
-        category: 'choice',
-        properties: [
-            ...commonProperties,
-            { name: 'options', label: 'Options', type: 'options', defaultValue: [] },
-            { name: 'bulkOptions', label: 'Bulk Add (one per line)', type: 'textarea', placeholder: 'Option A\nOption B\nOption C...', helperText: 'Paste a list to replace all options above' },
-            { name: 'maxChoices', label: 'Maximum Choices', type: 'number', helperText: 'Limit how many options a user can select. Leave empty for no limit.', defaultValue: 0 },
-            { name: 'allowOther', label: 'Allow "Other" Option', type: 'switch', defaultValue: false },
-            { name: 'otherLabel', label: '"Other" Placeholder', type: 'text', placeholder: 'Other (Please specify)' },
-            { name: 'allowNone', label: 'Allow "None of these"', type: 'switch', defaultValue: false },
-            { name: 'noneLabel', label: '"None" Label', type: 'text', placeholder: 'None of these', visible: (data: any) => data.allowNone },
-            { name: 'randomizeOptions', label: 'Randomize Options', type: 'switch', defaultValue: false, helperText: 'Shuffle options for every viewer' }
-        ]
-    },
-    {
-        type: 'dropdown',
-        label: 'Dropdown Select',
-        description: 'Select from a dropdown menu',
-        icon: IconListDetails,
-        category: 'choice',
-        properties: [
-            ...commonProperties,
-            { name: 'placeholder', label: 'Placeholder Text', type: 'text', placeholder: 'Select an option...' },
-            { name: 'options', label: 'Options', type: 'options', defaultValue: [] },
-            { name: 'bulkOptions', label: 'Bulk Add (one per line)', type: 'textarea', placeholder: 'Option A\nOption B\nOption C...', helperText: 'Paste a list to replace all options above' },
-            { name: 'searchable', label: 'Searchable', type: 'switch', defaultValue: true },
-        ]
-    },
-    {
-        type: 'rating',
-        label: 'Rating',
-        description: 'Star rating scale',
-        icon: IconStar,
-        category: 'choice',
-        properties: [
-            {
-                name: 'responseMode',
-                label: 'Response Mode',
-                type: 'select',
-                defaultValue: 'single',
-                options: [
-                    { label: 'Single Question', value: 'single' },
-                    { label: 'Multiple Items', value: 'multi' }
-                ]
-            },
-            ...commonProperties,
-            { name: 'items', label: 'Questions/Items', type: 'options', defaultValue: [], visible: (data: any) => data.responseMode === 'multi' },
-            { name: 'maxRating', label: 'Max Stars', type: 'number', defaultValue: 5 }
-        ]
-    },
-    {
-        type: 'slider',
-        label: 'Slider / Scale',
-        description: 'Single or multi-item scale',
-        icon: IconNumbers,
-        category: 'choice',
-        properties: [
-            {
-                name: 'responseMode',
-                label: 'Response Mode',
-                type: 'select',
-                defaultValue: 'single',
-                options: [
-                    { label: 'Single Question', value: 'single' },
-                    { label: 'Multiple Items', value: 'multi' }
-                ]
-            },
-            ...commonProperties,
-            { name: 'items', label: 'Items to Rate', type: 'options', defaultValue: [], visible: (data: any) => data.responseMode === 'multi' },
-            { name: 'min', label: 'Minimum', type: 'number', defaultValue: 0 },
-            { name: 'max', label: 'Maximum', type: 'number', defaultValue: 10 },
-            { name: 'step', label: 'Step', type: 'number', defaultValue: 1, min: 0 },
-            { name: 'startValue', label: 'Start Value', type: 'number', defaultValue: 5, helperText: 'Initial value of the sliders' }
-        ]
-    },
+
+    definitionFromManifest(withBuilderCommonProperties(singleChoiceManifest), IconListDetails),
+    definitionFromManifest(withBuilderCommonProperties(rankingManifest), IconListNumbers),
+    definitionFromManifest(withBuilderCommonProperties(consentManifest), IconCheckbox),
+    definitionFromManifest(withBuilderCommonProperties(multipleChoiceManifest), IconCheckbox),
+    definitionFromManifest(withBuilderCommonProperties(dropdownManifest), IconListDetails),
+    definitionFromManifest(withBuilderCommonProperties(ratingManifest), IconStar),
+    definitionFromManifest(withBuilderCommonProperties(sliderManifest), IconNumbers),
+
 
     // Flow
     {
