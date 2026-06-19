@@ -1,5 +1,5 @@
 import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
-import { plainTextManifest } from '@surveystudio/node-registery/builder';
+import { dateInputManifest, emailInputManifest, multiInputManifest, numberInputManifest, plainTextManifest, textInputManifest, zipCodeInputManifest } from '@surveystudio/node-registery/builder';
 import { featureFlags } from '@/lib/feature-flags';
 
 export type NodeCategory = 'input' | 'choice' | 'logic' | 'media' | 'flow';
@@ -58,6 +58,21 @@ const commonProperties: PropertyField[] = [
     { name: 'condition', label: 'When should this question be shown?', type: 'condition', defaultValue: { id: 'root', type: 'group', logicType: 'AND', children: [] }, helperText: 'If no rules are added, this question will always be shown.' },
 ];
 
+const withBuilderCommonProperties = (
+    manifest: Pick<NodeDefinition, 'type' | 'label' | 'description' | 'category' | 'properties'>
+) => {
+    const manifestProperties = manifest.properties as PropertyField[];
+    const propertyByName = new Map(manifestProperties.map((property) => [property.name, property]));
+
+    return {
+        ...manifest,
+        properties: [
+            ...commonProperties.map((property) => propertyByName.get(property.name) || property),
+            ...manifestProperties.filter((property) => !commonProperties.some((commonProperty) => commonProperty.name === property.name)),
+        ],
+    };
+};
+
 const MEDIA_INTERACTION_OPTIONS = [
     { label: 'None (Display Only)', value: 'none' },
     ...(!featureFlags.hideMediaInteractionText ? [{ label: 'Text Question', value: 'text' }] : []),
@@ -67,22 +82,7 @@ const MEDIA_INTERACTION_OPTIONS = [
 
 export const NODE_DEFINITIONS: NodeDefinition[] = [
     // Inputs
-    {
-        type: 'textInput',
-        label: 'Text Answer',
-        description: 'Capture text responses',
-        icon: IconTextCaption,
-        category: 'input',
-        properties: [
-            ...commonProperties,
-            { name: 'placeholder', label: 'Placeholder', type: 'text', placeholder: 'e.g., Type here...', defaultValue: '' },
-            { name: 'longAnswer', label: 'Long Answer (Multi-line)', type: 'switch', defaultValue: false },
-            { name: 'minChars', label: 'Min Characters', type: 'number', helperText: 'Requires at least this many characters.', defaultValue: 0 },
-            { name: 'maxChars', label: 'Max Characters', type: 'number', helperText: 'Limits total characters. 0 or empty for no limit.', defaultValue: 0 },
-            { name: 'minWords', label: 'Min Words', type: 'number', helperText: 'Requires at least this many words.', defaultValue: 0 },
-            { name: 'maxWords', label: 'Max Words', type: 'number', helperText: 'Limits total words. 0 or empty for no limit.', defaultValue: 0 }
-        ]
-    },
+    definitionFromManifest(withBuilderCommonProperties(textInputManifest), IconTextCaption),
     {
         type: 'captcha',
         label: 'Captcha',
@@ -94,58 +94,10 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
             { name: 'sitekey', label: 'Turnstile Site Key', type: 'text', placeholder: '1x00000000000000000000AA', helperText: 'Your Cloudflare Turnstile Site Key' }
         ]
     },
-    {
-        type: 'multiInput',
-        label: 'Multi-Input',
-        description: 'Multiple fields in one screen',
-        icon: IconForms,
-        category: 'input',
-        properties: [
-            ...commonProperties,
-            // We'll treat this as a list of fields where each has a label. 
-            // For MVP, we'll use the 'options' type but renaming it conceptually in the UI or strict new type.
-            // Let's create a specific property type for this to include more meta data if needed later.
-            {
-                name: 'fields',
-                label: 'Input Fields',
-                type: 'options', // Re-using options for now: label = Field Label, value = Field Type (text, email, number) 
-                defaultValue: [],
-                helperText: 'Value column represents input type (text, number, email)'
-            },
-            { name: 'minChars', label: 'Min Characters', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 },
-            { name: 'maxChars', label: 'Max Characters', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 },
-            { name: 'minWords', label: 'Min Words', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 },
-            { name: 'maxWords', label: 'Max Words', type: 'number', helperText: 'Applied to all fields.', defaultValue: 0 }
-        ]
-    },
-    {
-        type: 'numberInput',
-        label: 'Number',
-        description: 'Input for numerical values',
-        icon: IconNumbers,
-        category: 'input',
-        properties: [
-            ...commonProperties,
-            { name: 'min', label: 'Minimum Value', type: 'number' },
-            { name: 'max', label: 'Maximum Value', type: 'number' }
-        ]
-    },
-    {
-        type: 'emailInput',
-        label: 'Email',
-        description: 'Validate email addresses',
-        icon: IconMail,
-        category: 'input',
-        properties: [...commonProperties]
-    },
-    {
-        type: 'dateInput',
-        label: 'Date Picker',
-        description: 'Select dates from a calendar',
-        icon: IconCalendar,
-        category: 'input',
-        properties: [...commonProperties]
-    },
+    definitionFromManifest(withBuilderCommonProperties(multiInputManifest), IconForms),
+    definitionFromManifest(withBuilderCommonProperties(numberInputManifest), IconNumbers),
+    definitionFromManifest(withBuilderCommonProperties(emailInputManifest), IconMail),
+    definitionFromManifest(withBuilderCommonProperties(dateInputManifest), IconCalendar),
     {
         type: 'singleChoice',
         label: 'Single Choice',
@@ -466,17 +418,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     },
 
     // Special Inputs
-    {
-        type: 'zipCodeInput',
-        label: 'Accepted Zip Codes',
-        description: 'Validate against a list of zip codes',
-        icon: IconForms, // Using generic icon
-        category: 'input',
-        properties: [
-            ...commonProperties,
-            { name: 'allowedZips', label: 'Allowed Zip Codes', type: 'fileTextarea', placeholder: '10001, 10002, 90210... (Leave empty to allow all)', helperText: 'Validation: Only users entering these zip codes can proceed. Others will be blocked.' }
-        ]
-    },
+    definitionFromManifest(withBuilderCommonProperties(zipCodeInputManifest), IconForms),
     {
         type: 'matrixChoice',
         label: 'Grid / Matrix',
