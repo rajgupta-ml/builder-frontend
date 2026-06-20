@@ -2,11 +2,12 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconNumbers } from '@tabler/icons-react';
+import { inferQuestionResponseMode } from '@surveystudio/node-registery/logic';
 import { ScaleNode as ScalePrimitive } from '@surveystudio/node-registery/ui';
 
 const SliderNode = (props: NodeProps<any>) => {
     const { label, description, required, min, max, step, items, responseMode } = props.data;
-    const effectiveMode = responseMode === 'multi' || (responseMode !== 'single' && Array.isArray(items) && items.length > 0) ? 'multi' : 'single';
+    const effectiveMode = inferQuestionResponseMode({ responseMode, items });
 
     const sliders = (effectiveMode === 'multi' && items && items.length > 0) ? items : [{ label: 'Slider', value: 'default' }];
 

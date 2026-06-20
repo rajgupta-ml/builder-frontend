@@ -1,3 +1,4 @@
+import { inferQuestionResponseMode } from '@surveystudio/node-registery/logic';
 import React, { useMemo } from 'react';
 import { Edge, Node } from '@xyflow/react';
 import { getNodeDefinition, LogicGroup, LogicItem, LogicRule, POSTAL_CODE_COUNTRIES } from '@/components/nodes/definitions';
@@ -497,10 +498,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
     const availableOperators = getOperatorsForContext(selectedQuestion?.type as string, builderMode);
     const isScaleMultiMode =
         (selectedQuestion?.type === 'rating' || selectedQuestion?.type === 'slider')
-            ? (selectedQuestionData.responseMode === 'multi' ||
-                (selectedQuestionData.responseMode !== 'single' &&
-                    Array.isArray(selectedQuestionData.items) &&
-                    selectedQuestionData.items.length > 0))
+            ? inferQuestionResponseMode(selectedQuestionData) === 'multi'
             : false;
     const shouldShowSubField =
         selectedQuestion?.type === 'matrixChoice' ||

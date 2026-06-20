@@ -2,12 +2,13 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconStar } from '@tabler/icons-react';
+import { inferQuestionResponseMode } from '@surveystudio/node-registery/logic';
 import { ScaleNode as ScalePrimitive } from '@surveystudio/node-registery/ui';
 
 const RatingNode = (props: NodeProps<any>) => {
     const { label, description, maxRating, items, responseMode } = props.data;
     const max = maxRating || 5;
-    const effectiveMode = responseMode === 'multi' || (responseMode !== 'single' && Array.isArray(items) && items.length > 0) ? 'multi' : 'single';
+    const effectiveMode = inferQuestionResponseMode({ responseMode, items });
     const hasCustomItems = effectiveMode === 'multi' && Array.isArray(items) && items.length > 0;
     const ratingItems = hasCustomItems ? items : [{ label: 'Rating', value: 'default' }];
 

@@ -1,3 +1,4 @@
+import { inferQuestionResponseMode } from '@surveystudio/node-registery/logic';
 import { type Node as ReactFlowNode } from '@xyflow/react';
 export function hydrateNodeIds(
     nodes: ReactFlowNode[],
@@ -33,12 +34,7 @@ export function hydrateNodeIds(
             }));
         }
         if ((node.type === 'rating' || node.type === 'slider')) {
-            if (runtimeData.responseMode === 'single' || runtimeData.responseMode === 'multi') {
-                nodeData.responseMode = runtimeData.responseMode;
-            } else {
-                const hasItems = Array.isArray(runtimeData.items) && runtimeData.items.length > 0;
-                nodeData.responseMode = hasItems ? 'multi' : 'single';
-            }
+            nodeData.responseMode = inferQuestionResponseMode(runtimeData);
         }
 
         // Copy exportIds for matrix rows and columns
