@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconStar } from '@tabler/icons-react';
+import { ScaleNode as ScalePrimitive } from '@surveystudio/node-registery/ui';
 
 const RatingNode = (props: NodeProps<any>) => {
     const { label, description, maxRating, items, responseMode } = props.data;
@@ -18,37 +19,37 @@ const RatingNode = (props: NodeProps<any>) => {
             icon={IconStar}
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-4">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-foreground">
+            <ScalePrimitive.Root className="space-y-4">
+                <ScalePrimitive.Header className="space-y-1">
+                    <ScalePrimitive.Label className="text-sm font-medium text-foreground">
                         {label || "Rating Question"}
-                    </label>
+                    </ScalePrimitive.Label>
                     {description && (
-                        <p className="text-xs text-muted-foreground">{description}</p>
+                        <ScalePrimitive.Description className="text-xs text-muted-foreground">{description}</ScalePrimitive.Description>
                     )}
-                </div>
+                </ScalePrimitive.Header>
 
-                <div className="space-y-4">
+                <ScalePrimitive.Group className="space-y-4">
                     {ratingItems.length > 0 ? (
                         ratingItems.map((item: any, idx: number) => (
-                            <div key={idx} className="space-y-2">
+                            <ScalePrimitive.Item key={idx} className="space-y-2">
                                 {hasCustomItems && (
-                                    <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                                    <ScalePrimitive.Text className="text-xs font-medium text-muted-foreground">{item.label}</ScalePrimitive.Text>
                                 )}
-                                <div className="px-1 py-2">
+                                <ScalePrimitive.Track className="px-1 py-2">
                                     <div className="flex gap-1.5">
                                         {Array.from({ length: max }).map((_, i) => (
                                             <IconStar key={i} size={13} className="text-muted-foreground/30" />
                                         ))}
                                     </div>
-                                </div>
-                            </div>
+                                </ScalePrimitive.Track>
+                            </ScalePrimitive.Item>
                         ))
                     ) : (
-                        <p className="text-[10px] text-muted-foreground italic text-center py-2">Add items in properties</p>
+                        <ScalePrimitive.Description className="text-[10px] text-muted-foreground italic text-center py-2">Add items in properties</ScalePrimitive.Description>
                     )}
-                </div>
-            </div>
+                </ScalePrimitive.Group>
+            </ScalePrimitive.Root>
         </BaseNode>
     );
 };

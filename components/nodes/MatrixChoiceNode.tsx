@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconGridDots } from '@tabler/icons-react';
+import { StructuredChoiceNode as StructuredPrimitive } from '@surveystudio/node-registery/ui';
 
 const MatrixChoiceNode = (props: NodeProps<any>) => {
     const { label, description, required, rows, columns, multiple } = props.data;
@@ -15,16 +16,16 @@ const MatrixChoiceNode = (props: NodeProps<any>) => {
             color="bg-purple-500"
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-3">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-foreground flex items-center gap-1">
+            <StructuredPrimitive.Root className="space-y-3">
+                <StructuredPrimitive.Header className="space-y-1">
+                    <StructuredPrimitive.Label className="text-sm font-medium text-foreground flex items-center gap-1">
                         {label || "Grid Question"}
-                        {required && <span className="text-destructive">*</span>}
-                    </label>
+                        {required && <StructuredPrimitive.Text className="text-destructive">*</StructuredPrimitive.Text>}
+                    </StructuredPrimitive.Label>
                     {description && (
-                        <p className="text-xs text-muted-foreground">{description}</p>
+                        <StructuredPrimitive.Description className="text-xs text-muted-foreground">{description}</StructuredPrimitive.Description>
                     )}
-                </div>
+                </StructuredPrimitive.Header>
 
                 {/* Matrix Visualization */}
                 <div className="border border-border rounded-md overflow-hidden text-[10px]">
@@ -52,7 +53,7 @@ const MatrixChoiceNode = (props: NodeProps<any>) => {
                         </div>
                     ))}
                 </div>
-            </div>
+            </StructuredPrimitive.Root>
         </BaseNode>
     );
 };

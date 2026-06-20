@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconCheckbox } from '@tabler/icons-react';
+import { ConsentNode as ConsentPrimitive } from '@surveystudio/node-registery/ui';
 
 const ConsentNode = (props: NodeProps<any>) => {
     const { label, description, required, checkboxLabel } = props.data;
@@ -14,25 +15,25 @@ const ConsentNode = (props: NodeProps<any>) => {
             icon={IconCheckbox}
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-3">
-                <div className="space-y-1">
-                    <label className="text-sm font-bold text-foreground">
+            <ConsentPrimitive.Root className="space-y-3">
+                <ConsentPrimitive.Header className="space-y-1">
+                    <ConsentPrimitive.Label className="text-sm font-bold text-foreground">
                         {label || "Terms"}
-                        {required && <span className="text-destructive">*</span>}
-                    </label>
-                </div>
+                        {required && <ConsentPrimitive.Text className="text-destructive">*</ConsentPrimitive.Text>}
+                    </ConsentPrimitive.Label>
+                </ConsentPrimitive.Header>
 
-                <div className="p-2 bg-muted/30 rounded border border-border text-xs text-muted-foreground h-20 overflow-y-auto">
+                <ConsentPrimitive.Panel className="p-2 bg-muted/30 rounded border border-border text-xs text-muted-foreground h-20 overflow-y-auto">
                     {description || "Terms text goes here..."}
-                </div>
+                </ConsentPrimitive.Panel>
 
-                <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded border border-primary bg-primary/20 flex items-center justify-center">
+                <ConsentPrimitive.Item className="flex items-center gap-2">
+                    <ConsentPrimitive.Check className="w-4 h-4 rounded border border-primary bg-primary/20 flex items-center justify-center">
                         {/* Fake check */}
-                    </div>
-                    <span className="text-xs font-medium">{checkboxLabel || "I agree"}</span>
-                </div>
-            </div>
+                    </ConsentPrimitive.Check>
+                    <ConsentPrimitive.Text className="text-xs font-medium">{checkboxLabel || "I agree"}</ConsentPrimitive.Text>
+                </ConsentPrimitive.Item>
+            </ConsentPrimitive.Root>
         </BaseNode>
     );
 };

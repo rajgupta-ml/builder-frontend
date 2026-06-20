@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconNumbers } from '@tabler/icons-react';
+import { ScaleNode as ScalePrimitive } from '@surveystudio/node-registery/ui';
 
 const SliderNode = (props: NodeProps<any>) => {
     const { label, description, required, min, max, step, items, responseMode } = props.data;
@@ -17,25 +18,24 @@ const SliderNode = (props: NodeProps<any>) => {
             icon={IconNumbers}
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-4">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-foreground">
+            <ScalePrimitive.Root className="space-y-4">
+                <ScalePrimitive.Header className="space-y-1">
+                    <ScalePrimitive.Label className="text-sm font-medium text-foreground">
                         {label || "Slider Question"}
-                    </label>
+                    </ScalePrimitive.Label>
                     {description && (
-                        <p className="text-xs text-muted-foreground">{description}</p>
+                        <ScalePrimitive.Description className="text-xs text-muted-foreground">{description}</ScalePrimitive.Description>
                     )}
-                </div>
+                </ScalePrimitive.Header>
 
-                <div className="space-y-4">
+                <ScalePrimitive.Group className="space-y-4">
                     {sliders.map((item: any, idx: number) => (
-                        <div key={idx} className="space-y-2">
+                        <ScalePrimitive.Item key={idx} className="space-y-2">
                             {effectiveMode === 'multi' && items && items.length > 0 && (
-                                <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                                <ScalePrimitive.Text className="text-xs font-medium text-muted-foreground">{item.label}</ScalePrimitive.Text>
                             )}
-                            <div className="px-1 py-2">
-                                <input
-                                    type="range"
+                            <ScalePrimitive.Track className="px-1 py-2">
+                                <ScalePrimitive.Range
                                     min={min || 0}
                                     max={max || 10}
                                     step={step || 1}
@@ -46,11 +46,11 @@ const SliderNode = (props: NodeProps<any>) => {
                                     <span>{min || 0}</span>
                                     <span>{max || 10}</span>
                                 </div>
-                            </div>
-                        </div>
+                            </ScalePrimitive.Track>
+                        </ScalePrimitive.Item>
                     ))}
-                </div>
-            </div>
+                </ScalePrimitive.Group>
+            </ScalePrimitive.Root>
         </BaseNode>
     );
 };

@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconMoodSmile } from '@tabler/icons-react';
+import { EmojiRatingNode as EmojiPrimitive } from '@surveystudio/node-registery/ui';
 
 const EmojiRatingNode = (props: NodeProps<any>) => {
     const { label, description, options } = props.data;
@@ -23,34 +24,34 @@ const EmojiRatingNode = (props: NodeProps<any>) => {
             icon={IconMoodSmile}
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-3">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-foreground">
+            <EmojiPrimitive.Root className="space-y-3">
+                <EmojiPrimitive.Header className="space-y-1">
+                    <EmojiPrimitive.Label className="text-sm font-medium text-foreground">
                         {label || "How do you feel?"}
-                    </label>
+                    </EmojiPrimitive.Label>
                     {description && (
-                        <p className="text-xs text-muted-foreground">{description}</p>
+                        <EmojiPrimitive.Description className="text-xs text-muted-foreground">{description}</EmojiPrimitive.Description>
                     )}
-                </div>
+                </EmojiPrimitive.Header>
 
-                <div className="flex justify-between gap-1 p-2 bg-muted/30 rounded-lg">
+                <EmojiPrimitive.Group className="flex justify-between gap-1 p-2 bg-muted/30 rounded-lg">
                     {displayOptions.slice(0, 5).map((opt: any, i: number) => (
-                        <div key={i} className="flex flex-col items-center justify-center">
-                            <span className="text-xl grayscale hover:grayscale-0 cursor-not-allowed opacity-70">
+                        <EmojiPrimitive.Item key={i} className="flex flex-col items-center justify-center">
+                            <EmojiPrimitive.Emoji className="text-xl grayscale hover:grayscale-0 cursor-not-allowed opacity-70">
                                 {opt.value}
-                            </span>
+                            </EmojiPrimitive.Emoji>
                             {opt.label && (
-                                <span className="text-[8px] text-muted-foreground mt-1 truncate max-w-[40px]">
+                                <EmojiPrimitive.Text className="text-[8px] text-muted-foreground mt-1 truncate max-w-[40px]">
                                     {opt.label}
-                                </span>
+                                </EmojiPrimitive.Text>
                             )}
-                        </div>
+                        </EmojiPrimitive.Item>
                     ))}
                     {displayOptions.length > 5 && (
-                        <div className="flex items-center text-xs text-muted-foreground">...</div>
+                        <EmojiPrimitive.Item className="flex items-center text-xs text-muted-foreground">...</EmojiPrimitive.Item>
                     )}
-                </div>
-            </div>
+                </EmojiPrimitive.Group>
+            </EmojiPrimitive.Root>
         </BaseNode>
     );
 };

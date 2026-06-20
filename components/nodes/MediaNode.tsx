@@ -4,6 +4,7 @@ import BaseNode from './BaseNode';
 import { IconPhoto } from '@tabler/icons-react';
 import { cn } from "@/lib/utils";
 import { MediaPreview } from './MediaPreview';
+import { MediaNode as MediaPrimitive } from '@surveystudio/node-registery/ui';
 
 const MediaNode = (props: NodeProps<any>) => {
     const { url, urls, alt } = props.data;
@@ -16,16 +17,16 @@ const MediaNode = (props: NodeProps<any>) => {
 
         if (nodeType === 'audio' && url) {
             return (
-                <div className="flex flex-col items-center gap-1 text-primary">
+                <MediaPrimitive.Item className="flex flex-col items-center gap-1 text-primary">
                     <MediaPreview storageKey={url} type="audio" className="w-full h-full" />
-                </div>
+                </MediaPrimitive.Item>
             );
         }
 
         const images = urls || (url ? [url] : []);
         if (images.length > 0) {
             return (
-                <div className={cn(
+                <MediaPrimitive.Grid className={cn(
                     "grid w-full h-full gap-0.5",
                     images.length === 1 ? "grid-cols-1" : "grid-cols-2"
                 )}>
@@ -41,19 +42,19 @@ const MediaNode = (props: NodeProps<any>) => {
                         />
                     ))}
                     {images.length > 4 && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-xs font-bold pointer-events-none">
+                        <MediaPrimitive.Badge className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-xs font-bold pointer-events-none">
                             +{images.length - 4} more
-                        </div>
+                        </MediaPrimitive.Badge>
                     )}
-                </div>
+                </MediaPrimitive.Grid>
             );
         }
 
         return (
-            <div className="flex flex-col items-center gap-1 text-muted-foreground">
+            <MediaPrimitive.Item className="flex flex-col items-center gap-1 text-muted-foreground">
                 <IconPhoto size={24} className="opacity-50" />
-                <span className="text-[10px]">No media provided</span>
-            </div>
+                <MediaPrimitive.Text className="text-[10px]">No media provided</MediaPrimitive.Text>
+            </MediaPrimitive.Item>
         );
     };
 
@@ -66,16 +67,16 @@ const MediaNode = (props: NodeProps<any>) => {
             color="bg-indigo-500"
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="flex gap-2">
-                <div className="aspect-video w-full bg-muted rounded-md overflow-hidden flex items-center justify-center border border-border relative">
+            <MediaPrimitive.Root className="flex gap-2">
+                <MediaPrimitive.Frame className="aspect-video w-full bg-muted rounded-md overflow-hidden flex items-center justify-center border border-border relative">
                     {renderContent()}
-                </div>
+                </MediaPrimitive.Frame>
                 {props.data.questionLabel && (
-                    <p className="text-xs font-medium text-center px-1 pb-1 text-foreground/80 line-clamp-2">
+                    <MediaPrimitive.Description className="text-xs font-medium text-center px-1 pb-1 text-foreground/80 line-clamp-2">
                         {props.data.questionLabel}
-                    </p>
+                    </MediaPrimitive.Description>
                 )}
-            </div>
+            </MediaPrimitive.Root>
         </BaseNode>
     );
 };

@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode, { BaseNodeData } from './BaseNode';
+import { TextLikeNode as TextLikePrimitive } from '@surveystudio/node-registery/ui';
 import { IconTextCaption } from '@tabler/icons-react';
 
 interface TextInputData extends BaseNodeData {
@@ -26,29 +27,29 @@ const TextInputNode = (props: NodeProps<any>) => {
             icon={IconTextCaption}
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-3">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-foreground">
+            <TextLikePrimitive.Root className="space-y-3">
+                <TextLikePrimitive.Header className="space-y-1">
+                    <TextLikePrimitive.Label className="text-sm font-medium text-foreground">
                         {label || "Text Question"}
-                    </label>
+                    </TextLikePrimitive.Label>
                     {description && (
-                        <p className="text-xs text-muted-foreground">{description}</p>
+                        <TextLikePrimitive.Description className="text-xs text-muted-foreground">{description}</TextLikePrimitive.Description>
                     )}
-                </div>
+                </TextLikePrimitive.Header>
 
                 {longAnswer ? (
-                    <div className="w-full bg-transparent border border-border rounded-md p-2 text-sm font-medium min-h-[60px] text-muted-foreground/50">
+                    <TextLikePrimitive.Field className="w-full bg-transparent border border-border rounded-md p-2 text-sm font-medium min-h-[60px] text-muted-foreground/50">
                         {placeholder || "Long textual answer..."}
-                    </div>
+                    </TextLikePrimitive.Field>
                 ) : (
-                    <input
+                    <TextLikePrimitive.Input
                         type="text"
                         readOnly
                         className="w-full bg-transparent border-b border-border py-1 text-sm font-medium focus:outline-hidden focus:border-primary transition-colors placeholder:text-muted-foreground/50 cursor-default"
                         placeholder={placeholder || "Short answer..."}
                     />
                 )}
-            </div>
+            </TextLikePrimitive.Root>
         </BaseNode>
     );
 };

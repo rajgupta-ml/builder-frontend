@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { NodeProps, Position } from '@xyflow/react';
 import BaseNode from './BaseNode';
 import { IconHierarchy } from '@tabler/icons-react';
+import { StructuredChoiceNode as StructuredPrimitive } from '@surveystudio/node-registery/ui';
 
 const CascadingChoiceNode = (props: NodeProps<any>) => {
     const { label, description, required, steps } = props.data;
@@ -18,16 +19,16 @@ const CascadingChoiceNode = (props: NodeProps<any>) => {
             color="bg-cyan-600"
             handles={{ source: Position.Bottom, target: Position.Top }}
         >
-            <div className="space-y-3">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-foreground flex items-center gap-1">
+            <StructuredPrimitive.Root className="space-y-3">
+                <StructuredPrimitive.Header className="space-y-1">
+                    <StructuredPrimitive.Label className="text-sm font-medium text-foreground flex items-center gap-1">
                         {label || "Multi-Step Select"}
-                        {required && <span className="text-destructive">*</span>}
-                    </label>
+                        {required && <StructuredPrimitive.Text className="text-destructive">*</StructuredPrimitive.Text>}
+                    </StructuredPrimitive.Label>
                     {description && (
-                        <p className="text-xs text-muted-foreground">{description}</p>
+                        <StructuredPrimitive.Description className="text-xs text-muted-foreground">{description}</StructuredPrimitive.Description>
                     )}
-                </div>
+                </StructuredPrimitive.Header>
 
                 <div className="space-y-2 p-2 bg-muted/20 rounded-md border border-border">
                     {validSteps.length > 0 ? (
@@ -54,7 +55,7 @@ const CascadingChoiceNode = (props: NodeProps<any>) => {
                         <span className="text-yellow-600">Please add steps in properties</span>
                     )}
                 </div>
-            </div>
+            </StructuredPrimitive.Root>
         </BaseNode>
     );
 };
