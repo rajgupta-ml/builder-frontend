@@ -22,7 +22,7 @@ export function hydrateNodeIds(
         if (runtimeData.options && Array.isArray(nodeData.options)) {
             nodeData.options = (nodeData.options as any[]).map((opt: any, i: number) => ({
                 ...opt,
-                exportId: runtimeData.options[i]?.exportId || opt.exportId
+                exportId: runtimeData.options[i]?.exportId
             }));
         }
 
@@ -30,7 +30,7 @@ export function hydrateNodeIds(
         if (runtimeData.items && Array.isArray(nodeData.items)) {
             nodeData.items = (nodeData.items as any[]).map((item: any, i: number) => ({
                 ...item,
-                exportId: runtimeData.items[i]?.exportId || item.exportId
+                exportId: runtimeData.items[i]?.exportId
             }));
         }
         if ((node.type === 'rating' || node.type === 'slider')) {
@@ -41,13 +41,13 @@ export function hydrateNodeIds(
         if (runtimeData.rows && Array.isArray(nodeData.rows)) {
             nodeData.rows = (nodeData.rows as any[]).map((row: any, i: number) => ({
                 ...row,
-                exportId: runtimeData.rows[i]?.exportId || row.exportId
+                exportId: runtimeData.rows[i]?.exportId
             }));
         }
         if (runtimeData.columns && Array.isArray(nodeData.columns)) {
             nodeData.columns = (nodeData.columns as any[]).map((col: any, i: number) => ({
                 ...col,
-                exportId: runtimeData.columns[i]?.exportId || col.exportId
+                exportId: runtimeData.columns[i]?.exportId
             }));
         }
 
@@ -55,10 +55,10 @@ export function hydrateNodeIds(
         if (runtimeData.steps && Array.isArray(nodeData.steps)) {
             nodeData.steps = (nodeData.steps as any[]).map((step: any, i: number) => ({
                 ...step,
-                exportId: runtimeData.steps[i]?.exportId || step.exportId,
+                exportId: runtimeData.steps[i]?.exportId,
                 options: step.options?.map((opt: any, j: number) => ({
                     ...opt,
-                    exportId: runtimeData.steps[i]?.options?.[j]?.exportId || opt.exportId
+                    exportId: runtimeData.steps[i]?.options?.[j]?.exportId
                 })) || []
             }));
         }
@@ -67,8 +67,8 @@ export function hydrateNodeIds(
         if (runtimeData.fields && Array.isArray(nodeData.fields)) {
             nodeData.fields = (nodeData.fields as any[]).map((field: any, i: number) => ({
                 ...field,
-                id: runtimeData.fields[i]?.id || field.id,
-                exportId: runtimeData.fields[i]?.exportId || field.exportId
+                id: runtimeData.fields[i]?.id,
+                exportId: runtimeData.fields[i]?.exportId
             }));
         }
 
@@ -76,7 +76,7 @@ export function hydrateNodeIds(
         if (runtimeData.choices && Array.isArray(nodeData.choices)) {
             nodeData.choices = (nodeData.choices as any[]).map((opt: any, i: number) => ({
                 ...opt,
-                exportId: runtimeData.choices[i]?.exportId || opt.exportId
+                exportId: runtimeData.choices[i]?.exportId
             }));
         }
 
