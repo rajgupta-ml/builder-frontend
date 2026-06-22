@@ -80,6 +80,80 @@ const newUuid = (): string => {
     return generateUniqueId('id');
 };
 
+
+const needsTechnicalId = (type?: string | null): boolean => (
+    Boolean(type) && !['start', 'end', 'branch', 'validation'].includes(String(type))
+);
+
+const cloneRecord = (source: Record<string, any>): Record<string, any> => JSON.parse(JSON.stringify(source || {}));
+
+const ensureStableNodeDataIds = (type: string | undefined, source: Record<string, any>): { data: Record<string, any>; changed: boolean } => {
+    const data = cloneRecord(source);
+    let changed = false;
+
+    const ensureKey = (record: Record<string, any>, key: string) => {
+        if (typeof record[key] !== 'string' || record[key].trim().length === 0) {
+            record[key] = newUuid();
+            changed = true;
+        }
+    };
+
+    const ensureExportIds = (items: unknown) => {
+        if (!Array.isArray(items)) return;
+        items.forEach((item) => {
+            if (item && typeof item === 'object') ensureKey(item as Record<string, any>, 'exportId');
+        });
+    };
+
+    if (needsTechnicalId(type)) ensureKey(data, 'technicalId');
+
+    if (['singleChoice', 'multipleChoice', 'dropdown', 'ranking', 'emojiRating'].includes(String(type))) {
+        ensureExportIds(data.options);
+    }
+
+    if (['image', 'video', 'audio'].includes(String(type))) {
+        ensureExportIds(data.choices);
+    }
+
+    if (['rating', 'slider'].includes(String(type))) {
+        ensureExportIds(data.items);
+    }
+
+    if (type === 'matrixChoice') {
+        ensureExportIds(data.rows);
+        ensureExportIds(data.columns);
+    }
+
+    if (type === 'cascadingChoice' && Array.isArray(data.steps)) {
+        data.steps.forEach((step: any) => {
+            if (!step || typeof step !== 'object') return;
+            ensureKey(step, 'exportId');
+            ensureExportIds(step.options);
+        });
+    }
+
+    if (type === 'multiInput' && Array.isArray(data.fields)) {
+        data.fields.forEach((field: any) => {
+            if (!field || typeof field !== 'object') return;
+            ensureKey(field, 'id');
+            ensureKey(field, 'exportId');
+        });
+    }
+
+    return { data, changed };
+};
+
+const ensureStableNodeIds = (nodes: ReactFlowNode[]): { nodes: ReactFlowNode[]; changed: boolean } => {
+    let changed = false;
+    const repairedNodes = nodes.map((node) => {
+        const repaired = ensureStableNodeDataIds(node.type, (node.data || {}) as Record<string, any>);
+        if (!repaired.changed) return node;
+        changed = true;
+        return { ...node, data: repaired.data };
+    });
+    return { nodes: repairedNodes, changed };
+};
+
 const regenerateDuplicatedNodeDataIds = (source: Record<string, any>): Record<string, any> => {
     const data = JSON.parse(JSON.stringify(source || {}));
     data.technicalId = newUuid();
@@ -137,14 +211,21 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     autosaveRequestSeq: 0,
     lastSavedAt: null,
 
-    setNodes: (nodes) => set({ nodes, saveStatus: 'unsaved' }),
+    setNodes: (nodes) => {
+        const repaired = ensureStableNodeIds(nodes);
+        set({ nodes: repaired.nodes, saveStatus: 'unsaved' });
+    },
     setEdges: (edges) => set({ edges, saveStatus: 'unsaved' }),
 
     updateNodeData: (nodeId, newData) => {
         const { nodes, isReadOnly } = get();
         if (isReadOnly) return;
         set({
-            nodes: nodes.map(n => n.id === nodeId ? { ...n, data: { ...n.data, ...newData } } : n),
+            nodes: nodes.map(n => {
+                if (n.id !== nodeId) return n;
+                const repaired = ensureStableNodeDataIds(n.type, { ...n.data, ...newData });
+                return { ...n, data: repaired.data };
+            }),
             saveStatus: 'unsaved'
         });
     },
@@ -241,20 +322,21 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const hydratedNodes = workflow?.runtimeJson
                 ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                 : rawNodes;
+            const repaired = ensureStableNodeIds(hydratedNodes);
 
             set({
                 survey,
                 versions,
                 quotas,
                 workflowId: workflow?.id || null,
-                nodes: hydratedNodes,
+                nodes: repaired.nodes,
                 edges: workflow?.designJson?.edges || [],
                 isReadOnly: false,
                 selectedVersionId: null,
-                hasChanges: hasDbChanges,
+                hasChanges: hasDbChanges || repaired.changed,
                 loadError: null,
                 lastSavedAt: null,
-                saveStatus: 'saved' // Prevent autosave from triggering on initial load
+                saveStatus: repaired.changed ? 'unsaved' : 'saved' // Autosave repaired legacy ids after load
             });
         } catch (err) {
             console.error("Failed to load survey data", err);
@@ -523,12 +605,13 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 const hydratedNodes = workflow?.runtimeJson
                     ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                     : rawNodes;
+                const repaired = ensureStableNodeIds(hydratedNodes);
 
                 set({
-                    nodes: hydratedNodes,
+                    nodes: repaired.nodes,
                     edges: workflow?.designJson?.edges || [],
                     workflowId: workflow?.id || null,
-                    saveStatus: 'saved' // Prevent autosave when returning to latest version
+                    saveStatus: repaired.changed ? 'unsaved' : 'saved'
                 });
             } catch (error) {
                 console.error("Failed to load latest version", error);
