@@ -1,7 +1,9 @@
 import { inferQuestionResponseMode, resolveStructuredItemKey } from '@surveystudio/node-registery/logic';
 import React, { useMemo } from 'react';
 import { Edge, Node } from '@xyflow/react';
-import { getNodeDefinition, LogicGroup, LogicItem, LogicRule, POSTAL_CODE_COUNTRIES } from '@/components/nodes/definitions';
+import { getNodeDefinition } from '@/components/nodes/definitions';
+import { POSTAL_CODE_COUNTRIES } from './postalCodeCountries';
+import type { LogicGroup, LogicItem, LogicRule } from './conditionTypes';
 import { IconTrash, IconPlus, IconVariable, IconTypography, IconFolderPlus, IconX } from '@tabler/icons-react';
 import { cn, generateUniqueId } from '@/lib/utils';
 

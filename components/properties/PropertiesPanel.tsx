@@ -2,6 +2,7 @@ import React from "react";
 import { useReactFlow, Node, Edge } from "@xyflow/react";
 import apiClient from "@/lib/api-client";
 import { getNodeDefinition, PropertyField } from "@/components/nodes/definitions";
+import { builderRegistry, type NodeBuilder } from "@surveystudio/node-registery/builder";
 import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { ConditionBuilder } from "./ConditionBuilder";
@@ -27,6 +28,20 @@ export default function PropertiesPanel({ node, nodes, issues = [], onChange, on
 
     // Get the definition for this node type
     const definition = node ? getNodeDefinition(node.type || "") : null;
+    const registryBuilder = node
+        ? builderRegistry[node.type as keyof typeof builderRegistry] as unknown as NodeBuilder | undefined
+        : undefined;
+    const RegistrySettingsComponent = registryBuilder?.SettingsComponent as React.ComponentType<any> | undefined;
+
+    const handleRegistrySettingsChange = (nextData: Record<string, unknown>) => {
+        if (readOnly || !node) return;
+        const currentData = (node.data || {}) as Record<string, unknown>;
+        Object.entries(nextData).forEach(([fieldName, value]) => {
+            if (currentData[fieldName] !== value) onChange(fieldName, value);
+        });
+    };
+
+    const conditionField = definition?.properties.find((property) => property.name === "condition");
 
     if (!node || !definition) {
         return null;
@@ -72,133 +87,38 @@ export default function PropertiesPanel({ node, nodes, issues = [], onChange, on
                         </div>
                     </div>
                 )}
-                {(() => {
-                    // Pre-calculate data with defaults for consistent visibility checks
-                    const dataWithDefaults = { ...node.data };
-                    definition.properties.forEach(p => {
-                        if (dataWithDefaults[p.name] === undefined && p.defaultValue !== undefined) {
-                            dataWithDefaults[p.name] = p.defaultValue;
-                        }
-                    });
-
-                    // Group properties by category
-                    const basicFields = ['responseMode', 'label', 'description', 'questionLabel', 'url', 'urls', 'fields', 'isPii', 'welcomeMessage', 'message', 'buttonLabel', 'thankYouMessage', "redirectUrl"];
-                    const optionFields = ['options', 'bulkOptions', 'items', 'columns', 'rows', 'steps', 'allowedZips'];
-                    const choiceFields = ['allowOther', 'otherLabel', 'allowNone', 'noneLabel', 'randomizeOptions', 'maxChoices', 'multiple', 'maxRating', 'maxStars'];
-                    const advancedFields = ['placeholder', 'searchable', 'displayMode', 'min', 'max', 'step', 'defaultValue', 'checkboxLabel', 'minChars', 'maxChars', 'minWords', 'maxWords', 'longAnswer', 'sitekey', 'outcome', 'alt', 'interactionType', 'sliderConfig', 'autoplay'];
-                    const logicFields = ['condition'];
-
-                    const groupedProperties = {
-                        basic: basicFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
-                        options: optionFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
-                        choice: choiceFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
-                        advanced: advancedFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
-                        logic: logicFields.map(name => definition.properties.find(p => p.name === name)).filter(Boolean) as PropertyField[],
-                        other: definition.properties.filter(p =>
-                            !basicFields.includes(p.name) &&
-                            !optionFields.includes(p.name) &&
-                            !choiceFields.includes(p.name) &&
-                            !advancedFields.includes(p.name) &&
-                            !logicFields.includes(p.name)
-                        )
-                    };
-
-                    const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({
-                        'Basic Settings': true,
-                        'Options': false,
-                        'Choice Settings': false,
-                        'Advanced': false,
-                        'Logic': false,
-                        'Other': false
-                    });
-
-                    const toggleSection = (title: string) => {
-                        setExpandedSections(prev => ({ ...prev, [title]: !prev[title] }));
-                    };
-
-                    const renderSection = (title: string, fields: PropertyField[]) => {
-                        const visibleFields = fields.filter(field =>
-                            !field.visible || field.visible(dataWithDefaults) !== false
-                        );
-
-                        if (visibleFields.length === 0) return null;
-
-                        const isExpanded = expandedSections[title];
-
-                        return (
-                            <div key={title} className="border border-border rounded-lg overflow-hidden bg-card">
-                                <button
-                                    onClick={() => toggleSection(title)}
-                                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors"
-                                >
-                                    <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                                        {title}
-                                    </h3>
-                                    <svg
-                                        className={cn("w-4 h-4 text-muted-foreground transition-transform", isExpanded && "rotate-180")}
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-
-                                {isExpanded && (
-                                    <div className="px-3 pb-3 pt-1 space-y-3 border-t border-border bg-background">
-                                        {visibleFields.map((field) => (
-                                            <div key={field.name} className="space-y-1.5">
-                                                <label className="text-xs font-medium text-foreground">
-                                                    {field.label}
-                                                </label>
-
-                                                <FieldRenderer
-                                                    field={field}
-                                                    value={node.data[field.name] ?? field.defaultValue}
-                                                    onChange={(val) => {
-                                                        if (readOnly) return;
-                                                        if (field.name === 'bulkOptions') {
-                                                            const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                                                            if (lines.length > 0) {
-                                                                const newOptions = lines.map((l, i) => ({ label: l, value: `opt${Date.now()}_${i}` }));
-                                                                // Find the primary options-type field in this node
-                                                                const optionsField = definition.properties.find(p => p.type === 'options');
-                                                                if (optionsField) {
-                                                                    onChange(optionsField.name, newOptions);
-                                                                }
-                                                            }
-                                                        }
-                                                        onChange(field.name, val);
-                                                    }}
-                                                    nodes={nodes}
-                                                    edges={edges}
-                                                    readOnly={readOnly}
-                                                    nodeType={node.type}
-                                                    nodeId={node.id}
-                                                />
-
-                                                {field.helperText && (
-                                                    <p className="text-[10px] text-muted-foreground italic">{field.helperText}</p>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    };
-
-                    return (
-                        <>
-                            {renderSection('Basic Settings', groupedProperties.basic)}
-                            {renderSection('Options', groupedProperties.options)}
-                            {renderSection('Choice Settings', groupedProperties.choice)}
-                            {renderSection('Advanced', groupedProperties.advanced)}
-                            {renderSection('Logic', groupedProperties.logic)}
-                            {renderSection('Other', groupedProperties.other)}
-                        </>
-                    );
-                })()}
+                {RegistrySettingsComponent && (
+                    <div className={cn(readOnly && "pointer-events-none opacity-60 grayscale")}>
+                        <RegistrySettingsComponent
+                            data={(node.data || {}) as any}
+                            readOnly={readOnly}
+                            onChange={(nextData: Record<string, unknown>) => handleRegistrySettingsChange(nextData)}
+                            renderField={({ property, value, onChange: onFieldChange }: any) => (
+                                <FieldRenderer
+                                    field={property as PropertyField}
+                                    value={value}
+                                    onChange={(val) => {
+                                        if (readOnly) return;
+                                        if (property.name === 'bulkOptions') {
+                                            const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                                            if (lines.length > 0) {
+                                                const newOptions = lines.map((l, i) => ({ label: l, value: `opt${Date.now()}_${i}` }));
+                                                const optionsField = definition.properties.find(p => p.type === 'options');
+                                                if (optionsField) onChange(optionsField.name, newOptions);
+                                            }
+                                        }
+                                        onFieldChange(val);
+                                    }}
+                                    nodes={nodes}
+                                    edges={edges}
+                                    readOnly={readOnly}
+                                    nodeType={node.type}
+                                    nodeId={node.id}
+                                />
+                            )}
+                        />
+                    </div>
+                )}
 
                 {/* Debug Info */}
                 <div className="mt-8 p-3 rounded-md bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground break-all">

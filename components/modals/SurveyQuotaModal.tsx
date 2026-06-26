@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { IconPlus, IconTrash, IconToggleLeft, IconToggleRight, IconAlertCircle, IconX, IconPencil } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConditionBuilder } from "../properties/ConditionBuilder";
-import { LogicGroup } from "../nodes/definitions";
+import type { LogicGroup } from "../properties/conditionTypes";
 import { Node } from "@xyflow/react";
 import { ModalPortal } from "@/components/ui/ModalPortal";
 
