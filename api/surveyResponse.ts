@@ -232,16 +232,18 @@ export const surveyResponseApi = {
         return response.data?.data;
     },
 
-    exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode: 'LIVE' | 'TEST' = 'LIVE') => {
+    exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode?: 'LIVE' | 'TEST') => {
         try {
+            const params = mode ? { format, mode } : { format };
             const response = await apiClient.get(`/responses/export/${surveyId}`, {
-                params: { format, mode },
+                params,
                 responseType: 'blob'
             });
 
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const extension = format === 'spss' ? 'sps' : format;
-            const filename = `survey-export-${surveyId}-${mode}-${timestamp}.${extension}`;
+            const modeLabel = mode || 'ALL';
+            const filename = `survey-export-${surveyId}-${modeLabel}-${timestamp}.${extension}`;
 
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');

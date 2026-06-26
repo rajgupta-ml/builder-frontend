@@ -1,11 +1,6 @@
+import { inferQuestionResponseMode } from '@surveystudio/node-registery/logic';
 import { type Node as ReactFlowNode, type Edge as ReactFlowEdge } from '@xyflow/react';
 
-import { v4 as uuidv4 } from 'uuid'; // You'll need this
-
-const inferResponseMode = (data: any): 'single' | 'multi' => {
-    if (data?.responseMode === 'single' || data?.responseMode === 'multi') return data.responseMode;
-    return Array.isArray(data?.items) && data.items.length > 0 ? 'multi' : 'single';
-};
 
 export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge[]) => {
     const runtimeJson: Record<string, any> = {};
@@ -15,10 +10,6 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         // Deep clone the data to avoid mutations
         const nodeData = JSON.parse(JSON.stringify(node.data));
         
-        // Add stable UUIDs if they don't exist
-        if (!nodeData.technicalId) {
-            nodeData.technicalId = uuidv4();
-        }
         if (nodeData.isPii === undefined) {
             nodeData.isPii = false;
         }
@@ -28,7 +19,7 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             if (nodeData.options && Array.isArray(nodeData.options)) {
                 nodeData.options = nodeData.options.map((opt: any) => ({
                     ...opt,
-                    exportId: opt.exportId || uuidv4()
+                    exportId: opt.exportId
                 }));
             }
         }
@@ -38,18 +29,18 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             if (nodeData.choices && Array.isArray(nodeData.choices)) {
                 nodeData.choices = nodeData.choices.map((opt: any) => ({
                     ...opt,
-                    exportId: opt.exportId || uuidv4()
+                    exportId: opt.exportId
                 }));
             }
         }
 
         // Add stable IDs to rating and slider items
         if (["rating", "slider"].includes(node.type as string)) {
-            nodeData.responseMode = inferResponseMode(nodeData);
+            nodeData.responseMode = inferQuestionResponseMode(nodeData);
             if (nodeData.items && Array.isArray(nodeData.items)) {
                 nodeData.items = nodeData.items.map((item: any) => ({
                     ...item,
-                    exportId: item.exportId || uuidv4()
+                    exportId: item.exportId
                 }));
             }
         }
@@ -59,13 +50,13 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             if (nodeData.rows && Array.isArray(nodeData.rows)) {
                 nodeData.rows = nodeData.rows.map((row: any) => ({
                     ...row,
-                    exportId: row.exportId || uuidv4()
+                    exportId: row.exportId
                 }));
             }
             if (nodeData.columns && Array.isArray(nodeData.columns)) {
                 nodeData.columns = nodeData.columns.map((col: any) => ({
                     ...col,
-                    exportId: col.exportId || uuidv4()
+                    exportId: col.exportId
                 }));
             }
         }
@@ -74,10 +65,10 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         if (node.type === "cascadingChoice" && nodeData.steps && Array.isArray(nodeData.steps)) {
             nodeData.steps = nodeData.steps.map((step: any) => ({
                 ...step,
-                exportId: step.exportId || uuidv4(),
+                exportId: step.exportId,
                 options: step.options?.map((opt: any) => ({
                     ...opt,
-                    exportId: opt.exportId || uuidv4()
+                    exportId: opt.exportId
                 })) || []
             }));
         }
@@ -86,8 +77,8 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         if (node.type === "multiInput" && nodeData.fields && Array.isArray(nodeData.fields)) {
             nodeData.fields = nodeData.fields.map((field: any) => ({
                 ...field,
-                id: field.id || uuidv4(), // Generate stable ID
-                exportId: field.exportId || uuidv4()
+                id: field.id,
+                exportId: field.exportId
             }));
         }
 
