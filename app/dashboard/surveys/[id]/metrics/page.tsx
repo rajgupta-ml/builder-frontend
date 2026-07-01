@@ -626,6 +626,7 @@ export default function SurveyMetricsPage() {
                             <IconShare size={18} strokeWidth={1.5} />
                         </button>
                     )}
+                    {!canShareResponses && <button disabled className="p-2 opacity-40 cursor-not-allowed" title="Requires permission: survey_studio:response.share"><IconShare size={18} /></button>}
 
                     {canManageSurvey && (
                         <button
@@ -636,6 +637,7 @@ export default function SurveyMetricsPage() {
                             <IconSettings size={18} strokeWidth={1.5} />
                         </button>
                     )}
+                    {!canManageSurvey && <button disabled className="p-2 opacity-40 cursor-not-allowed" title="Requires permission: survey_studio:survey.edit"><IconSettings size={18} /></button>}
 
                     <div className="w-px h-6 bg-border/60 mx-1" />
 
@@ -655,6 +657,7 @@ export default function SurveyMetricsPage() {
                             Quotas
                         </button>
                     )}
+                    {!canManageQuotas && <button disabled className="px-4 py-2 text-sm border border-border/60 rounded-md opacity-40 cursor-not-allowed" title="Requires permission: survey_studio:quota.manage">Quotas</button>}
 
 
                     <div className="w-px h-6 bg-border/60 mx-1" />
@@ -681,7 +684,9 @@ export default function SurveyMetricsPage() {
                             </button>
                         </>
                     )}
+                    {!canResync && <button disabled className="px-4 py-2 text-sm border border-border/60 rounded-md opacity-40 cursor-not-allowed" title="Requires permission: survey_studio:response.read">Reconcile / Resync</button>}
 
+                    {!canExport && <button disabled className="px-4 py-2 text-sm border border-border/60 rounded-md opacity-40 cursor-not-allowed" title="Requires permission: survey_studio:response.export"><IconDownload size={18} className="inline mr-2" />Export Data</button>}
                     {canExport && (
                         <div className="relative">
                             <button

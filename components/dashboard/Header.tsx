@@ -7,6 +7,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import NewSurveyModal from "@/components/SurveyModal";
 import { getStoredUserScopes, hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { PermissionRequired } from '@/components/auth/PermissionRequired';
 
 export const DashboardHeader = () => {
     const router = useRouter();
@@ -74,13 +75,15 @@ export const DashboardHeader = () => {
                 </div>
 
                 <div className="flex gap-6 items-center">
-                    {canCreateSurvey && (
+                    {canCreateSurvey ? (
                         <button
                             onClick={() => setIsModalOpen(true)}
                             className="flex items-center gap-2 text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors px-4 py-1.5 rounded-full"
                         >
                             <IconPlus size={14} /> New Survey
                         </button>
+                    ) : (
+                        <PermissionRequired scope="survey_studio:survey.create" />
                     )}
 
                     <div className="h-6 w-px bg-border/60" />

@@ -5,7 +5,7 @@ export type TeamMember = {
   email: string;
   name: string;
   isOrgOwner: boolean;
-  policies: Array<{ id: string; name: string }>;
+  policies: Array<{ platform: TeamOrg["platformAccess"][number]; id: string; name: string }>;
   status: "active" | "invite_pending";
 };
 
@@ -22,14 +22,6 @@ export type TeamOrg = {
   platformAccess: Array<"gle" | "survey_studio" | "data_analysis">;
 };
 
-const scopePlatform = (scope: string): "gle" | "survey_studio" | "data_analysis" | null => {
-  const prefix = scope.split(":")[0];
-  if (prefix === "gle") return "gle";
-  if (prefix === "survey_studio") return "survey_studio";
-  if (prefix === "da") return "data_analysis";
-  return null;
-};
-
 export const teamApi = {
   org: async (orgId: string): Promise<TeamOrg> => {
     const { data } = await apiClient.get(`/team/${orgId}`);
@@ -43,14 +35,14 @@ export const teamApi = {
     const { data } = await apiClient.get(`/team/${orgId}/users`);
     return data.users.map((row: {
       user: { id: string; email: string; name: string; isOrgOwner: boolean };
-      platformRoles: Array<{ roleId: string; roleName: string }>;
+      platformRoles: Array<{ platform: TeamOrg["platformAccess"][number]; roleId: string; roleName: string }>;
       cognitoStatus: string;
     }) => ({
       userId: row.user.id,
       email: row.user.email,
       name: row.user.name,
       isOrgOwner: row.user.isOrgOwner,
-      policies: row.platformRoles.map(role => ({ id: role.roleId, name: role.roleName })),
+      policies: row.platformRoles.map(role => ({ platform: role.platform, id: role.roleId, name: role.roleName })),
       status: row.cognitoStatus === "FORCE_CHANGE_PASSWORD" ? "invite_pending" : "active",
     }));
   },
@@ -58,25 +50,24 @@ export const teamApi = {
     const { data } = await apiClient.get(`/team/${orgId}/roles`);
     return (data.roles as TeamPolicy[]).map(role => ({ ...role, memberCount: role.memberCount ?? 0 }));
   },
-  invite: async (orgId: string, input: { email: string; name: string; policyIds: string[]; policies: TeamPolicy[] }) => {
+  invite: async (orgId: string, input: {
+    email: string;
+    name: string;
+    assignments: Array<{ platform: TeamOrg["platformAccess"][number]; roleId: string }>;
+  }) => {
     const { data } = await apiClient.post(`/team/${orgId}/users/invite`, {
       email: input.email,
       name: input.name,
     });
-    for (const roleId of input.policyIds) {
-      const policy = input.policies.find(item => item.id === roleId);
-      const platforms = new Set((policy?.scopes ?? []).map(scopePlatform).filter(
-        (platform): platform is "gle" | "survey_studio" | "data_analysis" => platform !== null,
-      ));
-      for (const platform of platforms) {
-        await apiClient.post(`/team/${orgId}/users/roles`, {
-          userId: data.user.id,
-          platform,
-          roleId,
-        });
-      }
-    }
+    await apiClient.put(`/team/${orgId}/users/${data.user.id}/roles`, {
+      assignments: input.assignments,
+    });
   },
+  replaceAccess: (
+    orgId: string,
+    userId: string,
+    assignments: Array<{ platform: TeamOrg["platformAccess"][number]; roleId: string }>,
+  ) => apiClient.put(`/team/${orgId}/users/${userId}/roles`, { assignments }),
   removeMember: (orgId: string, userId: string) =>
     apiClient.delete(`/team/${orgId}/users/${userId}`),
   createPolicy: (orgId: string, input: { name: string; scopes: string[] }) =>

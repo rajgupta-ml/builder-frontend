@@ -23,6 +23,7 @@ import {
   hasPermission,
   PERMISSIONS,
 } from "@/lib/permissions";
+import { PermissionRequired } from "@/components/auth/PermissionRequired";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -272,7 +273,7 @@ export default function Dashboard() {
                               >
                                 Data
                               </button>
-                              {canCreateSurvey && (
+                              {canCreateSurvey ? (
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
@@ -295,8 +296,10 @@ export default function Dashboard() {
                                 >
                                   <IconCopy size={14} /> Duplicate
                                 </button>
+                              ) : (
+                                <div className="px-2 py-1.5"><PermissionRequired scope="survey_studio:survey.create" compact /></div>
                               )}
-                              {canDeleteSurvey && (
+                              {canDeleteSurvey ? (
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
@@ -320,6 +323,8 @@ export default function Dashboard() {
                                 >
                                   Delete
                                 </button>
+                              ) : (
+                                <div className="px-2 py-1.5"><PermissionRequired scope="survey_studio:survey.delete" compact /></div>
                               )}
                             </div>
                           )}
@@ -348,7 +353,7 @@ export default function Dashboard() {
                 survey records. Initialize a new record to begin data
                 collection.
               </p>
-              {canCreateSurvey && (
+              {canCreateSurvey ? (
                 <button
                   onClick={() => setIsModalOpen(true)}
                   className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground font-bold text-sm tracking-wide rounded-lg hover:opacity-90 transition-all shadow-md shadow-primary/20"
@@ -356,6 +361,8 @@ export default function Dashboard() {
                   <IconPlus size={18} strokeWidth={2.5} />
                   INITIALIZE RECORD
                 </button>
+              ) : (
+                <PermissionRequired scope="survey_studio:survey.create" />
               )}
             </motion.div>
           )}

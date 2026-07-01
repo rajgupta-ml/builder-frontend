@@ -1,4 +1,5 @@
 export const PERMISSIONS = {
+  SURVEY_READ: "survey.read",
   SURVEY_CREATE: "survey.create",
   SURVEY_EDIT: "survey.edit",
   SURVEY_DELETE: "survey.delete",
@@ -18,11 +19,12 @@ export const PERMISSIONS = {
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
 
 const PERMISSION_TO_SCOPE: Record<Permission, string> = {
+  [PERMISSIONS.SURVEY_READ]: "survey_studio:survey.read",
   [PERMISSIONS.SURVEY_CREATE]: "survey_studio:survey.create",
   [PERMISSIONS.SURVEY_EDIT]: "survey_studio:survey.edit",
   [PERMISSIONS.SURVEY_DELETE]: "survey_studio:survey.delete",
   [PERMISSIONS.SURVEY_PUBLISH_LIVE]: "survey_studio:survey.publish",
-  [PERMISSIONS.WORKFLOW_READ]: "survey_studio:survey.edit",
+  [PERMISSIONS.WORKFLOW_READ]: "survey_studio:survey.read",
   [PERMISSIONS.WORKFLOW_EDIT]: "survey_studio:survey.edit",
   [PERMISSIONS.QUOTA_MANAGE]: "survey_studio:quota.manage",
   [PERMISSIONS.RESPONSE_READ]: "survey_studio:response.read",

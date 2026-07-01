@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { toast } from 'sonner';
 import { getStoredUserScopes, hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { PermissionRequired } from '@/components/auth/PermissionRequired';
 import { featureFlags } from '@/lib/feature-flags';
 import type { WorkflowValidationIssue } from '@/api/surveyWorkflow';
 
@@ -191,7 +192,7 @@ export function EditorHeader({
             )}
 
             {/* Primary Action */}
-            {canRunTest && (
+            {canRunTest ? (
                 <button
                     onClick={handleQuickTest}
                     disabled={isSyncingTest || isReadOnly}
@@ -205,6 +206,8 @@ export function EditorHeader({
                     )}
                     Run Test Survey
                 </button>
+            ) : (
+                <PermissionRequired scope="survey_studio:test.run" />
             )}
 
             {/* More Menu */}
@@ -396,7 +399,7 @@ export function EditorHeader({
             </div>
 
             {/* Publish Button */}
-            {canPublishLive && (
+            {canPublishLive ? (
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handlePublishLive}
@@ -426,6 +429,8 @@ export function EditorHeader({
                         }
                     </button>
                 </div>
+            ) : (
+                <PermissionRequired scope="survey_studio:survey.publish" />
             )}
         </div>
     );
