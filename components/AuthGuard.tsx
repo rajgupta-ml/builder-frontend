@@ -13,7 +13,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         let isMounted = true;
 
         const verifyToken = async () => {
-            const token = localStorage.getItem("token");
+            const token = localStorage.getItem("idToken");
             if (!token) {
                 if (isMounted) {
                     setIsAuthenticated(false);
@@ -31,9 +31,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
                     setIsAuthenticated(true);
                 }
             } catch (error) {
-                console.error("Auth verification failed", error);
                 reportApiError(error, { location: "AuthGuard.verifyToken" });
-                localStorage.removeItem("token");
+                localStorage.removeItem("idToken");
                 localStorage.removeItem("user");
                 if (isMounted) {
                     setIsAuthenticated(false);

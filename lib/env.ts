@@ -6,6 +6,9 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_OBSERVABILITY_ENABLED: z.string().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
   NEXT_PUBLIC_SENTRY_RELEASE: z.string().optional(),
+  NEXT_PUBLIC_COGNITO_USER_POOL_ID: z.string().min(1),
+  NEXT_PUBLIC_COGNITO_CLIENT_ID: z.string().min(1),
+  NEXT_PUBLIC_COGNITO_REGION: z.string().min(1),
 });
 
 const telemetryEnvSchema = z.object({
@@ -26,6 +29,9 @@ export const getPublicEnv = () => {
     NEXT_PUBLIC_OBSERVABILITY_ENABLED: process.env.NEXT_PUBLIC_OBSERVABILITY_ENABLED,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     NEXT_PUBLIC_SENTRY_RELEASE: process.env.NEXT_PUBLIC_SENTRY_RELEASE,
+    NEXT_PUBLIC_COGNITO_USER_POOL_ID: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID,
+    NEXT_PUBLIC_COGNITO_CLIENT_ID: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
+    NEXT_PUBLIC_COGNITO_REGION: process.env.NEXT_PUBLIC_COGNITO_REGION,
   });
   return cachedPublicEnv;
 };

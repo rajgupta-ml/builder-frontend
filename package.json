@@ -14,6 +14,7 @@
     "@surveystudio/node-registery": "1.14.12",
     "@tabler/icons-react": "^3.36.1",
     "@xyflow/react": "^12.10.0",
+    "amazon-cognito-identity-js": "^6.3.18",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
     "framer-motion": "^12.4.2",

@@ -3,6 +3,7 @@ import { reportApiError } from "@/lib/error-reporter";
 import { getPublicEnv } from "@/lib/env";
 import { captureException } from "@/lib/observability";
 import { getOrCreateTraceId, TRACE_ID_HEADER } from "@/lib/trace";
+import { refreshSession, signOut } from "@/lib/cognito";
 
 const { NEXT_PUBLIC_API_URL } = getPublicEnv();
 const API_URL = NEXT_PUBLIC_API_URL;
@@ -16,7 +17,6 @@ const apiClient = axios.create({
   timeout: 15000,
 });
 
-let refreshPromise: Promise<string | null> | null = null;
 const MAX_GET_RETRIES = 2;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,46 +29,19 @@ const getRetryDelay = (attempt: number) => {
 
 const clearAuthStateAndRedirect = () => {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("token");
+  signOut();
+  localStorage.removeItem("idToken");
   localStorage.removeItem("user");
   if (window.location.pathname !== "/") {
     window.location.href = "/";
   }
 };
 
-const refreshAccessToken = async (): Promise<string | null> => {
-  if (refreshPromise) {
-    return refreshPromise;
-  }
-
-  refreshPromise = (async () => {
-    const res = await axios.post(
-      `${API_URL}/auth/refresh`,
-      {},
-      { withCredentials: true, timeout: 15000 }
-    );
-    const token = res.data?.token as string | undefined;
-    if (!token) {
-      return null;
-    }
-    if (typeof window !== "undefined") {
-      localStorage.setItem("token", token);
-    }
-    return token;
-  })()
-    .catch(() => null)
-    .finally(() => {
-      refreshPromise = null;
-    });
-
-  return refreshPromise;
-};
-
 apiClient.interceptors.request.use(
   (config) => {
     config.headers = config.headers ?? {};
     config.headers[TRACE_ID_HEADER] = getOrCreateTraceId();
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("idToken") : null;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -120,13 +93,16 @@ apiClient.interceptors.response.use(
     if (status === 401 && !isRefreshCall && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      const token = await refreshAccessToken();
-      if (token) {
-        originalRequest.headers.Authorization = `Bearer ${token}`;
+      try {
+        const newToken = await refreshSession();
+        if (typeof window !== "undefined") {
+          localStorage.setItem("idToken", newToken);
+        }
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return apiClient(originalRequest);
+      } catch {
+        clearAuthStateAndRedirect();
       }
-
-      clearAuthStateAndRedirect();
     }
 
     if (!isAborted && (!status || status >= 500)) {
