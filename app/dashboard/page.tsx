@@ -19,7 +19,7 @@ import { toUserMessage } from "@/lib/api-error";
 import { jetBrainsMono } from "@/app/dashboard/layout";
 import { cn } from "@/lib/utils";
 import {
-  getStoredUserRole,
+  getStoredUserScopes,
   hasPermission,
   PERMISSIONS,
 } from "@/lib/permissions";
@@ -41,9 +41,9 @@ export default function Dashboard() {
   const searchTerm = searchParams.get("search")?.trim() ?? "";
 
   useEffect(() => {
-    const role = getStoredUserRole();
-    setCanCreateSurvey(hasPermission(role, PERMISSIONS.SURVEY_CREATE));
-    setCanDeleteSurvey(hasPermission(role, PERMISSIONS.SURVEY_DELETE));
+    const scopes = getStoredUserScopes();
+    setCanCreateSurvey(hasPermission(scopes, PERMISSIONS.SURVEY_CREATE));
+    setCanDeleteSurvey(hasPermission(scopes, PERMISSIONS.SURVEY_DELETE));
   }, []);
 
   useEffect(() => {

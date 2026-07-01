@@ -6,7 +6,7 @@ import {
 } from '@tabler/icons-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import NewSurveyModal from "@/components/SurveyModal";
-import { getStoredUserRole, hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { getStoredUserScopes, hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 export const DashboardHeader = () => {
     const router = useRouter();
@@ -27,8 +27,8 @@ export const DashboardHeader = () => {
                 console.error("Failed to parse user");
             }
         }
-        const role = getStoredUserRole();
-        setCanCreateSurvey(hasPermission(role, PERMISSIONS.SURVEY_CREATE));
+        const scopes = getStoredUserScopes();
+        setCanCreateSurvey(hasPermission(scopes, PERMISSIONS.SURVEY_CREATE));
     }, []);
 
     useEffect(() => {

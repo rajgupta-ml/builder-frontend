@@ -19,9 +19,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { toast } from 'sonner';
-import { getStoredUserRole, hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { getStoredUserScopes, hasPermission, PERMISSIONS } from '@/lib/permissions';
 import { featureFlags } from '@/lib/feature-flags';
-import type { UserRole } from '@/types/auth';
 import type { WorkflowValidationIssue } from '@/api/surveyWorkflow';
 
 interface EditorHeaderProps {
@@ -54,7 +53,7 @@ export function EditorHeader({
     const actionsDropdownRef = useRef<HTMLDivElement>(null);
     const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
     const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
-    const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
+    const [userScopes, setUserScopes] = useState<string[]>([]);
 
     const {
         survey,
@@ -75,7 +74,7 @@ export function EditorHeader({
     } = useSurveyStore();
 
     useEffect(() => {
-        setUserRole(getStoredUserRole());
+        setUserScopes(getStoredUserScopes());
         const handleClickOutside = (event: MouseEvent) => {
             if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
                 setIsVersionDropdownOpen(false);
@@ -89,8 +88,8 @@ export function EditorHeader({
     }, []);
 
     const isLive = survey?.status === 'LIVE' || survey?.status === 'PAUSED';
-    const canRunTest = hasPermission(userRole, PERMISSIONS.TEST_RUN);
-    const canPublishLive = hasPermission(userRole, PERMISSIONS.SURVEY_PUBLISH_LIVE);
+    const canRunTest = hasPermission(userScopes, PERMISSIONS.TEST_RUN);
+    const canPublishLive = hasPermission(userScopes, PERMISSIONS.SURVEY_PUBLISH_LIVE);
 
     const handlePublishLive = async () => {
         if (!workflowId) {
