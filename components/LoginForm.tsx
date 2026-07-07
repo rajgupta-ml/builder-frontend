@@ -4,12 +4,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { signIn, completeNewPassword as cognitoCompleteNewPassword, type CognitoUser } from "@/lib/cognito";
+import { signIn, completeNewPassword as cognitoCompleteNewPassword, signOut, type CognitoUser } from "@/lib/cognito";
 import { authApi } from "@/api/auth";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import logo from "@/public/logo.jpg";
 import { toast } from "sonner";
+import { toUserMessage } from "@/lib/api-error";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -47,8 +48,11 @@ export default function LoginForm() {
       localStorage.setItem("user", JSON.stringify(user));
       toast.success("Login successful! Welcome back.");
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err?.message || "Something went wrong. Please try again.");
+    } catch (err: unknown) {
+      signOut();
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("user");
+      setError(toUserMessage(err, "Something went wrong. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -73,8 +77,11 @@ export default function LoginForm() {
       localStorage.setItem("user", JSON.stringify(user));
       toast.success("Password set. Welcome!");
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err?.message || "Failed to set password");
+    } catch (err: unknown) {
+      signOut();
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("user");
+      setError(toUserMessage(err, "Failed to set password"));
     } finally {
       setLoading(false);
     }

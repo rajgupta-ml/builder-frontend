@@ -55,11 +55,9 @@ export const teamApi = {
     name: string;
     assignments: Array<{ platform: TeamOrg["platformAccess"][number]; roleId: string }>;
   }) => {
-    const { data } = await apiClient.post(`/team/${orgId}/users/invite`, {
+    await apiClient.post(`/team/${orgId}/users/invite`, {
       email: input.email,
       name: input.name,
-    });
-    await apiClient.put(`/team/${orgId}/users/${data.user.id}/roles`, {
       assignments: input.assignments,
     });
   },
