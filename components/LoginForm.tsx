@@ -24,7 +24,7 @@ export default function LoginForm() {
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("idToken");
+    const token = localStorage.getItem("accessToken");
     if (token) {
       router.replace("/dashboard");
     } else {
@@ -43,14 +43,14 @@ export default function LoginForm() {
         setLoading(false);
         return;
       }
-      localStorage.setItem("idToken", result.idToken);
+      localStorage.setItem("accessToken", result.accessToken);
       const { user } = await authApi.me();
       localStorage.setItem("user", JSON.stringify(user));
       toast.success("Login successful! Welcome back.");
       router.push("/dashboard");
     } catch (err: unknown) {
       signOut();
-      localStorage.removeItem("idToken");
+      localStorage.removeItem("accessToken");
       localStorage.removeItem("user");
       setError(toUserMessage(err, "Something went wrong. Please try again."));
     } finally {
@@ -72,14 +72,14 @@ export default function LoginForm() {
     setLoading(true);
     try {
       const result = await cognitoCompleteNewPassword(pendingCognitoUser!, newPassword);
-      localStorage.setItem("idToken", result.idToken);
+      localStorage.setItem("accessToken", result.accessToken);
       const { user } = await authApi.me();
       localStorage.setItem("user", JSON.stringify(user));
       toast.success("Password set. Welcome!");
       router.push("/dashboard");
     } catch (err: unknown) {
       signOut();
-      localStorage.removeItem("idToken");
+      localStorage.removeItem("accessToken");
       localStorage.removeItem("user");
       setError(toUserMessage(err, "Failed to set password"));
     } finally {

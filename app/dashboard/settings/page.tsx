@@ -100,7 +100,7 @@ export default function SettingsPage() {
     const handleLogout = () => {
         setLoggingOut(true);
         cognitoSignOut();
-        localStorage.removeItem("idToken");
+        localStorage.removeItem("accessToken");
         localStorage.removeItem("user");
         router.replace("/");
     };

@@ -14,7 +14,7 @@ export { CognitoUser };
 
 export type SignInResult =
     | { newPasswordRequired: true; cognitoUser: CognitoUser }
-    | { idToken: string };
+    | { accessToken: string };
 
 export function signIn(email: string, password: string): Promise<SignInResult> {
     return new Promise((resolve, reject) => {
@@ -24,7 +24,7 @@ export function signIn(email: string, password: string): Promise<SignInResult> {
 
         cognitoUser.authenticateUser(authDetails, {
             onSuccess(session) {
-                resolve({ idToken: session.getIdToken().getJwtToken() });
+                resolve({ accessToken: session.getAccessToken().getJwtToken() });
             },
             onFailure(err) {
                 reject(err);
@@ -39,11 +39,11 @@ export function signIn(email: string, password: string): Promise<SignInResult> {
 export function completeNewPassword(
     cognitoUser: CognitoUser,
     newPassword: string
-): Promise<{ idToken: string }> {
+): Promise<{ accessToken: string }> {
     return new Promise((resolve, reject) => {
         cognitoUser.completeNewPasswordChallenge(newPassword, {}, {
             onSuccess(session) {
-                resolve({ idToken: session.getIdToken().getJwtToken() });
+                resolve({ accessToken: session.getAccessToken().getJwtToken() });
             },
             onFailure(err) {
                 reject(err);
@@ -70,7 +70,7 @@ export function refreshSession(): Promise<string> {
                     reject(refreshErr || new Error('Refresh failed'));
                     return;
                 }
-                resolve(newSession.getIdToken().getJwtToken());
+                resolve(newSession.getAccessToken().getJwtToken());
             });
         });
     });

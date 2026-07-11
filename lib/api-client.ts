@@ -30,7 +30,7 @@ const getRetryDelay = (attempt: number) => {
 const clearAuthStateAndRedirect = () => {
   if (typeof window === "undefined") return;
   signOut();
-  localStorage.removeItem("idToken");
+  localStorage.removeItem("accessToken");
   localStorage.removeItem("user");
   if (window.location.pathname !== "/") {
     window.location.href = "/";
@@ -41,7 +41,7 @@ apiClient.interceptors.request.use(
   (config) => {
     config.headers = config.headers ?? {};
     config.headers[TRACE_ID_HEADER] = getOrCreateTraceId();
-    const token = typeof window !== "undefined" ? localStorage.getItem("idToken") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -96,7 +96,7 @@ apiClient.interceptors.response.use(
       try {
         const newToken = await refreshSession();
         if (typeof window !== "undefined") {
-          localStorage.setItem("idToken", newToken);
+          localStorage.setItem("accessToken", newToken);
         }
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return apiClient(originalRequest);
