@@ -35,6 +35,8 @@ import { toast } from "sonner";
 import { QualitySettingsModal } from "@/components/modals/QualitySettingsModal";
 import { ModalPortal } from "@/components/ui/ModalPortal";
 
+type QualityBadgeMeta = { label: string; description: string; badge: string };
+
 const STATE_META: Record<string, { label: string; description: string; badge: string; dot: string }> = {
     CLEAN: {
         label: "Clean",
@@ -86,6 +88,34 @@ const REVIEW_META: Record<string, { label: string; description: string; badge: s
     },
 };
 
+const PROCESSING_META: Record<string, QualityBadgeMeta> = {
+    NOT_SCORABLE: {
+        label: "Not Scorable",
+        description: "There is not enough completed response data to run quality checks yet.",
+        badge: "bg-muted text-muted-foreground border-border",
+    },
+    PENDING: {
+        label: "Checks Queued",
+        description: "Quality checks are queued and have not finished for this response yet.",
+        badge: "bg-sky-50 text-sky-600 border-sky-200",
+    },
+    PARTIAL: {
+        label: "Checks Running",
+        description: "Some async quality checks are still running for this response.",
+        badge: "bg-amber-50 text-amber-600 border-amber-200",
+    },
+    COMPLETE: {
+        label: "Checks Complete",
+        description: "All recorded quality checks finished for this response.",
+        badge: "bg-emerald-50 text-emerald-600 border-emerald-200",
+    },
+    FAILED: {
+        label: "Checks Failed",
+        description: "One or more quality checks failed and need retry or investigation.",
+        badge: "bg-rose-50 text-rose-600 border-rose-200",
+    },
+};
+
 const REVIEW_CHOICES: { value: string; label: string; description: string }[] = [
     {
         value: "REVIEWED_VALID",
@@ -134,6 +164,30 @@ const DETECTOR_META: Record<string, { label: string; description: string }> = {
         label: "Duplicate Device",
         description: "The same device fingerprint submitted more than one response.",
     },
+    TOO_SHORT_OE: {
+        label: "Too Short Open-End",
+        description: "An open-ended answer is too short to be useful.",
+    },
+    KEYBOARD_MASH_OE: {
+        label: "Keyboard Mash",
+        description: "An open-ended answer looks like random typing or repeated keys.",
+    },
+    GIBBERISH_OE: {
+        label: "Gibberish Open-End",
+        description: "The AI judge found an open-ended answer that does not read as meaningful text.",
+    },
+    DUPLICATE_OE_WITHIN_SESSION: {
+        label: "Duplicate Open-End",
+        description: "The same open-ended answer was reused across questions in this response.",
+    },
+    LANGUAGE_MISMATCH: {
+        label: "Language Mismatch",
+        description: "The open-ended answer appears to be in a different language than expected.",
+    },
+    AI_GENERATED_TEXT: {
+        label: "AI-Like Text",
+        description: "The AI judge found signs that an open-ended answer may be generated text.",
+    },
 };
 
 const SEVERITY_TONE: Record<string, string> = {
@@ -142,6 +196,15 @@ const SEVERITY_TONE: Record<string, string> = {
     HIGH: "bg-rose-50 text-rose-600 border-rose-200",
     CRITICAL: "bg-red-50 text-red-700 border-red-200",
 };
+
+const OPEN_END_DETECTOR_CODES = new Set([
+    "TOO_SHORT_OE",
+    "KEYBOARD_MASH_OE",
+    "GIBBERISH_OE",
+    "DUPLICATE_OE_WITHIN_SESSION",
+    "LANGUAGE_MISMATCH",
+    "AI_GENERATED_TEXT",
+]);
 
 const emptySummary: QualitySummary = {
     averageScore: null,
@@ -154,6 +217,7 @@ const emptySummary: QualitySummary = {
 
 const stateMeta = (state?: string | null) => STATE_META[state || "UNSCORED"] || STATE_META.UNSCORED!;
 const reviewMeta = (status?: string | null) => REVIEW_META[status || "UNREVIEWED"] || REVIEW_META.UNREVIEWED!;
+const processingMeta = (status?: string | null) => PROCESSING_META[status || "PENDING"] || PROCESSING_META.PENDING!;
 const detectorMeta = (code: string) =>
     DETECTOR_META[code] || { label: titleCase(code), description: "Automated quality check." };
 
@@ -177,6 +241,101 @@ const scoreMeaning = (score: number | null | undefined): string => {
     return "Poor — serious quality problems";
 };
 
+const formatOpenEndAnswerCount = (count: number) => `${count} open-ended answer${count === 1 ? "" : "s"}`;
+
+const truncateText = (value: string, maxLength = 180) => {
+    if (value.length <= maxLength) return value;
+    return `${value.slice(0, maxLength - 1)}…`;
+};
+
+type OpenEndFlagEvidence = {
+    questionId?: string | null;
+    questionLabel?: string | null;
+    answerPreview?: string | null;
+    detectorFamily?: string | null;
+    detectorModel?: string | null;
+    issueLabel?: string | null;
+    issueDetail?: string | null;
+    reasonCodes?: string[] | null;
+    confidence?: number | null;
+    metadata?: Record<string, unknown> | null;
+};
+
+type OpenEndReviewItem = {
+    key: string;
+    label: string;
+    issue: string;
+};
+
+const asObject = (value: unknown): Record<string, unknown> | null => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+};
+
+const asString = (value: unknown): string | null =>
+    typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+const asNumber = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+
+const asStringArray = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+
+const getOpenEndEvidence = (flag: QualityResponseFlag): OpenEndFlagEvidence | null => {
+    if (!OPEN_END_DETECTOR_CODES.has(flag.detectorCode)) return null;
+    const evidence = asObject(flag.evidence);
+    if (!evidence) return null;
+    return {
+        questionId: asString(evidence.questionId),
+        questionLabel: asString(evidence.questionLabel),
+        answerPreview: asString(evidence.answerPreview),
+        detectorFamily: asString(evidence.detectorFamily),
+        detectorModel: asString(evidence.detectorModel),
+        issueLabel: asString(evidence.issueLabel),
+        issueDetail: asString(evidence.issueDetail),
+        reasonCodes: asStringArray(evidence.reasonCodes),
+        confidence: asNumber(evidence.confidence),
+        metadata: asObject(evidence.metadata),
+    };
+};
+
+const getOpenEndQuestionCount = (flags: QualityResponseFlag[]) => {
+    const questionKeys = new Set<string>();
+    for (const flag of flags) {
+        const evidence = getOpenEndEvidence(flag);
+        const metadata = evidence?.metadata;
+        const questionLabels = asStringArray(metadata?.questionLabels);
+        if (questionLabels.length > 0) {
+            questionLabels.forEach((label) => questionKeys.add(label));
+            continue;
+        }
+        const questionLabel = evidence?.questionLabel || evidence?.questionId;
+        if (questionLabel) questionKeys.add(questionLabel);
+    }
+    return questionKeys.size || flags.length;
+};
+
+const getOpenEndReviewItems = (flags: QualityResponseFlag[]): OpenEndReviewItem[] => {
+    return flags.flatMap((flag) => {
+        const evidence = getOpenEndEvidence(flag);
+        const issue = evidence?.issueLabel || detectorMeta(flag.detectorCode).label;
+        const metadata = evidence?.metadata;
+        const questionLabels = asStringArray(metadata?.questionLabels);
+        if (questionLabels.length > 0) {
+            return questionLabels.map((label, index) => ({
+                key: `${flag.id}-${index}`,
+                label,
+                issue,
+            }));
+        }
+        return [{
+            key: flag.id,
+            label: evidence?.questionLabel || evidence?.questionId || "Open-ended answer",
+            issue,
+        }];
+    });
+};
+
 const formatEvidenceSummary = (flag: QualityResponseFlag) => {
     const evidence = flag.evidence;
     if (evidence && typeof evidence.summary === "string" && evidence.summary.trim().length > 0) {
@@ -187,6 +346,134 @@ const formatEvidenceSummary = (flag: QualityResponseFlag) => {
 
 const getActiveFlags = (detail: QualityResponseDetail | null) =>
     (detail?.qualityFlags || []).filter((flag) => flag.isActive);
+
+const getOpenEndFlags = (detail: QualityResponseDetail | null) =>
+    getActiveFlags(detail).filter((flag) => OPEN_END_DETECTOR_CODES.has(flag.detectorCode));
+
+const getOpenEndCheckMeta = (detail: QualityResponseDetail | null): QualityBadgeMeta & { detail?: string | null; updatedAt?: string | null; attemptCount?: number | null } => {
+    if (!detail) {
+        return {
+            label: "Loading",
+            description: "Loading open-ended quality status.",
+            badge: "bg-muted text-muted-foreground border-border",
+        };
+    }
+
+    if (!detail.openEndQuality) {
+        return {
+            label: "Unavailable",
+            description: "Open-ended check status is not available from the API response yet.",
+            badge: "bg-slate-50 text-slate-600 border-slate-200",
+        };
+    }
+
+    const answerCount = detail.openEndQuality.answerCount;
+    const answerLabel = formatOpenEndAnswerCount(answerCount);
+    const operation = detail.openEndQuality.aiJudgeOperation;
+    const openEndFlags = getOpenEndFlags(detail);
+
+    if (answerCount <= 0) {
+        return {
+            label: "No Open Text",
+            description: "No open-ended answers were stored for this response.",
+            badge: "bg-muted text-muted-foreground border-border",
+        };
+    }
+
+    if (operation?.status === "FAILED") {
+        return {
+            label: "Failed",
+            description: `AI text checks failed for ${answerLabel}.`,
+            badge: "bg-rose-50 text-rose-600 border-rose-200",
+            detail: operation.errorDetail || operation.errorCode,
+            updatedAt: operation.updatedAt,
+            attemptCount: operation.attemptCount,
+        };
+    }
+
+    if (operation?.status === "QUEUED" || operation?.status === "PROCESSING") {
+        return {
+            label: operation.status === "QUEUED" ? "Queued" : "Running",
+            description: `AI text checks are ${operation.status === "QUEUED" ? "queued" : "running"} for ${answerLabel}.`,
+            badge: "bg-amber-50 text-amber-600 border-amber-200",
+            updatedAt: operation.updatedAt,
+            attemptCount: operation.attemptCount,
+        };
+    }
+
+    if (operation?.status === "SUCCEEDED") {
+        const questionCount = getOpenEndQuestionCount(openEndFlags);
+        return {
+            label: openEndFlags.length > 0 ? "Issues Found" : "Complete",
+            description: openEndFlags.length > 0
+                ? `${questionCount} open-ended answer${questionCount === 1 ? "" : "s"} need review.`
+                : `AI text checks finished for ${answerLabel} with no open-ended issues.`,
+            badge: openEndFlags.length > 0
+                ? "bg-rose-50 text-rose-600 border-rose-200"
+                : "bg-emerald-50 text-emerald-600 border-emerald-200",
+            updatedAt: operation.completedAt || operation.updatedAt,
+            attemptCount: operation.attemptCount,
+        };
+    }
+
+    if (openEndFlags.length > 0) {
+        const questionCount = getOpenEndQuestionCount(openEndFlags);
+        return {
+            label: "Issues Found",
+            description: `${questionCount} open-ended answer${questionCount === 1 ? "" : "s"} need review.`,
+            badge: "bg-rose-50 text-rose-600 border-rose-200",
+        };
+    }
+
+    if (detail.qualityProcessingStatus === "PENDING" || detail.qualityProcessingStatus === "PARTIAL") {
+        return {
+            label: "Pending",
+            description: `Open-ended checks are not finished for ${answerLabel}.`,
+            badge: "bg-amber-50 text-amber-600 border-amber-200",
+        };
+    }
+
+    if (detail.qualityProcessingStatus === "FAILED") {
+        return {
+            label: "Blocked",
+            description: "Overall quality processing failed before open-ended AI checks completed.",
+            badge: "bg-rose-50 text-rose-600 border-rose-200",
+        };
+    }
+
+    return {
+        label: "Not Scheduled",
+        description: `Open-ended answers exist (${answerLabel}), but no AI judge job is recorded for this response.`,
+        badge: "bg-slate-50 text-slate-600 border-slate-200",
+    };
+};
+
+const getNoActiveFlagsMessage = (
+    detail: QualityResponseDetail,
+    openEndMeta: QualityBadgeMeta,
+) => {
+    if (detail.qualityProcessingStatus === "FAILED") {
+        return "No active flags are available from the failed run. Check automated status above.";
+    }
+
+    if (detail.qualityProcessingStatus === "PENDING" || detail.qualityProcessingStatus === "PARTIAL") {
+        return "No active flags yet — some checks are still running.";
+    }
+
+    if (openEndMeta.label === "Unavailable") {
+        return "No active flags from completed checks. Open-ended check status is not available from the API yet.";
+    }
+
+    if (openEndMeta.label === "Not Scheduled") {
+        return "No active flags from completed checks. Open-ended AI checks were not scheduled for this response.";
+    }
+
+    if (openEndMeta.label === "Failed" || openEndMeta.label === "Blocked") {
+        return "No active flags from completed checks. Open-ended AI checks need attention.";
+    }
+
+    return "No active flags — this response passed all completed checks.";
+};
 
 export default function SurveyQualityPage() {
     const { id } = useParams() as { id: string };
@@ -342,6 +629,10 @@ export default function SurveyQualityPage() {
     );
 
     const activeFlags = useMemo(() => getActiveFlags(selectedDetail), [selectedDetail]);
+    const openEndFlags = useMemo(() => getOpenEndFlags(selectedDetail), [selectedDetail]);
+    const openEndReviewItems = useMemo(() => getOpenEndReviewItems(openEndFlags), [openEndFlags]);
+    const drawerProcessingMeta = processingMeta(selectedDetail?.qualityProcessingStatus);
+    const openEndCheckMeta = getOpenEndCheckMeta(selectedDetail);
 
     const needsReviewCount = (summary.stateCounts.FLAGGED || 0) + (summary.stateCounts.HIGH_RISK || 0);
 
@@ -573,7 +864,7 @@ export default function SurveyQualityPage() {
                             Responses by Quality
                         </h3>
                         <p className="mt-1 text-xs text-muted-foreground">
-                            Lowest scores first. Click a row to see why it was flagged and record a decision.
+                            Latest updates first. Click a row to see why it was flagged and record a decision.
                         </p>
                     </div>
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -680,7 +971,7 @@ export default function SurveyQualityPage() {
                                                 <QualityBadge meta={reviewMeta(response.qualityReviewStatus)} />
                                             </td>
                                             <td className="px-6 py-3 border-b border-border/60 text-xs text-muted-foreground whitespace-nowrap">
-                                                {safeDateTime(response.qualityReviewedAt || response.completedAt || response.startedAt)}
+                                                {safeDateTime(response.updatedAt || response.qualityReviewedAt || response.completedAt || response.startedAt)}
                                             </td>
                                         </tr>
                                     ))
@@ -828,7 +1119,49 @@ export default function SurveyQualityPage() {
                                                 <p className="text-xs text-muted-foreground">{stateMeta(selectedDetail.qualityState).description}</p>
                                                 <div className="flex flex-wrap items-center gap-2 pt-1">
                                                     <QualityBadge meta={stateMeta(selectedDetail.qualityState)} />
+                                                    <QualityBadge meta={drawerProcessingMeta} />
                                                     <QualityBadge meta={reviewMeta(selectedDetail.qualityReviewStatus)} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Automated checks */}
+                                        <div className="px-6 py-5 space-y-3">
+                                            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Automated checks</h4>
+                                            <div className="space-y-2">
+                                                <div className="rounded-lg border border-border/60 bg-background p-4">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-semibold text-foreground">Overall processing</p>
+                                                            <p className="mt-1 text-sm text-muted-foreground">{drawerProcessingMeta.description}</p>
+                                                        </div>
+                                                        <QualityBadge meta={drawerProcessingMeta} />
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-lg border border-border/60 bg-background p-4">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-semibold text-foreground">Open-ended text</p>
+                                                            <p className="mt-1 text-sm text-muted-foreground">{openEndCheckMeta.description}</p>
+                                                        </div>
+                                                        <QualityBadge meta={openEndCheckMeta} />
+                                                    </div>
+                                                    
+                                                    {openEndCheckMeta.detail && (
+                                                        <p
+                                                            className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700"
+                                                            title={openEndCheckMeta.detail}
+                                                        >
+                                                            {truncateText(openEndCheckMeta.detail)}
+                                                        </p>
+                                                    )}
+                                                    {(openEndCheckMeta.updatedAt || openEndCheckMeta.attemptCount !== undefined) && (
+                                                        <p className="mt-2 text-[11px] text-muted-foreground">
+                                                            {openEndCheckMeta.updatedAt ? `Updated ${safeDateTime(openEndCheckMeta.updatedAt)}` : ""}
+                                                            {openEndCheckMeta.updatedAt && openEndCheckMeta.attemptCount !== undefined ? " · " : ""}
+                                                            {openEndCheckMeta.attemptCount !== undefined ? `Attempts ${openEndCheckMeta.attemptCount}` : ""}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -840,34 +1173,154 @@ export default function SurveyQualityPage() {
                                             </h4>
                                             {activeFlags.length === 0 ? (
                                                 <p className="text-sm text-muted-foreground">
-                                                    No active flags — this response passed all checks.
+                                                    {getNoActiveFlagsMessage(selectedDetail, openEndCheckMeta)}
                                                 </p>
                                             ) : (
-                                                activeFlags.map((flag) => (
-                                                    <div key={flag.id} className="rounded-lg border border-border/60 bg-background p-4">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="min-w-0 space-y-1">
-                                                                <div className="flex flex-wrap items-center gap-2">
-                                                                    <span className="text-sm font-semibold text-foreground">{detectorMeta(flag.detectorCode).label}</span>
-                                                                    <span className={cn(
-                                                                        "px-2 py-0.5 rounded-md text-[10px] uppercase font-semibold border w-fit",
-                                                                        SEVERITY_TONE[flag.severity] || SEVERITY_TONE.LOW
-                                                                    )}>
-                                                                        {flag.severity}
+                                                activeFlags.map((flag) => {
+                                                    const openEndEvidence = getOpenEndEvidence(flag);
+                                                    const metadata = openEndEvidence?.metadata;
+                                                    const questionLabels = asStringArray(metadata?.questionLabels);
+                                                    const observedWordCount = asNumber(metadata?.observedWordCount);
+                                                    const observedCharacterCount = asNumber(metadata?.observedCharacterCount);
+                                                    const thresholdWordCount = asNumber(metadata?.thresholdWordCount);
+                                                    const thresholdCharacterCount = asNumber(metadata?.thresholdCharacterCount);
+                                                    const thresholdConfidence = asNumber(metadata?.thresholdConfidence);
+                                                    const detectedLanguage = asString(metadata?.detectedLanguage);
+
+                                                    if (openEndEvidence) {
+                                                        return (
+                                                            <div key={flag.id} className="rounded-lg border border-border/60 bg-background p-4">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div className="min-w-0 space-y-3">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <span className="text-sm font-semibold text-foreground">{detectorMeta(flag.detectorCode).label}</span>
+                                                                            <span className={cn(
+                                                                                "px-2 py-0.5 rounded-md text-[10px] uppercase font-semibold border w-fit",
+                                                                                SEVERITY_TONE[flag.severity] || SEVERITY_TONE.LOW
+                                                                            )}>
+                                                                                {flag.severity}
+                                                                            </span>
+                                                                        </div>
+
+                                                                        <div className="grid gap-3 sm:grid-cols-2">
+                                                                            <div>
+                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Question</p>
+                                                                                {questionLabels.length > 0 ? (
+                                                                                    <div className="mt-1 space-y-1">
+                                                                                        {questionLabels.map((label) => (
+                                                                                            <p key={label} className="text-sm text-foreground">{label}</p>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <p className="mt-1 text-sm text-foreground">{openEndEvidence.questionLabel || openEndEvidence.questionId || "Open-ended answer"}</p>
+                                                                                )}
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Answer</p>
+                                                                                <p className="mt-1 text-sm text-foreground">{openEndEvidence.answerPreview || "No preview available"}</p>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div>
+                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Issue</p>
+                                                                            <p className="mt-1 text-sm text-foreground">{openEndEvidence.issueDetail || formatEvidenceSummary(flag)}</p>
+                                                                        </div>
+
+                                                                        {((openEndEvidence.reasonCodes?.length ?? 0) > 0 || openEndEvidence.confidence != null || thresholdConfidence !== null || detectedLanguage) && (
+                                                                            <div className="grid gap-3 sm:grid-cols-2">
+                                                                                {openEndEvidence.reasonCodes && openEndEvidence.reasonCodes.length > 0 && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Reason codes</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">{openEndEvidence.reasonCodes.join(", ")}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {detectedLanguage && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detected language</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">{detectedLanguage}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {openEndEvidence.confidence !== null && openEndEvidence.confidence !== undefined && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Confidence</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">{openEndEvidence.confidence}%{thresholdConfidence !== null ? ` · threshold ${thresholdConfidence}%` : ""}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {(observedWordCount !== null || observedCharacterCount !== null) && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Observed</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">
+                                                                                            {observedWordCount !== null ? `${observedWordCount} word${observedWordCount === 1 ? "" : "s"}` : ""}
+                                                                                            {observedWordCount !== null && observedCharacterCount !== null ? " / " : ""}
+                                                                                            {observedCharacterCount !== null ? `${observedCharacterCount} character${observedCharacterCount === 1 ? "" : "s"}` : ""}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {(thresholdWordCount !== null || thresholdCharacterCount !== null) && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Threshold</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">
+                                                                                            {thresholdWordCount !== null ? `${thresholdWordCount} word${thresholdWordCount === 1 ? "" : "s"}` : ""}
+                                                                                            {thresholdWordCount !== null && thresholdCharacterCount !== null ? " / " : ""}
+                                                                                            {thresholdCharacterCount !== null ? `${thresholdCharacterCount} character${thresholdCharacterCount === 1 ? "" : "s"}` : ""}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+
+                                                                        <div className="grid gap-3 sm:grid-cols-2">
+                                                                            <div>
+                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detector</p>
+                                                                                <p className="mt-1 text-sm text-foreground">
+                                                                                    {openEndEvidence.detectorFamily === "AI_JUDGE"
+                                                                                        ? `AI judge${openEndEvidence.detectorModel ? `: ${openEndEvidence.detectorModel}` : ""}`
+                                                                                        : `Deterministic rule: ${flag.detectorCode}`}
+                                                                                </p>
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detected</p>
+                                                                                <p className="mt-1 text-sm text-foreground">{safeDateTime(flag.detectedAt)}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span
+                                                                        className="rounded-md bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-600 shrink-0"
+                                                                        title="Points subtracted from this response's score"
+                                                                    >
+                                                                        −{flag.scoreImpact} pts
                                                                     </span>
                                                                 </div>
-                                                                <p className="text-sm text-muted-foreground">{formatEvidenceSummary(flag)}</p>
-                                                                <p className="text-xs text-muted-foreground opacity-80">Detected {safeDateTime(flag.detectedAt)}</p>
                                                             </div>
-                                                            <span
-                                                                className="rounded-md bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-600 shrink-0"
-                                                                title="Points subtracted from this response's score"
-                                                            >
-                                                                −{flag.scoreImpact} pts
-                                                            </span>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div key={flag.id} className="rounded-lg border border-border/60 bg-background p-4">
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div className="min-w-0 space-y-1">
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <span className="text-sm font-semibold text-foreground">{detectorMeta(flag.detectorCode).label}</span>
+                                                                        <span className={cn(
+                                                                            "px-2 py-0.5 rounded-md text-[10px] uppercase font-semibold border w-fit",
+                                                                            SEVERITY_TONE[flag.severity] || SEVERITY_TONE.LOW
+                                                                        )}>
+                                                                            {flag.severity}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-sm text-muted-foreground">{formatEvidenceSummary(flag)}</p>
+                                                                    <p className="text-xs text-muted-foreground opacity-80">Detected {safeDateTime(flag.detectedAt)}</p>
+                                                                </div>
+                                                                <span
+                                                                    className="rounded-md bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-600 shrink-0"
+                                                                    title="Points subtracted from this response's score"
+                                                                >
+                                                                    −{flag.scoreImpact} pts
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))
+                                                    );
+                                                })
                                             )}
                                         </div>
 
@@ -995,26 +1448,7 @@ export default function SurveyQualityPage() {
                                             </div>
                                         )}
 
-                                        {/* Score history */}
-                                        {(selectedDetail.qualityScoreHistory || []).length > 0 && (
-                                            <div className="px-6 py-5 space-y-3">
-                                                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Score history</h4>
-                                                <div className="space-y-2">
-                                                    {(selectedDetail.qualityScoreHistory || []).slice(0, 8).map((item) => (
-                                                        <div key={item.id} className="rounded-lg border border-border/60 bg-background px-4 py-3 text-sm">
-                                                            <div className="flex items-center justify-between gap-3">
-                                                                <span className="font-medium text-foreground">{titleCase(item.reason || "Update")}</span>
-                                                                <span className="text-xs text-muted-foreground whitespace-nowrap">{safeDateTime(item.createdAt)}</span>
-                                                            </div>
-                                                            <div className="mt-1.5 flex flex-wrap gap-4 text-xs text-muted-foreground">
-                                                                <span>Score: <span className="font-medium text-foreground">{item.previousScore ?? "—"} → {item.newScore ?? "—"}</span></span>
-                                                                <span>State: <span className="font-medium text-foreground">{stateMeta(item.previousState).label} → {stateMeta(item.newState).label}</span></span>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
+                                 
                                     </div>
                                 )}
                             </div>

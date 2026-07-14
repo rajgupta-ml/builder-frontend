@@ -75,6 +75,7 @@ export type QualityResponseListItem = {
     mode: "LIVE" | "TEST";
     startedAt: string | null;
     completedAt: string | null;
+    updatedAt: string | null;
     qualityScore: number | null;
     qualityState: string | null;
     qualityProcessingStatus: string | null;
@@ -122,6 +123,24 @@ export type QualityScoreHistoryItem = {
     createdAt: string;
 };
 
+export type QualityOperationStatus = {
+    id: string;
+    status: string;
+    errorCode: string | null;
+    errorDetail: string | null;
+    attemptCount: number;
+    resultPayload: Record<string, unknown> | null;
+    createdAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    updatedAt: string;
+};
+
+export type OpenEndQualitySummary = {
+    answerCount: number;
+    aiJudgeOperation: QualityOperationStatus | null;
+};
+
 export type QualityResponseDetail = {
     id: string;
     surveyId: string;
@@ -131,6 +150,7 @@ export type QualityResponseDetail = {
     mode: "LIVE" | "TEST";
     startedAt: string | null;
     completedAt: string | null;
+    updatedAt: string | null;
     qualityScore: number | null;
     qualityState: string | null;
     qualityProcessingStatus: string | null;
@@ -143,6 +163,7 @@ export type QualityResponseDetail = {
     qualitySettingsVersion: number | null;
     qualityFlags: QualityResponseFlag[];
     qualityScoreHistory: QualityScoreHistoryItem[];
+    openEndQuality?: OpenEndQualitySummary;
 };
 
 export type QualityDetectorSettings = {
