@@ -98,6 +98,37 @@ const formatDurationMs = (ms: number): string => {
     return `${mins}m ${secs}s`;
 };
 
+const formatTableCellValue = (value: unknown): string | null => {
+    if (value === undefined || value === null || value === '' || value === '-') return null;
+    if (Array.isArray(value)) {
+        const compact = value
+            .map((entry) => {
+                if (entry && typeof entry === 'object') {
+                    const record = entry as Record<string, unknown>;
+                    const flagCode = typeof record.flagCode === 'string' ? record.flagCode : null;
+                    const severity = typeof record.severity === 'string' ? record.severity : null;
+                    if (flagCode && severity) return `${flagCode} (${severity})`;
+                    try {
+                        return JSON.stringify(record);
+                    } catch {
+                        return String(entry);
+                    }
+                }
+                return String(entry);
+            })
+            .filter(Boolean);
+        return compact.length > 0 ? compact.join(', ') : null;
+    }
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    }
+    return String(value);
+};
+
 export default function SurveyMetricsPage() {
     const { id } = useParams() as { id: string };
     const router = useRouter();
@@ -541,7 +572,23 @@ export default function SurveyMetricsPage() {
         'Response ID',
         'Submitted At',
         'Version',
-        'Survey Name'
+        'Survey Name',
+        'activeQualityFlags',
+        'qualityScore',
+        'qualityState',
+        'qualityProcessingStatus',
+        'qualityReviewStatus',
+        'qualityReviewReasonCode',
+        'qualityScoreVersion',
+        'qualityCriticalOverride',
+        'quality_flag_count',
+        'quality_flags',
+        'quality_flag_severities',
+        'quality_review_status',
+        'quality_review_reason',
+        'quality_processing_status',
+        'quality_score',
+        'quality_score_version'
     ];
     const normalizedStandardHeaders = new Set(standardHeaders.map(h => h.trim().toLowerCase()));
     const isStandardHeader = (header: string) => normalizedStandardHeaders.has(header.trim().toLowerCase());
@@ -646,7 +693,12 @@ export default function SurveyMetricsPage() {
                     >
                         Open Builder
                     </button>
-
+                    <button
+                        onClick={() => router.push(`/dashboard/surveys/${id}/quality`)}
+                        className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
+                    >
+                        Quality
+                    </button>
 
                     {canManageQuotas && (
                         <button
@@ -808,12 +860,12 @@ export default function SurveyMetricsPage() {
             {/* Charts Area */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Status Breakdown Bar Chart */}
-                <div className="lg:col-span-2 bg-background border border-border/60 rounded-xl p-6 shadow-sm">
+                <div className="lg:col-span-2 min-w-0 bg-background border border-border/60 rounded-xl p-6 shadow-sm">
                     <h3 className="text-sm font-semibold mb-6 flex items-center gap-2 text-foreground">
                         <IconChartBar size={18} className="text-muted-foreground" />
                         Conversion Funnel
                     </h3>
-                    <div className="h-[300px] w-full">
+                    <div className="h-[300px] w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
@@ -841,13 +893,13 @@ export default function SurveyMetricsPage() {
                 </div>
 
                 {/* Mode Breakdown Pie Chart */}
-                <div className="bg-background border border-border/60 rounded-xl p-6 shadow-sm">
+                <div className="min-w-0 bg-background border border-border/60 rounded-xl p-6 shadow-sm">
                     <h3 className="text-sm font-semibold mb-6 flex items-center gap-2 text-foreground">
                         <IconClock size={18} className="text-muted-foreground" />
                         Mode Distribution
                     </h3>
                     <div className="space-y-4">
-                        <div className="h-[240px] w-full">
+                        <div className="h-[240px] w-full min-w-0">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                                     <Pie
@@ -988,12 +1040,12 @@ export default function SurveyMetricsPage() {
                                                 </span>
                                             </td>
                                             {finalDynamicHeaders.map((header: string) => {
-                                                const displayValue = resp[header];
+                                                const displayValue = formatTableCellValue(resp[header]);
 
                                                 return (
                                                     <td key={header} className="px-6 py-3 border-b border-border/60">
-                                                        <div className="text-sm text-foreground line-clamp-2" title={String(displayValue || '')}>
-                                                            {displayValue !== undefined && displayValue !== null && displayValue !== '' && displayValue !== '-' ? (
+                                                        <div className="text-sm text-foreground line-clamp-2" title={displayValue || ''}>
+                                                            {displayValue ? (
                                                                 displayValue
                                                             ) : (
                                                                 <span className="text-muted-foreground opacity-50 block">-</span>

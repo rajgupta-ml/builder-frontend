@@ -10,6 +10,7 @@ import {
     IconChartBar,
     IconFilter,
     IconSettings,
+    IconShieldLock,
     IconHistory,
     IconPlayerPause,
     IconBan,
@@ -239,6 +240,18 @@ export function EditorHeader({
                             >
                                 <IconChartBar size={15} />
                                 Metrics
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsActionsDropdownOpen(false);
+                                    if (confirmNavigation()) {
+                                        router.push(`/dashboard/surveys/${surveyId}/quality`);
+                                    }
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all"
+                            >
+                                <IconShieldLock size={15} />
+                                Quality
                             </button>
                             <button
                                 onClick={() => {
