@@ -138,6 +138,9 @@ export type QualityOperationStatus = {
 
 export type OpenEndQualitySummary = {
     answerCount: number;
+    eligibleAnswerCount: number;
+    aiEligibleAnswerCount: number;
+    checkedAnswerCount: number;
     aiJudgeOperation: QualityOperationStatus | null;
 };
 

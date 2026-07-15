@@ -184,6 +184,10 @@ const DETECTOR_META: Record<string, { label: string; description: string }> = {
         label: "Language Mismatch",
         description: "The open-ended answer appears to be in a different language than expected.",
     },
+    SEMANTIC_IRRELEVANCE: {
+        label: "Answer Relevance",
+        description: "The AI judge found that the answer does not directly answer the question or is off-topic.",
+    },
     AI_GENERATED_TEXT: {
         label: "AI-Like Text",
         description: "The AI judge found signs that an open-ended answer may be generated text.",
@@ -203,6 +207,7 @@ const OPEN_END_DETECTOR_CODES = new Set([
     "GIBBERISH_OE",
     "DUPLICATE_OE_WITHIN_SESSION",
     "LANGUAGE_MISMATCH",
+    "SEMANTIC_IRRELEVANCE",
     "AI_GENERATED_TEXT",
 ]);
 
@@ -259,6 +264,9 @@ type OpenEndFlagEvidence = {
     reasonCodes?: string[] | null;
     confidence?: number | null;
     metadata?: Record<string, unknown> | null;
+    verdict?: string | null;
+    answerIntent?: string | null;
+    expectedAnswerShape?: string | null;
 };
 
 type OpenEndReviewItem = {
@@ -285,6 +293,7 @@ const getOpenEndEvidence = (flag: QualityResponseFlag): OpenEndFlagEvidence | nu
     if (!OPEN_END_DETECTOR_CODES.has(flag.detectorCode)) return null;
     const evidence = asObject(flag.evidence);
     if (!evidence) return null;
+    const metadata = asObject(evidence.metadata);
     return {
         questionId: asString(evidence.questionId),
         questionLabel: asString(evidence.questionLabel),
@@ -295,7 +304,10 @@ const getOpenEndEvidence = (flag: QualityResponseFlag): OpenEndFlagEvidence | nu
         issueDetail: asString(evidence.issueDetail),
         reasonCodes: asStringArray(evidence.reasonCodes),
         confidence: asNumber(evidence.confidence),
-        metadata: asObject(evidence.metadata),
+        verdict: asString(metadata?.verdict),
+        answerIntent: asString(metadata?.answerIntent),
+        expectedAnswerShape: asString(metadata?.expectedAnswerShape),
+        metadata,
     };
 };
 
@@ -368,7 +380,13 @@ const getOpenEndCheckMeta = (detail: QualityResponseDetail | null): QualityBadge
     }
 
     const answerCount = detail.openEndQuality.answerCount;
+    const eligibleAnswerCount = detail.openEndQuality.eligibleAnswerCount ?? answerCount;
+    const aiEligibleAnswerCount = detail.openEndQuality.aiEligibleAnswerCount ?? eligibleAnswerCount;
+    const checkedAnswerCount = detail.openEndQuality.checkedAnswerCount ?? 0;
     const answerLabel = formatOpenEndAnswerCount(answerCount);
+    const eligibleAnswerLabel = formatOpenEndAnswerCount(eligibleAnswerCount);
+    const aiEligibleAnswerLabel = formatOpenEndAnswerCount(aiEligibleAnswerCount);
+    const checkedAnswerLabel = formatOpenEndAnswerCount(checkedAnswerCount || aiEligibleAnswerCount);
     const operation = detail.openEndQuality.aiJudgeOperation;
     const openEndFlags = getOpenEndFlags(detail);
 
@@ -383,7 +401,7 @@ const getOpenEndCheckMeta = (detail: QualityResponseDetail | null): QualityBadge
     if (operation?.status === "FAILED") {
         return {
             label: "Failed",
-            description: `AI text checks failed for ${answerLabel}.`,
+            description: `AI text checks failed for ${aiEligibleAnswerLabel}.`,
             badge: "bg-rose-50 text-rose-600 border-rose-200",
             detail: operation.errorDetail || operation.errorCode,
             updatedAt: operation.updatedAt,
@@ -394,7 +412,7 @@ const getOpenEndCheckMeta = (detail: QualityResponseDetail | null): QualityBadge
     if (operation?.status === "QUEUED" || operation?.status === "PROCESSING") {
         return {
             label: operation.status === "QUEUED" ? "Queued" : "Running",
-            description: `AI text checks are ${operation.status === "QUEUED" ? "queued" : "running"} for ${answerLabel}.`,
+            description: `AI text checks are ${operation.status === "QUEUED" ? "queued" : "running"} for ${aiEligibleAnswerLabel}.`,
             badge: "bg-amber-50 text-amber-600 border-amber-200",
             updatedAt: operation.updatedAt,
             attemptCount: operation.attemptCount,
@@ -407,7 +425,7 @@ const getOpenEndCheckMeta = (detail: QualityResponseDetail | null): QualityBadge
             label: openEndFlags.length > 0 ? "Issues Found" : "Complete",
             description: openEndFlags.length > 0
                 ? `${questionCount} open-ended answer${questionCount === 1 ? "" : "s"} need review.`
-                : `AI text checks finished for ${answerLabel} with no open-ended issues.`,
+                : `AI text checks finished for ${checkedAnswerLabel} with no open-ended issues.${answerCount > aiEligibleAnswerCount ? ` ${answerCount - aiEligibleAnswerCount} skipped by node quality settings.` : ""}`,
             badge: openEndFlags.length > 0
                 ? "bg-rose-50 text-rose-600 border-rose-200"
                 : "bg-emerald-50 text-emerald-600 border-emerald-200",
@@ -428,7 +446,7 @@ const getOpenEndCheckMeta = (detail: QualityResponseDetail | null): QualityBadge
     if (detail.qualityProcessingStatus === "PENDING" || detail.qualityProcessingStatus === "PARTIAL") {
         return {
             label: "Pending",
-            description: `Open-ended checks are not finished for ${answerLabel}.`,
+            description: `Open-ended checks are not finished for ${eligibleAnswerLabel}.`,
             badge: "bg-amber-50 text-amber-600 border-amber-200",
         };
     }
@@ -443,7 +461,11 @@ const getOpenEndCheckMeta = (detail: QualityResponseDetail | null): QualityBadge
 
     return {
         label: "Not Scheduled",
-        description: `Open-ended answers exist (${answerLabel}), but no AI judge job is recorded for this response.`,
+        description: aiEligibleAnswerCount > 0
+            ? `Open-ended answers exist (${aiEligibleAnswerLabel}), but no AI judge job is recorded for this response.`
+            : answerCount > 0
+                ? `Open-ended answers exist (${answerLabel}), but none were eligible for AI checks under the node quality settings.`
+                : `Open-ended answers exist (${answerLabel}), but no AI judge job is recorded for this response.`,
         badge: "bg-slate-50 text-slate-600 border-slate-200",
     };
 };
@@ -1186,6 +1208,9 @@ export default function SurveyQualityPage() {
                                                     const thresholdCharacterCount = asNumber(metadata?.thresholdCharacterCount);
                                                     const thresholdConfidence = asNumber(metadata?.thresholdConfidence);
                                                     const detectedLanguage = asString(metadata?.detectedLanguage);
+                                                    const verdict = openEndEvidence?.verdict;
+                                                    const answerIntent = openEndEvidence?.answerIntent;
+                                                    const expectedAnswerShape = openEndEvidence?.expectedAnswerShape;
 
                                                     if (openEndEvidence) {
                                                         return (
@@ -1225,6 +1250,29 @@ export default function SurveyQualityPage() {
                                                                             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Issue</p>
                                                                             <p className="mt-1 text-sm text-foreground">{openEndEvidence.issueDetail || formatEvidenceSummary(flag)}</p>
                                                                         </div>
+
+                                                                        {(answerIntent || expectedAnswerShape || verdict) && (
+                                                                            <div className="grid gap-3 sm:grid-cols-3">
+                                                                                {answerIntent && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Expected intent</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">{titleCase(answerIntent)}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {expectedAnswerShape && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Expected shape</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">{titleCase(expectedAnswerShape)}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {verdict && (
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Verdict</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">{verdict}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
 
                                                                         {((openEndEvidence.reasonCodes?.length ?? 0) > 0 || openEndEvidence.confidence != null || thresholdConfidence !== null || detectedLanguage) && (
                                                                             <div className="grid gap-3 sm:grid-cols-2">
@@ -1285,10 +1333,13 @@ export default function SurveyQualityPage() {
                                                                         </div>
                                                                     </div>
                                                                     <span
-                                                                        className="rounded-md bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-600 shrink-0"
-                                                                        title="Points subtracted from this response's score"
+                                                                        className={cn(
+                                                                            "rounded-md border px-2.5 py-1 text-xs font-bold shrink-0",
+                                                                            flag.scoreImpact > 0 ? "bg-rose-50 border-rose-200 text-rose-600" : "bg-amber-50 border-amber-200 text-amber-700"
+                                                                        )}
+                                                                        title={flag.scoreImpact > 0 ? "Points subtracted from this response's score" : "Review signal with no score penalty"}
                                                                     >
-                                                                        −{flag.scoreImpact} pts
+                                                                        {flag.scoreImpact > 0 ? `−${flag.scoreImpact} pts` : "WARN"}
                                                                     </span>
                                                                 </div>
                                                             </div>

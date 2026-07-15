@@ -441,6 +441,7 @@ function SurveyFlow() {
                     node={selectedNode}
                     nodes={nodes}
                     issues={selectedNodeIssues}
+                    surveyId={surveyId}
                     readOnly={isReadOnly}
                     onChange={(fieldName, value) => {
                         if (isReadOnly || !selectedNodeId) return;
