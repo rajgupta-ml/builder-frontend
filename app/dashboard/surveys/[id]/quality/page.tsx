@@ -34,6 +34,7 @@ import type { UserRole } from "@/types/auth";
 import { toast } from "sonner";
 import { QualitySettingsModal } from "@/components/modals/QualitySettingsModal";
 import { ModalPortal } from "@/components/ui/ModalPortal";
+import { SurveyNavTabs } from "@/components/editor/SurveyNavTabs";
 
 type QualityBadgeMeta = { label: string; description: string; badge: string };
 
@@ -119,13 +120,13 @@ const PROCESSING_META: Record<string, QualityBadgeMeta> = {
 const REVIEW_CHOICES: { value: string; label: string; description: string }[] = [
     {
         value: "REVIEWED_VALID",
-        label: "Clear this response",
-        description: "The flags are wrong or excusable — the answers are legitimate.",
+        label: "Dismiss flags / mark clean",
+        description: "The flags are false alarms or acceptable for this study.",
     },
     {
         value: "REVIEWED_CONFIRMED",
-        label: "Confirm as bad data",
-        description: "The flags are correct — this response is genuinely low quality.",
+        label: "Confirm issue",
+        description: "The flags are correct and this response should be treated as low quality.",
     },
     {
         value: "UNREVIEWED",
@@ -165,31 +166,31 @@ const DETECTOR_META: Record<string, { label: string; description: string }> = {
         description: "The same device fingerprint submitted more than one response.",
     },
     TOO_SHORT_OE: {
-        label: "Too Short Open-End",
+        label: "Too short answer",
         description: "An open-ended answer is too short to be useful.",
     },
     KEYBOARD_MASH_OE: {
-        label: "Keyboard Mash",
+        label: "Keyboard mash",
         description: "An open-ended answer looks like random typing or repeated keys.",
     },
     GIBBERISH_OE: {
-        label: "Gibberish Open-End",
+        label: "Gibberish / random text",
         description: "The AI judge found an open-ended answer that does not read as meaningful text.",
     },
     DUPLICATE_OE_WITHIN_SESSION: {
-        label: "Duplicate Open-End",
+        label: "Repeated open-end answer",
         description: "The same open-ended answer was reused across questions in this response.",
     },
     LANGUAGE_MISMATCH: {
-        label: "Language Mismatch",
+        label: "Wrong language",
         description: "The open-ended answer appears to be in a different language than expected.",
     },
     SEMANTIC_IRRELEVANCE: {
-        label: "Answer Relevance",
+        label: "Off-topic / non-answer",
         description: "The AI judge found that the answer does not directly answer the question or is off-topic.",
     },
     AI_GENERATED_TEXT: {
-        label: "AI-Like Text",
+        label: "Possible AI-written answer",
         description: "The AI judge found signs that an open-ended answer may be generated text.",
     },
 };
@@ -255,6 +256,7 @@ const truncateText = (value: string, maxLength = 180) => {
 
 type OpenEndFlagEvidence = {
     questionId?: string | null;
+    subQuestionId?: string | null;
     questionLabel?: string | null;
     answerPreview?: string | null;
     detectorFamily?: string | null;
@@ -275,6 +277,32 @@ type OpenEndReviewItem = {
     issue: string;
 };
 
+type FlagDecisionCopy = {
+    label: string;
+    why: string;
+    action: string;
+};
+
+type DrawerDecisionSummary = {
+    title: string;
+    description: string;
+    className: string;
+};
+
+type FlagDisplayGroup = {
+    key: string;
+    flags: QualityResponseFlag[];
+    primaryFlag: QualityResponseFlag;
+    primaryEvidence: OpenEndFlagEvidence | null;
+    primaryCopy: FlagDecisionCopy;
+    issueCopies: FlagDecisionCopy[];
+    questionLabels: string[];
+    answerPreview: string | null;
+    scoreImpact: number;
+    severity: string;
+    isOpenEnd: boolean;
+};
+
 const asObject = (value: unknown): Record<string, unknown> | null => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     return value as Record<string, unknown>;
@@ -289,6 +317,191 @@ const asNumber = (value: unknown): number | null =>
 const asStringArray = (value: unknown): string[] =>
     Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 
+const normalizeReasonCodes = (codes?: string[] | null) =>
+    new Set((codes || []).map((code) => code.trim().toUpperCase()).filter(Boolean));
+
+const hasReasonCode = (codes: Set<string>, values: string[]) =>
+    values.some((value) => codes.has(value));
+
+const formatWordCharacterCount = (wordCount: number | null, characterCount: number | null) => {
+    const parts: string[] = [];
+    if (wordCount !== null) parts.push(`${wordCount} word${wordCount === 1 ? "" : "s"}`);
+    if (characterCount !== null) parts.push(`${characterCount} character${characterCount === 1 ? "" : "s"}`);
+    return parts.join(" / ");
+};
+
+const formatOpenEndExpectation = (evidence: OpenEndFlagEvidence | null) => {
+    if (!evidence) return "a useful answer";
+    const intent = evidence.answerIntent ? titleCase(evidence.answerIntent) : null;
+    const shape = evidence.expectedAnswerShape ? titleCase(evidence.expectedAnswerShape) : null;
+    if (intent && shape) return `${intent} answer in ${shape.toLowerCase()} form`;
+    if (intent) return `${intent} answer`;
+    if (shape) return `${shape} answer`;
+    return "a useful answer";
+};
+
+const getOpenEndFlagDecisionCopy = (flag: QualityResponseFlag, evidence: OpenEndFlagEvidence): FlagDecisionCopy => {
+    const reasonCodes = normalizeReasonCodes(evidence.reasonCodes);
+    const metadata = evidence.metadata;
+    const observed = formatWordCharacterCount(
+        asNumber(metadata?.observedWordCount),
+        asNumber(metadata?.observedCharacterCount)
+    );
+    const threshold = formatWordCharacterCount(
+        asNumber(metadata?.thresholdWordCount),
+        asNumber(metadata?.thresholdCharacterCount)
+    );
+    const expected = formatOpenEndExpectation(evidence);
+
+    if (flag.detectorCode === "TOO_SHORT_OE") {
+        return {
+            label: "Too short for this question",
+            why: threshold && observed
+                ? `Expected ${expected}, but the answer has only ${observed}; minimum is ${threshold}.`
+                : `Expected ${expected}, but the answer is too short to be useful.`,
+            action: "Confirm if short answers should not count here; dismiss if this field intentionally accepts tiny answers.",
+        };
+    }
+
+    if (flag.detectorCode === "KEYBOARD_MASH_OE" || flag.detectorCode === "GIBBERISH_OE") {
+        return {
+            label: "Gibberish / random text",
+            why: "The answer reads like random or meaningless text rather than a real response.",
+            action: "Confirm unless there is a clear study-specific reason this answer should be accepted.",
+        };
+    }
+
+    if (flag.detectorCode === "DUPLICATE_OE_WITHIN_SESSION") {
+        return {
+            label: "Repeated answer",
+            why: "The respondent reused the same open-ended answer across multiple questions.",
+            action: "Confirm if the repeated answer does not genuinely answer each question.",
+        };
+    }
+
+    if (flag.detectorCode === "LANGUAGE_MISMATCH") {
+        const detectedLanguage = asString(metadata?.detectedLanguage);
+        return {
+            label: "Wrong language",
+            why: detectedLanguage
+                ? `The answer appears to be in ${detectedLanguage}, which does not match the expected survey language.`
+                : "The answer appears to be in a different language than expected.",
+            action: "Confirm if this response cannot be reviewed reliably in the expected language.",
+        };
+    }
+
+    if (flag.detectorCode === "AI_GENERATED_TEXT") {
+        return {
+            label: "Possible AI-written answer",
+            why: "The answer has patterns that look machine-written rather than a respondent's own wording.",
+            action: "Confirm only if the writing style conflicts with your study rules.",
+        };
+    }
+
+    if (flag.detectorCode === "SEMANTIC_IRRELEVANCE") {
+        if (hasReasonCode(reasonCodes, ["GIBBERISH", "NONSENSE", "NONSENSE_TEXT", "CHARACTER_SALAD", "RANDOM_KEYSTROKES"])) {
+            return {
+                label: "Gibberish / random text",
+                why: `Expected ${expected}, but the answer does not read as meaningful text.`,
+                action: "Confirm unless the answer has a clear meaning in your study context.",
+            };
+        }
+        if (hasReasonCode(reasonCodes, ["REFUSAL", "EVASIVE", "EVASIVE_RESPONSE", "DOES_NOT_ANSWER", "DOES_NOT_ANSWER_QUESTION", "NON_ANSWER"])) {
+            return {
+                label: "Refusal / non-answer",
+                why: `Expected ${expected}, but the respondent avoided answering the question.`,
+                action: "Confirm if this answer should not be counted as usable data.",
+            };
+        }
+        if (hasReasonCode(reasonCodes, ["LOW_RELEVANCE", "LOW_SPECIFICITY", "WEAK_ANSWER", "WEAK_RESPONSE"])) {
+            return {
+                label: "Weak or vague answer",
+                why: `Expected ${expected}, but the answer is too vague to explain the respondent's view.`,
+                action: "Dismiss if this level of detail is acceptable; confirm if the study needs a real explanation.",
+            };
+        }
+        if (hasReasonCode(reasonCodes, ["OFF_TOPIC", "UNRELATED", "UNRELATED_TOPIC"])) {
+            return {
+                label: "Off-topic answer",
+                why: `Expected ${expected}, but the answer talks about something unrelated to the question.`,
+                action: "Confirm if the answer does not help answer the research question.",
+            };
+        }
+        return {
+            label: "Does not answer the question",
+            why: evidence.issueDetail || `Expected ${expected}, but the answer does not clearly address the question.`,
+            action: "Confirm if the answer is unusable; dismiss if it is acceptable after human review.",
+        };
+    }
+
+    return {
+        label: detectorMeta(flag.detectorCode).label,
+        why: evidence.issueDetail || formatEvidenceSummary(flag),
+        action: flag.scoreImpact > 0
+            ? "Confirm if this should affect the quality score; dismiss if it is acceptable."
+            : "Review this warning and dismiss it if it is acceptable.",
+    };
+};
+
+const getPlainFlagDecisionCopy = (flag: QualityResponseFlag): FlagDecisionCopy => ({
+    label: detectorMeta(flag.detectorCode).label,
+    why: formatEvidenceSummary(flag),
+    action: flag.scoreImpact > 0
+        ? "Confirm if this should affect the quality score; dismiss if it is acceptable."
+        : "Review this warning and dismiss it if it is acceptable.",
+});
+
+const getScoreImpactLabel = (flag: QualityResponseFlag) =>
+    flag.scoreImpact > 0 ? `-${flag.scoreImpact} pts` : "WARN";
+
+const getScoreImpactTitle = (flag: QualityResponseFlag) =>
+    flag.scoreImpact > 0
+        ? "Points subtracted from this response's score"
+        : "Review signal with no score penalty";
+
+const getResponseDecisionSummary = (
+    detail: QualityResponseDetail | null,
+    activeFlags: QualityResponseFlag[],
+    flagGroups: FlagDisplayGroup[]
+): DrawerDecisionSummary => {
+    if (!detail) {
+        return {
+            title: "Loading response",
+            description: "Fetching the response quality decision.",
+            className: "border-border/60 bg-muted/20 text-muted-foreground",
+        };
+    }
+
+    if (activeFlags.length === 0) {
+        return {
+            title: "No action needed",
+            description: "No active quality flags are attached to this response.",
+            className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        };
+    }
+
+    const issueLabels = flagGroups.flatMap((group) => group.issueCopies.map((copy) => copy.label));
+    const uniqueIssues = Array.from(new Set(issueLabels));
+    const issueSummary = uniqueIssues.slice(0, 3).join(", ");
+    const extraCount = uniqueIssues.length > 3 ? `, +${uniqueIssues.length - 3} more` : "";
+    const state = stateMeta(detail.qualityState);
+    const seriousCount = activeFlags.filter((flag) => flag.scoreImpact >= 10 || ["HIGH", "CRITICAL"].includes(flag.severity)).length;
+    const action = seriousCount > 0
+        ? "Review affected answers before accepting this response into analysis."
+        : "Quick human review is enough; these are low-risk warnings.";
+    const groupedLabel = flagGroups.length === activeFlags.length
+        ? `${activeFlags.length} active flag${activeFlags.length === 1 ? "" : "s"}`
+        : `${flagGroups.length} review item${flagGroups.length === 1 ? "" : "s"} from ${activeFlags.length} detector signals`;
+
+    return {
+        title: `${state.label}: ${groupedLabel}`,
+        description: `Main concern${uniqueIssues.length === 1 ? "" : "s"}: ${issueSummary}${extraCount}. ${action}`,
+        className: seriousCount > 0
+            ? "border-rose-200 bg-rose-50 text-rose-700"
+            : "border-amber-200 bg-amber-50 text-amber-700",
+    };
+};
+
 const getOpenEndEvidence = (flag: QualityResponseFlag): OpenEndFlagEvidence | null => {
     if (!OPEN_END_DETECTOR_CODES.has(flag.detectorCode)) return null;
     const evidence = asObject(flag.evidence);
@@ -296,6 +509,7 @@ const getOpenEndEvidence = (flag: QualityResponseFlag): OpenEndFlagEvidence | nu
     const metadata = asObject(evidence.metadata);
     return {
         questionId: asString(evidence.questionId),
+        subQuestionId: asString(evidence.subQuestionId),
         questionLabel: asString(evidence.questionLabel),
         answerPreview: asString(evidence.answerPreview),
         detectorFamily: asString(evidence.detectorFamily),
@@ -309,6 +523,133 @@ const getOpenEndEvidence = (flag: QualityResponseFlag): OpenEndFlagEvidence | nu
         expectedAnswerShape: asString(metadata?.expectedAnswerShape),
         metadata,
     };
+};
+
+const SEVERITY_RANK: Record<string, number> = {
+    LOW: 1,
+    MEDIUM: 2,
+    HIGH: 3,
+    CRITICAL: 4,
+};
+
+const DETECTOR_DISPLAY_PRIORITY: Record<string, number> = {
+    GIBBERISH_OE: 100,
+    KEYBOARD_MASH_OE: 95,
+    SEMANTIC_IRRELEVANCE: 90,
+    LANGUAGE_MISMATCH: 80,
+    AI_GENERATED_TEXT: 70,
+    DUPLICATE_OE_WITHIN_SESSION: 60,
+    TOO_SHORT_OE: 50,
+};
+
+const getHighestSeverity = (flags: QualityResponseFlag[]) => {
+    return flags.reduce((highest, flag) => (
+        (SEVERITY_RANK[flag.severity] || 0) > (SEVERITY_RANK[highest] || 0) ? flag.severity : highest
+    ), flags[0]?.severity || "LOW");
+};
+
+const getFlagDisplayPriority = (flag: QualityResponseFlag) => (
+    ((DETECTOR_DISPLAY_PRIORITY[flag.detectorCode] || 10) * 1000)
+    + ((SEVERITY_RANK[flag.severity] || 0) * 100)
+    + Math.max(0, flag.scoreImpact)
+);
+
+const getOpenEndGroupKey = (flag: QualityResponseFlag, evidence: OpenEndFlagEvidence) => {
+    if (evidence.questionId) {
+        return `open-end:${evidence.questionId}:${evidence.subQuestionId || ""}`;
+    }
+    if (flag.scopeKey.startsWith("question:")) {
+        return `open-end:${flag.scopeKey}`;
+    }
+    const questionLabels = asStringArray(evidence.metadata?.questionLabels);
+    const labelPart = questionLabels.length > 0 ? questionLabels.join("|") : (evidence.questionLabel || "open-ended-answer");
+    return `open-end:${labelPart}:${evidence.answerPreview || flag.scopeKey}`;
+};
+
+const uniqueDecisionCopies = (copies: FlagDecisionCopy[]) => {
+    const seen = new Set<string>();
+    return copies.filter((copy) => {
+        const key = `${copy.label}::${copy.why}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
+const getFlagDisplayGroups = (flags: QualityResponseFlag[]): FlagDisplayGroup[] => {
+    const grouped = new Map<string, Array<{ flag: QualityResponseFlag; evidence: OpenEndFlagEvidence | null; index: number }>>();
+
+    flags.forEach((flag, index) => {
+        const evidence = getOpenEndEvidence(flag);
+        const key = evidence ? getOpenEndGroupKey(flag, evidence) : `flag:${flag.id}`;
+        const current = grouped.get(key) || [];
+        current.push({ flag, evidence, index });
+        grouped.set(key, current);
+    });
+
+    return Array.from(grouped.entries()).map(([key, items]) => {
+        const sortedItems = [...items].sort((a, b) => {
+            const priorityDelta = getFlagDisplayPriority(b.flag) - getFlagDisplayPriority(a.flag);
+            return priorityDelta !== 0 ? priorityDelta : a.index - b.index;
+        });
+        const primary = sortedItems[0]!;
+        const sortedFlags = sortedItems.map((item) => item.flag);
+        const issueCopies = uniqueDecisionCopies(sortedItems.map((item) => (
+            item.evidence ? getOpenEndFlagDecisionCopy(item.flag, item.evidence) : getPlainFlagDecisionCopy(item.flag)
+        )));
+        const openEndEvidenceItems = sortedItems.filter((item): item is { flag: QualityResponseFlag; evidence: OpenEndFlagEvidence; index: number } => Boolean(item.evidence));
+        const firstEvidence = openEndEvidenceItems[0]?.evidence || null;
+        const questionLabels = Array.from(new Set(openEndEvidenceItems.flatMap((item) => {
+            const labels = asStringArray(item.evidence.metadata?.questionLabels);
+            if (labels.length > 0) return labels;
+            return [item.evidence.questionLabel || item.evidence.questionId || "Open-ended answer"];
+        })));
+        const answerPreview = firstEvidence?.answerPreview || null;
+
+        return {
+            key,
+            flags: sortedFlags,
+            primaryFlag: primary.flag,
+            primaryEvidence: primary.evidence,
+            primaryCopy: issueCopies[0] || getPlainFlagDecisionCopy(primary.flag),
+            issueCopies,
+            questionLabels,
+            answerPreview,
+            scoreImpact: sortedFlags.reduce((sum, flag) => sum + Math.max(0, flag.scoreImpact), 0),
+            severity: getHighestSeverity(sortedFlags),
+            isOpenEnd: openEndEvidenceItems.length > 0,
+        };
+    }).sort((a, b) => {
+        const severityDelta = (SEVERITY_RANK[b.severity] || 0) - (SEVERITY_RANK[a.severity] || 0);
+        if (severityDelta !== 0) return severityDelta;
+        const impactDelta = b.scoreImpact - a.scoreImpact;
+        if (impactDelta !== 0) return impactDelta;
+        return flags.findIndex((flag) => flag.id === a.flags[0]?.id) - flags.findIndex((flag) => flag.id === b.flags[0]?.id);
+    });
+};
+
+const getFlagGroupHeading = (groups: FlagDisplayGroup[], flags: QualityResponseFlag[]) => {
+    if (flags.length === 0) return "Quality flags";
+    if (groups.length === flags.length) return `Quality flags (${flags.length})`;
+    return `Quality issues (${groups.length} review item${groups.length === 1 ? "" : "s"}, ${flags.length} signals)`;
+};
+
+const getGroupScoreImpactLabel = (group: FlagDisplayGroup) => (
+    group.scoreImpact > 0 ? `-${group.scoreImpact} pts` : "WARN"
+);
+
+const getGroupScoreImpactTitle = (group: FlagDisplayGroup) => (
+    group.scoreImpact > 0
+        ? "Combined points subtracted by the detector signals in this review item"
+        : "Review signal with no score penalty"
+);
+
+const getGroupSuggestedAction = (group: FlagDisplayGroup) => {
+    if (group.flags.length <= 1) return group.primaryCopy.action;
+    if (group.scoreImpact > 0) {
+        return "Review this answer as one unit. Confirm if these issues make the answer unusable; dismiss if it is acceptable in context.";
+    }
+    return "Review these warnings together and dismiss them if the answer is acceptable in context.";
 };
 
 const getOpenEndQuestionCount = (flags: QualityResponseFlag[]) => {
@@ -651,8 +992,10 @@ export default function SurveyQualityPage() {
     );
 
     const activeFlags = useMemo(() => getActiveFlags(selectedDetail), [selectedDetail]);
+    const flagGroups = useMemo(() => getFlagDisplayGroups(activeFlags), [activeFlags]);
     const openEndFlags = useMemo(() => getOpenEndFlags(selectedDetail), [selectedDetail]);
     const openEndReviewItems = useMemo(() => getOpenEndReviewItems(openEndFlags), [openEndFlags]);
+    const drawerDecisionSummary = useMemo(() => getResponseDecisionSummary(selectedDetail, activeFlags, flagGroups), [selectedDetail, activeFlags, flagGroups]);
     const drawerProcessingMeta = processingMeta(selectedDetail?.qualityProcessingStatus);
     const openEndCheckMeta = getOpenEndCheckMeta(selectedDetail);
 
@@ -668,10 +1011,12 @@ export default function SurveyQualityPage() {
         }
     };
 
-    const toggleReviewedFlag = (flagId: string) => {
-        setReviewedFlagIds((current) => current.includes(flagId)
-            ? current.filter((value) => value !== flagId)
-            : [...current, flagId]);
+    const toggleReviewedFlagGroup = (flagIds: string[]) => {
+        setReviewedFlagIds((current) => {
+            const allSelected = flagIds.every((flagId) => current.includes(flagId));
+            if (allSelected) return current.filter((value) => !flagIds.includes(value));
+            return Array.from(new Set([...current, ...flagIds]));
+        });
     };
 
     const submitReview = async () => {
@@ -774,60 +1119,51 @@ export default function SurveyQualityPage() {
 
     return (
         <div className="p-8 md:p-12 w-full max-w-7xl mx-auto space-y-8">
-            {/* Top Navigation / Actions */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-semibold tracking-tight text-foreground">{survey.name}</h1>
-                    <div className="mt-2 flex items-center gap-2">
-                        <p className="text-sm text-muted-foreground font-medium">{survey.client ? `${survey.client} • ` : ""}Response Quality</p>
-                        <HowScoringWorksPopover />
+            {/* Header: identity + actions, with section tabs woven into the divider */}
+            <header className="space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate">{survey.name}</h1>
+                        <div className="mt-2 flex items-center gap-2">
+                            <p className="text-sm text-muted-foreground font-medium">{survey.client ? `${survey.client} • ` : ""}Response Quality</p>
+                            <HowScoringWorksPopover />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => void refreshAll()}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+                            title="Refresh Data"
+                        >
+                            <IconRefresh size={16} strokeWidth={1.7} />
+                        </button>
+
+                        {canConfigureQuality && (
+                            <button
+                                onClick={() => setIsSettingsOpen(true)}
+                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+                                title="Quality Settings"
+                            >
+                                <IconSettings size={16} strokeWidth={1.7} />
+                            </button>
+                        )}
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => void refreshAll()}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
-                        title="Refresh Data"
-                    >
-                        <IconRefresh size={18} strokeWidth={1.5} />
-                    </button>
 
-                    {canConfigureQuality && (
-                        <button
-                            onClick={() => setIsSettingsOpen(true)}
-                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
-                            title="Quality Settings"
-                        >
-                            <IconSettings size={18} strokeWidth={1.5} />
-                        </button>
-                    )}
+                {/* Section navigation */}
+                <SurveyNavTabs surveyId={id} variant="underline" />
+            </header>
 
-                    <div className="w-px h-6 bg-border/60 mx-1" />
-
-                    <button
-                        onClick={() => router.push(`/dashboard/surveys/${id}`)}
-                        className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
-                    >
-                        Open Builder
-                    </button>
-                    <button
-                        onClick={() => router.push(`/dashboard/surveys/${id}/metrics`)}
-                        className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
-                    >
-                        Metrics
-                    </button>
-                </div>
-            </div>
-
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 bg-muted/20 p-1 rounded-md w-fit border border-border/60">
+            {/* Data scope */}
+            <div className="flex h-10 w-fit items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-1">
                 <button
                     onClick={() => {
                         setViewMode("LIVE");
                         setCurrentPage(1);
                     }}
                     className={cn(
-                        "px-6 py-1.5 text-xs font-semibold rounded-sm transition-all",
+                        "h-8 rounded-md px-5 text-xs font-semibold transition-all",
                         viewMode === "LIVE" ? "bg-background text-foreground shadow-sm border border-border/60" : "text-muted-foreground hover:bg-muted/50 border border-transparent"
                     )}
                 >
@@ -839,7 +1175,7 @@ export default function SurveyQualityPage() {
                         setCurrentPage(1);
                     }}
                     className={cn(
-                        "px-6 py-1.5 text-xs font-semibold rounded-sm transition-all",
+                        "h-8 rounded-md px-5 text-xs font-semibold transition-all",
                         viewMode === "TEST" ? "bg-background text-foreground shadow-sm border border-border/60" : "text-muted-foreground hover:bg-muted/50 border border-transparent"
                     )}
                 >
@@ -1129,21 +1465,27 @@ export default function SurveyQualityPage() {
                                 ) : (
                                     <div className="divide-y divide-border/60">
                                         {/* Score summary */}
-                                        <div className="px-6 py-5 flex items-center gap-5">
-                                            <div className="text-center shrink-0">
-                                                <div className="text-4xl font-bold tracking-tight text-foreground leading-none">
-                                                    {selectedDetail.qualityScore ?? "—"}
+                                        <div className="px-6 py-5 space-y-4">
+                                            <div className="flex items-center gap-5">
+                                                <div className="text-center shrink-0">
+                                                    <div className="text-4xl font-bold tracking-tight text-foreground leading-none">
+                                                        {selectedDetail.qualityScore ?? "—"}
+                                                    </div>
+                                                    <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">of 100</div>
                                                 </div>
-                                                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">of 100</div>
+                                                <div className="min-w-0 space-y-1.5">
+                                                    <p className="text-sm font-semibold text-foreground">{scoreMeaning(selectedDetail.qualityScore)}</p>
+                                                    <p className="text-xs text-muted-foreground">{stateMeta(selectedDetail.qualityState).description}</p>
+                                                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                                                        <QualityBadge meta={stateMeta(selectedDetail.qualityState)} />
+                                                        <QualityBadge meta={drawerProcessingMeta} />
+                                                        <QualityBadge meta={reviewMeta(selectedDetail.qualityReviewStatus)} />
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="min-w-0 space-y-1.5">
-                                                <p className="text-sm font-semibold text-foreground">{scoreMeaning(selectedDetail.qualityScore)}</p>
-                                                <p className="text-xs text-muted-foreground">{stateMeta(selectedDetail.qualityState).description}</p>
-                                                <div className="flex flex-wrap items-center gap-2 pt-1">
-                                                    <QualityBadge meta={stateMeta(selectedDetail.qualityState)} />
-                                                    <QualityBadge meta={drawerProcessingMeta} />
-                                                    <QualityBadge meta={reviewMeta(selectedDetail.qualityReviewStatus)} />
-                                                </div>
+                                            <div className={cn("rounded-xl border px-4 py-3", drawerDecisionSummary.className)}>
+                                                <p className="text-sm font-semibold">{drawerDecisionSummary.title}</p>
+                                                <p className="mt-1 text-sm opacity-90">{drawerDecisionSummary.description}</p>
                                             </div>
                                         </div>
 
@@ -1191,184 +1533,190 @@ export default function SurveyQualityPage() {
                                         {/* Flags */}
                                         <div className="px-6 py-5 space-y-3">
                                             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                                {activeFlags.length === 0 ? "Quality flags" : `Quality flags (${activeFlags.length})`}
+                                                {getFlagGroupHeading(flagGroups, activeFlags)}
                                             </h4>
                                             {activeFlags.length === 0 ? (
                                                 <p className="text-sm text-muted-foreground">
                                                     {getNoActiveFlagsMessage(selectedDetail, openEndCheckMeta)}
                                                 </p>
                                             ) : (
-                                                activeFlags.map((flag) => {
-                                                    const openEndEvidence = getOpenEndEvidence(flag);
-                                                    const metadata = openEndEvidence?.metadata;
-                                                    const questionLabels = asStringArray(metadata?.questionLabels);
-                                                    const observedWordCount = asNumber(metadata?.observedWordCount);
-                                                    const observedCharacterCount = asNumber(metadata?.observedCharacterCount);
-                                                    const thresholdWordCount = asNumber(metadata?.thresholdWordCount);
-                                                    const thresholdCharacterCount = asNumber(metadata?.thresholdCharacterCount);
-                                                    const thresholdConfidence = asNumber(metadata?.thresholdConfidence);
-                                                    const detectedLanguage = asString(metadata?.detectedLanguage);
-                                                    const verdict = openEndEvidence?.verdict;
-                                                    const answerIntent = openEndEvidence?.answerIntent;
-                                                    const expectedAnswerShape = openEndEvidence?.expectedAnswerShape;
-
-                                                    if (openEndEvidence) {
-                                                        return (
-                                                            <div key={flag.id} className="rounded-lg border border-border/60 bg-background p-4">
-                                                                <div className="flex items-start justify-between gap-3">
-                                                                    <div className="min-w-0 space-y-3">
-                                                                        <div className="flex flex-wrap items-center gap-2">
-                                                                            <span className="text-sm font-semibold text-foreground">{detectorMeta(flag.detectorCode).label}</span>
-                                                                            <span className={cn(
-                                                                                "px-2 py-0.5 rounded-md text-[10px] uppercase font-semibold border w-fit",
-                                                                                SEVERITY_TONE[flag.severity] || SEVERITY_TONE.LOW
-                                                                            )}>
-                                                                                {flag.severity}
-                                                                            </span>
-                                                                        </div>
-
-                                                                        <div className="grid gap-3 sm:grid-cols-2">
-                                                                            <div>
-                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Question</p>
-                                                                                {questionLabels.length > 0 ? (
-                                                                                    <div className="mt-1 space-y-1">
-                                                                                        {questionLabels.map((label) => (
-                                                                                            <p key={label} className="text-sm text-foreground">{label}</p>
-                                                                                        ))}
-                                                                                    </div>
-                                                                                ) : (
-                                                                                    <p className="mt-1 text-sm text-foreground">{openEndEvidence.questionLabel || openEndEvidence.questionId || "Open-ended answer"}</p>
-                                                                                )}
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Answer</p>
-                                                                                <p className="mt-1 text-sm text-foreground">{openEndEvidence.answerPreview || "No preview available"}</p>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        <div>
-                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Issue</p>
-                                                                            <p className="mt-1 text-sm text-foreground">{openEndEvidence.issueDetail || formatEvidenceSummary(flag)}</p>
-                                                                        </div>
-
-                                                                        {(answerIntent || expectedAnswerShape || verdict) && (
-                                                                            <div className="grid gap-3 sm:grid-cols-3">
-                                                                                {answerIntent && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Expected intent</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">{titleCase(answerIntent)}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                                {expectedAnswerShape && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Expected shape</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">{titleCase(expectedAnswerShape)}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                                {verdict && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Verdict</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">{verdict}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-
-                                                                        {((openEndEvidence.reasonCodes?.length ?? 0) > 0 || openEndEvidence.confidence != null || thresholdConfidence !== null || detectedLanguage) && (
-                                                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                                                {openEndEvidence.reasonCodes && openEndEvidence.reasonCodes.length > 0 && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Reason codes</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">{openEndEvidence.reasonCodes.join(", ")}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                                {detectedLanguage && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detected language</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">{detectedLanguage}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                                {openEndEvidence.confidence !== null && openEndEvidence.confidence !== undefined && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Confidence</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">{openEndEvidence.confidence}%{thresholdConfidence !== null ? ` · threshold ${thresholdConfidence}%` : ""}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                                {(observedWordCount !== null || observedCharacterCount !== null) && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Observed</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">
-                                                                                            {observedWordCount !== null ? `${observedWordCount} word${observedWordCount === 1 ? "" : "s"}` : ""}
-                                                                                            {observedWordCount !== null && observedCharacterCount !== null ? " / " : ""}
-                                                                                            {observedCharacterCount !== null ? `${observedCharacterCount} character${observedCharacterCount === 1 ? "" : "s"}` : ""}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                )}
-                                                                                {(thresholdWordCount !== null || thresholdCharacterCount !== null) && (
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Threshold</p>
-                                                                                        <p className="mt-1 text-sm text-foreground">
-                                                                                            {thresholdWordCount !== null ? `${thresholdWordCount} word${thresholdWordCount === 1 ? "" : "s"}` : ""}
-                                                                                            {thresholdWordCount !== null && thresholdCharacterCount !== null ? " / " : ""}
-                                                                                            {thresholdCharacterCount !== null ? `${thresholdCharacterCount} character${thresholdCharacterCount === 1 ? "" : "s"}` : ""}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-
-                                                                        <div className="grid gap-3 sm:grid-cols-2">
-                                                                            <div>
-                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detector</p>
-                                                                                <p className="mt-1 text-sm text-foreground">
-                                                                                    {openEndEvidence.detectorFamily === "AI_JUDGE"
-                                                                                        ? `AI judge${openEndEvidence.detectorModel ? `: ${openEndEvidence.detectorModel}` : ""}`
-                                                                                        : `Deterministic rule: ${flag.detectorCode}`}
-                                                                                </p>
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detected</p>
-                                                                                <p className="mt-1 text-sm text-foreground">{safeDateTime(flag.detectedAt)}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <span
-                                                                        className={cn(
-                                                                            "rounded-md border px-2.5 py-1 text-xs font-bold shrink-0",
-                                                                            flag.scoreImpact > 0 ? "bg-rose-50 border-rose-200 text-rose-600" : "bg-amber-50 border-amber-200 text-amber-700"
-                                                                        )}
-                                                                        title={flag.scoreImpact > 0 ? "Points subtracted from this response's score" : "Review signal with no score penalty"}
-                                                                    >
-                                                                        {flag.scoreImpact > 0 ? `−${flag.scoreImpact} pts` : "WARN"}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    }
+                                                flagGroups.map((group) => {
+                                                    const scoreTone = group.scoreImpact > 0
+                                                        ? "bg-rose-50 border-rose-200 text-rose-600"
+                                                        : "bg-amber-50 border-amber-200 text-amber-700";
+                                                    const hasQuestionAnswer = group.isOpenEnd && (group.questionLabels.length > 0 || group.answerPreview);
 
                                                     return (
-                                                        <div key={flag.id} className="rounded-lg border border-border/60 bg-background p-4">
+                                                        <div key={group.key} className="rounded-xl border border-border/70 bg-background p-4 shadow-sm">
                                                             <div className="flex items-start justify-between gap-3">
-                                                                <div className="min-w-0 space-y-1">
+                                                                <div className="min-w-0">
                                                                     <div className="flex flex-wrap items-center gap-2">
-                                                                        <span className="text-sm font-semibold text-foreground">{detectorMeta(flag.detectorCode).label}</span>
+                                                                        <span className="text-sm font-semibold text-foreground">{group.primaryCopy.label}</span>
                                                                         <span className={cn(
                                                                             "px-2 py-0.5 rounded-md text-[10px] uppercase font-semibold border w-fit",
-                                                                            SEVERITY_TONE[flag.severity] || SEVERITY_TONE.LOW
+                                                                            SEVERITY_TONE[group.severity] || SEVERITY_TONE.LOW
                                                                         )}>
-                                                                            {flag.severity}
+                                                                            {group.severity}
                                                                         </span>
+                                                                        {group.flags.length > 1 && (
+                                                                            <span className="rounded-md border border-border/70 bg-muted/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                                                                {group.flags.length} signals
+                                                                            </span>
+                                                                        )}
                                                                     </div>
-                                                                    <p className="text-sm text-muted-foreground">{formatEvidenceSummary(flag)}</p>
-                                                                    <p className="text-xs text-muted-foreground opacity-80">Detected {safeDateTime(flag.detectedAt)}</p>
+                                                                    <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{group.primaryCopy.why}</p>
                                                                 </div>
                                                                 <span
-                                                                    className="rounded-md bg-rose-50 border border-rose-200 px-2.5 py-1 text-xs font-bold text-rose-600 shrink-0"
-                                                                    title="Points subtracted from this response's score"
+                                                                    className={cn("rounded-md border px-2.5 py-1 text-xs font-bold shrink-0", scoreTone)}
+                                                                    title={getGroupScoreImpactTitle(group)}
                                                                 >
-                                                                    −{flag.scoreImpact} pts
+                                                                    {getGroupScoreImpactLabel(group)}
                                                                 </span>
                                                             </div>
+
+                                                            {group.issueCopies.length > 1 && (
+                                                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                                                    {group.issueCopies.map((copy) => (
+                                                                        <span key={`${group.key}-${copy.label}`} className="rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-xs font-medium text-foreground">
+                                                                            {copy.label}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            {hasQuestionAnswer && (
+                                                                <div className="mt-4 rounded-lg border border-border/60 bg-muted/20 p-3 space-y-3">
+                                                                    {group.questionLabels.length > 0 && (
+                                                                        <div>
+                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Question</p>
+                                                                            <div className="mt-1 space-y-1">
+                                                                                {group.questionLabels.map((label) => (
+                                                                                    <p key={label} className="text-sm text-foreground">{truncateText(label, 220)}</p>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    {group.answerPreview && (
+                                                                        <div>
+                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Answer</p>
+                                                                            <p className="mt-1 text-sm text-foreground">{truncateText(group.answerPreview, 220)}</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            <div className="mt-3 rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2">
+                                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-700">Suggested decision</p>
+                                                                <p className="mt-1 text-sm text-sky-900">{getGroupSuggestedAction(group)}</p>
+                                                            </div>
+
+                                                            <details className="mt-3 rounded-lg border border-border/60 bg-muted/10 px-3 py-2 group">
+                                                                <summary className="cursor-pointer select-none text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground">
+                                                                    Technical details: {group.flags.length} detector signal{group.flags.length === 1 ? "" : "s"}
+                                                                </summary>
+                                                                <div className="mt-3 space-y-3">
+                                                                    {group.flags.map((flag) => {
+                                                                        const openEndEvidence = getOpenEndEvidence(flag);
+                                                                        const metadata = openEndEvidence?.metadata;
+                                                                        const thresholdConfidence = asNumber(metadata?.thresholdConfidence);
+                                                                        const detectedLanguage = asString(metadata?.detectedLanguage);
+                                                                        const observedText = formatWordCharacterCount(
+                                                                            asNumber(metadata?.observedWordCount),
+                                                                            asNumber(metadata?.observedCharacterCount)
+                                                                        );
+                                                                        const thresholdText = formatWordCharacterCount(
+                                                                            asNumber(metadata?.thresholdWordCount),
+                                                                            asNumber(metadata?.thresholdCharacterCount)
+                                                                        );
+                                                                        const detectorText = openEndEvidence?.detectorFamily === "AI_JUDGE"
+                                                                            ? `AI judge${openEndEvidence.detectorModel ? `: ${openEndEvidence.detectorModel}` : ""}`
+                                                                            : `Deterministic rule: ${flag.detectorCode}`;
+                                                                        const decisionCopy = openEndEvidence
+                                                                            ? getOpenEndFlagDecisionCopy(flag, openEndEvidence)
+                                                                            : getPlainFlagDecisionCopy(flag);
+
+                                                                        return (
+                                                                            <div key={flag.id} className="rounded-lg border border-border/60 bg-background p-3">
+                                                                                <div className="flex items-start justify-between gap-3">
+                                                                                    <div>
+                                                                                        <p className="text-sm font-semibold text-foreground">{decisionCopy.label}</p>
+                                                                                        <p className="mt-0.5 text-xs text-muted-foreground">{detectorText}</p>
+                                                                                    </div>
+                                                                                    <span
+                                                                                        className={cn(
+                                                                                            "rounded-md border px-2 py-0.5 text-[11px] font-bold shrink-0",
+                                                                                            flag.scoreImpact > 0 ? "bg-rose-50 border-rose-200 text-rose-600" : "bg-amber-50 border-amber-200 text-amber-700"
+                                                                                        )}
+                                                                                        title={getScoreImpactTitle(flag)}
+                                                                                    >
+                                                                                        {getScoreImpactLabel(flag)}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                                                                    {openEndEvidence?.answerIntent && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Expected</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{formatOpenEndExpectation(openEndEvidence)}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {openEndEvidence?.expectedAnswerShape && !openEndEvidence.answerIntent && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Expected shape</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{titleCase(openEndEvidence.expectedAnswerShape)}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {openEndEvidence?.verdict && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Model verdict</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{openEndEvidence.verdict}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {openEndEvidence?.reasonCodes && openEndEvidence.reasonCodes.length > 0 && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Reason codes</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{openEndEvidence.reasonCodes.join(", ")}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {detectedLanguage && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detected language</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{detectedLanguage}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {openEndEvidence?.confidence !== null && openEndEvidence?.confidence !== undefined && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Confidence</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{openEndEvidence.confidence}%{thresholdConfidence !== null ? ` threshold ${thresholdConfidence}%` : ""}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {observedText && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Observed</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{observedText}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {thresholdText && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Threshold</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{thresholdText}</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {!openEndEvidence && flag.confidence !== null && flag.confidence !== undefined && (
+                                                                                        <div>
+                                                                                            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Confidence</p>
+                                                                                            <p className="mt-1 text-sm text-foreground">{flag.confidence}%</p>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <div>
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Detected</p>
+                                                                                        <p className="mt-1 text-sm text-foreground">{safeDateTime(flag.detectedAt)}</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </details>
                                                         </div>
                                                     );
                                                 })
@@ -1429,24 +1777,32 @@ export default function SurveyQualityPage() {
                                                                 ))}
                                                             </div>
 
-                                                            {reviewStatus !== "UNREVIEWED" && activeFlags.length > 1 && (
+                                                            {reviewStatus !== "UNREVIEWED" && flagGroups.length > 1 && (
                                                                 <div className="space-y-2">
-                                                                    <p className="text-xs font-semibold text-muted-foreground">Which flags does this decision apply to?</p>
+                                                                    <p className="text-xs font-semibold text-muted-foreground">Which review items does this decision apply to?</p>
                                                                     <div className="space-y-2 rounded-lg border border-border/60 bg-background p-3">
-                                                                        {activeFlags.map((flag) => (
-                                                                            <label key={flag.id} className="flex items-start gap-3 text-sm text-foreground cursor-pointer">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    checked={reviewedFlagIds.includes(flag.id)}
-                                                                                    onChange={() => toggleReviewedFlag(flag.id)}
-                                                                                    className="mt-0.5 h-4 w-4 accent-primary"
-                                                                                />
-                                                                                <span>
-                                                                                    <span className="font-medium">{detectorMeta(flag.detectorCode).label}</span>
-                                                                                    <span className="text-muted-foreground"> — {formatEvidenceSummary(flag)}</span>
-                                                                                </span>
-                                                                            </label>
-                                                                        ))}
+                                                                        {flagGroups.map((group) => {
+                                                                            const flagIds = group.flags.map((flag) => flag.id);
+                                                                            const allSelected = flagIds.every((flagId) => reviewedFlagIds.includes(flagId));
+                                                                            const label = group.questionLabels[0] || group.primaryCopy.label;
+                                                                            return (
+                                                                                <label key={group.key} className="flex items-start gap-3 text-sm text-foreground cursor-pointer">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={allSelected}
+                                                                                        onChange={() => toggleReviewedFlagGroup(flagIds)}
+                                                                                        className="mt-0.5 h-4 w-4 accent-primary"
+                                                                                    />
+                                                                                    <span>
+                                                                                        <span className="font-medium">{group.primaryCopy.label}</span>
+                                                                                        {group.flags.length > 1 && (
+                                                                                            <span className="text-muted-foreground"> ({group.flags.length} signals)</span>
+                                                                                        )}
+                                                                                        <span className="block text-xs text-muted-foreground">{truncateText(label, 140)}</span>
+                                                                                    </span>
+                                                                                </label>
+                                                                            );
+                                                                        })}
                                                                     </div>
                                                                 </div>
                                                             )}

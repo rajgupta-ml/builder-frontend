@@ -1,14 +1,17 @@
 "use client"
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
     ReactFlow,
     Background,
     Controls,
     type Node as ReactFlowNode,
+    type Edge as ReactFlowEdge,
+    type EdgeChange,
     useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { nodeTypes, edgeTypes, getNodeInitialData } from '@/components/nodes';
+import { getNodeSkipRules, isGhostJumpEdge, JUMP_EDGE_ID_PREFIX } from '@/lib/skipMigration';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { generateUniqueId } from "@/lib/utils";
 
@@ -19,6 +22,7 @@ export function EditorCanvas() {
     const {
         nodes,
         edges,
+        selectedNodeId,
         onNodesChange,
         onEdgesChange,
         onConnect,
@@ -27,6 +31,41 @@ export function EditorCanvas() {
         setSelectedNodeId,
         setSaveStatus
     } = useSurveyStore();
+
+    // Skip rules live in node data, not in persisted edges. When the source
+    // (or jump target) question is selected, show the jump as a ghost edge.
+    const displayEdges = useMemo(() => {
+        if (!selectedNodeId) return edges;
+        const nodeIds = new Set(nodes.map((node) => node.id));
+        const jumpEdges: ReactFlowEdge[] = [];
+        nodes.forEach((node) => {
+            const skips = getNodeSkipRules(node.data);
+            if (skips.length === 0) return;
+            const isVisible = node.id === selectedNodeId
+                || skips.some((rule) => rule.targetId === selectedNodeId);
+            if (!isVisible) return;
+            skips.forEach((rule, index) => {
+                if (!rule.targetId || !nodeIds.has(rule.targetId)) return;
+                jumpEdges.push({
+                    id: `${JUMP_EDGE_ID_PREFIX}${node.id}-${rule.id || index}`,
+                    source: node.id,
+                    target: rule.targetId,
+                    type: 'jump',
+                    selectable: false,
+                    deletable: false,
+                    focusable: false,
+                    data: { label: rule.label },
+                });
+            });
+        });
+        return jumpEdges.length > 0 ? [...edges, ...jumpEdges] : edges;
+    }, [nodes, edges, selectedNodeId]);
+
+    const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+        const persistedChanges = changes.filter((change) =>
+            !('id' in change) || !isGhostJumpEdge({ id: String(change.id) }));
+        if (persistedChanges.length > 0) onEdgesChange(persistedChanges);
+    }, [onEdgesChange]);
 
     const onDragOver = useCallback((event: React.DragEvent) => {
         event.preventDefault();
@@ -83,11 +122,11 @@ export function EditorCanvas() {
         <div className="flex-1 h-full relative border-r border-border" onDragOver={onDragOver} onDrop={onDrop}>
             <ReactFlow
                 nodes={nodes}
-                edges={edges}
+                edges={displayEdges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
+                onEdgesChange={handleEdgesChange}
                 onConnect={onConnect}
                 onNodeClick={onNodeClick}
                 onPaneClick={onPaneClick}

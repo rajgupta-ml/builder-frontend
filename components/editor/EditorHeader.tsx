@@ -7,10 +7,8 @@ import {
     IconLoader2,
     IconPlayerPlay,
     IconShare,
-    IconChartBar,
     IconFilter,
     IconSettings,
-    IconShieldLock,
     IconHistory,
     IconPlayerPause,
     IconBan,
@@ -192,35 +190,95 @@ export function EditorHeader({
                 </div>
             )}
 
-            {/* Primary Action */}
+            {/* Grouped Toolbar: Test / Versions / More */}
+            <div className="flex h-10 items-center gap-1 rounded-lg border border-border/60 bg-background/90 p-1 shadow-sm backdrop-blur-md">
             {canRunTest && (
                 <button
                     onClick={handleQuickTest}
                     disabled={isSyncingTest || isReadOnly}
-                    className="flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-sm font-medium text-foreground hover:bg-muted transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-foreground hover:bg-muted transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     title={isReadOnly ? "Unavailable in read-only version view" : "Run test survey in a new tab"}
                 >
                     {isSyncingTest ? (
-                        <IconLoader2 className="animate-spin text-blue-500" size={16} />
+                        <IconLoader2 className="animate-spin text-blue-500" size={15} />
                     ) : (
-                        <IconPlayerPlay size={16} className="text-blue-500" />
+                        <IconPlayerPlay size={15} className="text-blue-500" />
                     )}
-                    Run Test Survey
+                    Test
                 </button>
             )}
+
+            {/* Version History */}
+            <div className="relative" ref={versionDropdownRef}>
+                <button
+                    onClick={() => setIsVersionDropdownOpen(!isVersionDropdownOpen)}
+                    className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-all",
+                        isVersionDropdownOpen && "bg-muted text-foreground"
+                    )}
+                    title={selectedVersionId ? `Viewing Version ${versions.find(v => v.id === selectedVersionId)?.version || '?'}` : 'Version history'}
+                >
+                    <IconHistory size={16} strokeWidth={1.8} />
+                </button>
+
+                {isVersionDropdownOpen && (
+                    <div className="absolute top-full right-0 mt-2 w-64 bg-background border border-border rounded-xl shadow-xl overflow-hidden z-60 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-2 border-b border-border bg-muted/30">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Version History</p>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto p-1">
+                            <button
+                                onClick={() => {
+                                    selectVersion(surveyId, null);
+                                    setIsVersionDropdownOpen(false);
+                                }}
+                                className={cn(
+                                    "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between",
+                                    !selectedVersionId ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
+                                )}
+                            >
+                                <span>Current Draft</span>
+                                {!selectedVersionId && <IconCheck size={14} />}
+                            </button>
+
+                            {versions.map((v) => (
+                                <button
+                                    key={v.id}
+                                    onClick={() => {
+                                        selectVersion(surveyId, v.id);
+                                        setIsVersionDropdownOpen(false);
+                                    }}
+                                    className={cn(
+                                        "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between group/item",
+                                        selectedVersionId === v.id ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    <div className="flex flex-col">
+                                        <span className="flex items-center gap-1 font-semibold">
+                                            Version {v.version}
+                                            {v.status === 'PUBLISHED' && <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full border border-emerald-500/20 font-normal">Live</span>}
+                                        </span>
+                                        <span className="text-[10px] opacity-60">{new Date(v.createdAt).toLocaleString()}</span>
+                                    </div>
+                                    {selectedVersionId === v.id && <IconCheck size={14} />}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* More Menu */}
             <div className="relative" ref={actionsDropdownRef}>
                 <button
                     onClick={() => setIsActionsDropdownOpen((prev) => !prev)}
                     className={cn(
-                        "flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-xs font-medium hover:bg-muted transition-all",
-                        isActionsDropdownOpen && "bg-muted shadow-inner"
+                        "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-all",
+                        isActionsDropdownOpen && "bg-muted text-foreground"
                     )}
                     title="More actions"
                 >
-                    <IconDotsVertical size={16} className="text-muted-foreground" />
-                    <span>More</span>
+                    <IconDotsVertical size={16} strokeWidth={1.8} />
                 </button>
 
                 {isActionsDropdownOpen && (
@@ -229,30 +287,6 @@ export function EditorHeader({
                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Actions</p>
                         </div>
                         <div className="p-1 space-y-1">
-                            <button
-                                onClick={() => {
-                                    setIsActionsDropdownOpen(false);
-                                    if (confirmNavigation()) {
-                                        router.push(`/dashboard/surveys/${surveyId}/metrics`);
-                                    }
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all"
-                            >
-                                <IconChartBar size={15} />
-                                Metrics
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setIsActionsDropdownOpen(false);
-                                    if (confirmNavigation()) {
-                                        router.push(`/dashboard/surveys/${surveyId}/quality`);
-                                    }
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all"
-                            >
-                                <IconShieldLock size={15} />
-                                Quality
-                            </button>
                             <button
                                 onClick={() => {
                                     setIsActionsDropdownOpen(false);
@@ -345,68 +379,6 @@ export function EditorHeader({
                 )}
             </div>
 
-            <div className="w-px h-6 bg-border mx-2" />
-
-            {/* Version History */}
-            <div className="relative" ref={versionDropdownRef}>
-                <button
-                    onClick={() => setIsVersionDropdownOpen(!isVersionDropdownOpen)}
-                    className={cn(
-                        "flex items-center gap-2 px-3 py-2 bg-background/90 backdrop-blur-md border border-border/60 rounded-lg shadow-sm text-xs font-medium hover:bg-muted transition-all",
-                        isVersionDropdownOpen && "bg-muted shadow-inner"
-                    )}
-                >
-                    <IconHistory size={16} className="text-muted-foreground" />
-                    <span className="max-w-[100px] truncate">
-                        {selectedVersionId ? `Version ${versions.find(v => v.id === selectedVersionId)?.version || '?'}` : 'Current Draft'}
-                    </span>
-                </button>
-
-                {isVersionDropdownOpen && (
-                    <div className="absolute top-full right-0 mt-2 w-64 bg-background border border-border rounded-xl shadow-xl overflow-hidden z-60 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="p-2 border-b border-border bg-muted/30">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Version History</p>
-                        </div>
-                        <div className="max-h-64 overflow-y-auto p-1">
-                            <button
-                                onClick={() => {
-                                    selectVersion(surveyId, null);
-                                    setIsVersionDropdownOpen(false);
-                                }}
-                                className={cn(
-                                    "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between",
-                                    !selectedVersionId ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
-                                )}
-                            >
-                                <span>Current Draft</span>
-                                {!selectedVersionId && <IconCheck size={14} />}
-                            </button>
-
-                            {versions.map((v) => (
-                                <button
-                                    key={v.id}
-                                    onClick={() => {
-                                        selectVersion(surveyId, v.id);
-                                        setIsVersionDropdownOpen(false);
-                                    }}
-                                    className={cn(
-                                        "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-between group/item",
-                                        selectedVersionId === v.id ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                                    )}
-                                >
-                                    <div className="flex flex-col">
-                                        <span className="flex items-center gap-1 font-semibold">
-                                            Version {v.version}
-                                            {v.status === 'PUBLISHED' && <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-600 rounded-full border border-emerald-500/20 font-normal">Live</span>}
-                                        </span>
-                                        <span className="text-[10px] opacity-60">{new Date(v.createdAt).toLocaleString()}</span>
-                                    </div>
-                                    {selectedVersionId === v.id && <IconCheck size={14} />}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
 
             {/* Publish Button */}
@@ -416,7 +388,7 @@ export function EditorHeader({
                         onClick={handlePublishLive}
                         disabled={isPublishing || (isLive && !hasChanges) || isReadOnly}
                         className={cn(
-                            "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-full shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed",
+                            "px-4 py-2 text-xs font-bold uppercase tracking-wide rounded-lg shadow-lg transition-all hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed",
                             !isLive
                                 ? "bg-primary text-primary-foreground hover:bg-primary/90"
                                 : hasChanges

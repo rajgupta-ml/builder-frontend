@@ -2,15 +2,18 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useReactFlow, Node, Edge } from "@xyflow/react";
 import apiClient from "@/lib/api-client";
 import { getNodeDefinition, PropertyField } from "@/components/nodes/definitions";
-import { builderRegistry, type NodeBuilder } from "@surveystudio/node-registery/builder";
-import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto } from "@tabler/icons-react";
+import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto, IconSearch, IconArrowUp, IconArrowDown } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { ConditionBuilder } from "./ConditionBuilder";
+import type { LogicGroup } from "./conditionTypes";
+import { SkipRulesBuilder } from "./SkipRulesBuilder";
+import { isGhostJumpEdge } from "@/lib/skipMigration";
 import { StepsBuilder } from "./StepsBuilder";
 import EmojiPicker from "./EmojiPicker";
 import { MediaPreview } from "../nodes/MediaPreview";
 import { surveyWorkflowApi, type OpenEndQualityPolicyPreview, type WorkflowValidationIssue } from "@/api/surveyWorkflow";
 import { generateRuntimeJson } from "@/lib/compiler";
+import { useSurveyStore } from "@/src/store/useSurveyStore";
 
 // ... (imports remain same)
 
@@ -142,8 +145,48 @@ const cacheOpenEndPreviewForNodes = (
     }
 };
 
+type PanelTab = "content" | "logic" | "quality";
+
+// Mirrors the section sets in @surveystudio/node-registery builder/settingsComponents.ts,
+// regrouped into three predictable tabs instead of seven collapsed accordions.
+const BASIC_FIELD_NAMES = new Set(["responseMode", "label", "description", "questionLabel", "url", "urls", "fields", "isPii", "welcomeMessage", "message", "buttonLabel", "thankYouMessage", "redirectUrl", "fallbackLabel"]);
+const OPTION_FIELD_NAMES = new Set(["options", "bulkOptions", "items", "columns", "rows", "steps", "allowedZips"]);
+const CHOICE_FIELD_NAMES = new Set(["allowOther", "otherLabel", "allowNone", "noneLabel", "randomizeOptions", "maxChoices", "multiple", "maxRating", "maxStars"]);
+const ADVANCED_FIELD_NAMES = new Set(["placeholder", "searchable", "displayMode", "min", "max", "step", "defaultValue", "checkboxLabel", "minChars", "maxChars", "minWords", "maxWords", "longAnswer", "sitekey", "outcome", "alt", "interactionType", "sliderConfig", "autoplay"]);
+const LOGIC_FIELD_NAMES = new Set(["condition", "routes"]);
+
+// Question nodes carry skip rules in data.skips; structural nodes don't.
+const STRUCTURAL_NODE_TYPES = new Set(["start", "end", "branch", "skip", "validation", "merge", "branchOut"]);
+
+const CONTENT_GROUPS: ReadonlyArray<{ id: string; title: string; names?: ReadonlySet<string> }> = [
+    { id: "basic", title: "Basic", names: BASIC_FIELD_NAMES },
+    { id: "options", title: "Options", names: OPTION_FIELD_NAMES },
+    { id: "choice", title: "Choice Settings", names: CHOICE_FIELD_NAMES },
+    { id: "advanced", title: "Advanced", names: ADVANCED_FIELD_NAMES },
+    { id: "other", title: "Other" },
+];
+
+const TAB_LABELS: Record<PanelTab, string> = { content: "Content", logic: "Logic", quality: "Quality" };
+
+// Survives node switches and panel remounts: auditing e.g. Quality across
+// several nodes keeps the panel on the Quality tab.
+let LAST_ACTIVE_TAB: PanelTab = "content";
+
+const PANEL_WIDTH_STORAGE_KEY = "builder:properties-panel-width";
+const PANEL_MIN_WIDTH = 320;
+const PANEL_MAX_WIDTH = 520;
+
+const clampPanelWidth = (width: number) => Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, width));
+
+const isFieldVisible = (field: PropertyField, data: Record<string, unknown>) => (
+    !field.visible || field.visible(data) !== false
+);
+
 export default function PropertiesPanel({ node, nodes, issues = [], surveyId, onChange, onClose, readOnly = false }: PropertiesPanelProps) {
-    const { getEdges } = useReactFlow();
+    const { getEdges: getCanvasEdges } = useReactFlow();
+    // The canvas injects ghost jump edges for the selected node; keep them out
+    // of everything that compiles or inspects the persisted workflow.
+    const getEdges = () => getCanvasEdges().filter((edge) => !isGhostJumpEdge(edge));
     const edges = getEdges();
     const [qualityPreview, setQualityPreview] = useState<OpenEndQualityPreviewState>(EMPTY_OPEN_END_PREVIEW);
 
@@ -197,26 +240,210 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
 
     // Get the definition for this node type
     const definition = node ? getNodeDefinition(node.type || "") : null;
-    const registryBuilder = node
-        ? builderRegistry[node.type as keyof typeof builderRegistry] as unknown as NodeBuilder | undefined
-        : undefined;
-    const RegistrySettingsComponent = registryBuilder?.SettingsComponent as React.ComponentType<any> | undefined;
+    const data = (node?.data || {}) as Record<string, unknown>;
 
-    const handleRegistrySettingsChange = (nextData: Record<string, unknown>) => {
-        if (readOnly || !node) return;
-        const currentData = (node.data || {}) as Record<string, unknown>;
-        Object.entries(nextData).forEach(([fieldName, value]) => {
-            if (currentData[fieldName] !== value) onChange(fieldName, value);
-        });
+    const visibleFields = useMemo(
+        () => (definition ? definition.properties.filter((field) => isFieldVisible(field, data)) : []),
+        [definition, node?.data]
+    );
+
+    const qualityFields = useMemo(() => visibleFields.filter((field) => QUALITY_FIELD_NAMES.has(field.name)), [visibleFields]);
+    const logicFields = useMemo(() => visibleFields.filter((field) => LOGIC_FIELD_NAMES.has(field.name)), [visibleFields]);
+    const contentFields = useMemo(
+        () => visibleFields.filter((field) => !QUALITY_FIELD_NAMES.has(field.name) && !LOGIC_FIELD_NAMES.has(field.name)),
+        [visibleFields]
+    );
+
+    const contentGroups = useMemo(() => {
+        const used = new Set<string>();
+        return CONTENT_GROUPS
+            .map((group) => {
+                const fields = group.names
+                    ? contentFields.filter((field) => {
+                        const matched = group.names?.has(field.name) ?? false;
+                        if (matched) used.add(field.name);
+                        return matched;
+                    })
+                    : contentFields.filter((field) => !used.has(field.name));
+                return { ...group, fields };
+            })
+            .filter((group) => group.fields.length > 0);
+    }, [contentFields]);
+
+    const supportsSkipRules = Boolean(node?.type && !STRUCTURAL_NODE_TYPES.has(String(node.type)));
+
+    const availableTabs = useMemo(() => {
+        const tabs: PanelTab[] = [];
+        if (contentFields.length > 0) tabs.push("content");
+        if (logicFields.length > 0 || supportsSkipRules) tabs.push("logic");
+        if (qualityFields.length > 0) tabs.push("quality");
+        return tabs.length > 0 ? tabs : (["content"] as PanelTab[]);
+    }, [contentFields.length, logicFields.length, qualityFields.length, supportsSkipRules]);
+
+    const [activeTab, setActiveTab] = useState<PanelTab>(LAST_ACTIVE_TAB);
+    const [search, setSearch] = useState("");
+    const [panelWidth, setPanelWidth] = useState(PANEL_MIN_WIDTH);
+    const [isResizing, setIsResizing] = useState(false);
+
+    useEffect(() => {
+        const stored = Number(window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY));
+        if (Number.isFinite(stored) && stored >= PANEL_MIN_WIDTH && stored <= PANEL_MAX_WIDTH) {
+            setPanelWidth(stored);
+        }
+    }, []);
+
+    useEffect(() => {
+        setSearch("");
+    }, [node?.id]);
+
+    useEffect(() => {
+        if (!availableTabs.includes(activeTab)) {
+            setActiveTab(availableTabs[0]);
+        }
+    }, [availableTabs, activeTab]);
+
+    const selectTab = (tab: PanelTab) => {
+        LAST_ACTIVE_TAB = tab;
+        setActiveTab(tab);
     };
+
+    const hasLogicRule = useMemo(() => {
+        const condition = data.condition as Record<string, unknown> | undefined;
+        if (condition && typeof condition === "object" && (condition.field || Array.isArray(condition.children) && condition.children.length > 0)) return true;
+        if (Array.isArray(data.skips) && data.skips.length > 0) return true;
+        const routes = Array.isArray(data.routes) ? data.routes as Array<Record<string, unknown>> : [];
+        return routes.some((route) => {
+            const routeCondition = route?.condition as Record<string, unknown> | undefined;
+            return Boolean(routeCondition && typeof routeCondition === "object" && Array.isArray(routeCondition.children) && routeCondition.children.length > 0);
+        });
+    }, [data.condition, data.routes, data.skips]);
+
+    const qualityBadge = useMemo<"manual" | "off" | null>(() => {
+        if (!node) return null;
+        if (node.type === "multiInput") {
+            const subFields = Array.isArray(data.fields) ? data.fields as Record<string, unknown>[] : [];
+            if (subFields.some((field) => getPolicyMode(field) === "manual")) return "manual";
+            if (subFields.length > 0 && subFields.every((field) => getPolicyMode(field) === "disabled")) return "off";
+            return null;
+        }
+        const mode = getPolicyMode(data);
+        if (mode === "manual") return "manual";
+        if (mode === "disabled") return "off";
+        return null;
+    }, [node, data]);
+
+    const searchResults = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        if (!query) return null;
+        return visibleFields.filter((field) => field.label.toLowerCase().includes(query));
+    }, [search, visibleFields]);
 
     if (!node || !definition) {
         return null;
     }
 
+    const handleFieldChange = (field: PropertyField, val: any) => {
+        if (readOnly) return;
+        if (field.name === 'bulkOptions') {
+            const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length > 0) {
+                const newOptions = lines.map((l, i) => ({ label: l, value: `opt${Date.now()}_${i}` }));
+                const optionsField = definition.properties.find(p => p.type === 'options');
+                if (optionsField) onChange(optionsField.name, newOptions);
+            }
+        }
+        onChange(field.name, val);
+    };
+
+    const renderPanelField = (field: PropertyField) => {
+        const control = (
+            <FieldRenderer
+                field={field}
+                value={data[field.name] ?? field.defaultValue}
+                onChange={(val) => handleFieldChange(field, val)}
+                nodes={nodes}
+                edges={edges}
+                readOnly={readOnly}
+                nodeType={node.type}
+                nodeId={node.id}
+                fieldData={data}
+                qualityPreview={qualityPreview}
+                activePolicy={qualityPreview.policies[selectedPolicyKey]}
+                automaticPolicy={qualityPreview.automaticPolicies[selectedPolicyKey]}
+                onPatchData={(updates) => {
+                    if (readOnly) return;
+                    Object.entries(updates).forEach(([fieldName, nextValue]) => onChange(fieldName, nextValue));
+                }}
+            />
+        );
+
+        // Quality fields render their own composite editor (or nothing) — no label wrapper.
+        if (QUALITY_FIELD_NAMES.has(field.name)) {
+            return <div key={field.name}>{control}</div>;
+        }
+
+        return (
+            <div key={field.name} className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground">{field.label}</label>
+                {control}
+                {field.helperText && <p className="text-[10px] text-muted-foreground italic">{field.helperText}</p>}
+            </div>
+        );
+    };
+
+    const tabBadge = (tab: PanelTab) => {
+        if (tab === "logic" && hasLogicRule) {
+            return <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" title="A logic rule is set" />;
+        }
+        if (tab === "quality" && qualityBadge === "manual") {
+            return <span className="ml-1 rounded-full bg-amber-500/15 px-1.5 py-px text-[9px] font-bold uppercase text-amber-600">Manual</span>;
+        }
+        if (tab === "quality" && qualityBadge === "off") {
+            return <span className="ml-1 rounded-full bg-muted px-1.5 py-px text-[9px] font-bold uppercase text-muted-foreground">Off</span>;
+        }
+        return null;
+    };
+
+    const startResize = (event: React.PointerEvent) => {
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = panelWidth;
+        setIsResizing(true);
+
+        const handleMove = (moveEvent: PointerEvent) => {
+            setPanelWidth(clampPanelWidth(startWidth + (startX - moveEvent.clientX)));
+        };
+        const handleUp = (upEvent: PointerEvent) => {
+            window.removeEventListener("pointermove", handleMove);
+            window.removeEventListener("pointerup", handleUp);
+            setIsResizing(false);
+            window.localStorage.setItem(
+                PANEL_WIDTH_STORAGE_KEY,
+                String(clampPanelWidth(startWidth + (startX - upEvent.clientX)))
+            );
+        };
+        window.addEventListener("pointermove", handleMove);
+        window.addEventListener("pointerup", handleUp);
+    };
 
     return (
-        <aside className="w-xs h-full bg-background border-l border-border flex flex-col shadow-xl z-20 transition-all duration-300">
+        <aside
+            style={{ width: panelWidth }}
+            className={cn(
+                "relative h-full bg-background border-l border-border flex flex-col shadow-xl z-20",
+                isResizing && "select-none"
+            )}
+        >
+            {/* Resize handle */}
+            <div
+                onPointerDown={startResize}
+                className={cn(
+                    "absolute inset-y-0 left-0 z-30 w-1.5 cursor-col-resize transition-colors touch-none",
+                    isResizing ? "bg-primary/50" : "hover:bg-primary/30"
+                )}
+                title="Drag to resize"
+            />
+
             {/* Header */}
             <div className="h-14 flex items-center justify-between px-4 border-b border-border bg-muted/10 shrink-0">
                 <div className="flex items-center gap-2">
@@ -226,15 +453,51 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                     <span className="font-semibold text-sm tracking-tight">{definition.label}</span>
                     {readOnly && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-md border border-border text-muted-foreground">Read Only</span>}
                 </div>
-                <button title="X Icon" onClick={onClose} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors">
+                <button title="Close panel" onClick={onClose} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors">
                     <IconX size={16} />
                 </button>
             </div>
 
+            {/* Tabs */}
+            {availableTabs.length > 1 && (
+                <div className="flex items-center gap-4 border-b border-border px-4 shrink-0">
+                    {availableTabs.map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => selectTab(tab)}
+                            className={cn(
+                                "-mb-px flex items-center border-b-2 pb-2 pt-2.5 text-xs font-semibold transition-colors",
+                                activeTab === tab && !searchResults
+                                    ? "border-primary text-foreground"
+                                    : "border-transparent text-muted-foreground hover:text-foreground"
+                            )}
+                            aria-current={activeTab === tab ? "true" : undefined}
+                        >
+                            {TAB_LABELS[tab]}
+                            {tabBadge(tab)}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/* Search */}
+            <div className="px-4 pt-3 shrink-0">
+                <div className="relative">
+                    <IconSearch size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                        type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Find a setting..."
+                        className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-2 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary transition-all"
+                    />
+                </div>
+            </div>
+
             {/* Form Fields */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {issues.length > 0 && (
-                    <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2">
+                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
                         <p className="text-[11px] font-semibold mb-2">Validation</p>
                         <div className="space-y-1.5">
                             {issues.map((issue, idx) => (
@@ -254,52 +517,54 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                         </div>
                     </div>
                 )}
-                {RegistrySettingsComponent && (
-                    <div className={cn(readOnly && "pointer-events-none opacity-60 grayscale")}>
-                        <RegistrySettingsComponent
-                            data={(node.data || {}) as any}
-                            readOnly={readOnly}
-                            onChange={(nextData: Record<string, unknown>) => handleRegistrySettingsChange(nextData)}
-                            renderField={({ property, value, data, onChange: onFieldChange }: any) => (
-                                <FieldRenderer
-                                    field={property as PropertyField}
-                                    value={value}
-                                    onChange={(val) => {
-                                        if (readOnly) return;
-                                        if (property.name === 'bulkOptions') {
-                                            const lines = String(val).split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                                            if (lines.length > 0) {
-                                                const newOptions = lines.map((l, i) => ({ label: l, value: `opt${Date.now()}_${i}` }));
-                                                const optionsField = definition.properties.find(p => p.type === 'options');
-                                                if (optionsField) onChange(optionsField.name, newOptions);
-                                            }
-                                        }
-                                        onFieldChange(val);
-                                    }}
-                                    nodes={nodes}
-                                    edges={edges}
-                                    readOnly={readOnly}
-                                    nodeType={node.type}
-                                    nodeId={node.id}
-                                    fieldData={data as Record<string, unknown>}
-                                    qualityPreview={qualityPreview}
-                                    activePolicy={qualityPreview.policies[selectedPolicyKey]}
-                                    automaticPolicy={qualityPreview.automaticPolicies[selectedPolicyKey]}
-                                    onPatchData={(updates) => {
-                                        if (readOnly) return;
-                                        Object.entries(updates).forEach(([fieldName, nextValue]) => onChange(fieldName, nextValue));
-                                    }}
-                                />
-                            )}
-                        />
-                    </div>
-                )}
 
-                {/* Debug Info */}
-                <div className="mt-8 p-3 rounded-md bg-muted/50 border border-border text-[10px] font-mono text-muted-foreground break-all">
-                    ID: {node.id} <br />
-                    Type: {node.type}
+                <div className={cn("space-y-4", readOnly && "pointer-events-none opacity-60 grayscale")}>
+                    {searchResults ? (
+                        searchResults.length > 0 ? (
+                            <div className="space-y-4">
+                                {searchResults.map(renderPanelField)}
+                            </div>
+                        ) : (
+                            <p className="py-6 text-center text-xs text-muted-foreground">
+                                No settings match &ldquo;{search.trim()}&rdquo;
+                            </p>
+                        )
+                    ) : (
+                        <>
+                            {activeTab === "content" && contentGroups.map((group) => (
+                                <section key={group.id} className="space-y-3">
+                                    {contentGroups.length > 1 && (
+                                        <h3 className="sticky top-0 z-10 -mx-1 bg-background/95 px-1 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground backdrop-blur-sm">
+                                            {group.title}
+                                        </h3>
+                                    )}
+                                    {group.fields.map(renderPanelField)}
+                                </section>
+                            ))}
+                            {activeTab === "logic" && (
+                                <>
+                                    {logicFields.map(renderPanelField)}
+                                    {supportsSkipRules && (
+                                        <SkipRulesBuilder
+                                            value={data.skips}
+                                            onChange={(rules) => onChange("skips", rules)}
+                                            nodes={nodes}
+                                            edges={edges}
+                                            currentNodeId={node.id}
+                                            readOnly={readOnly}
+                                        />
+                                    )}
+                                </>
+                            )}
+                            {activeTab === "quality" && qualityFields.map(renderPanelField)}
+                        </>
+                    )}
                 </div>
+            </div>
+
+            {/* Node identity footer */}
+            <div className="shrink-0 border-t border-border px-4 py-1.5 text-[10px] font-mono text-muted-foreground truncate" title={`${node.id} · ${node.type}`}>
+                {node.id} · {node.type}
             </div>
         </aside>
     );
@@ -958,6 +1223,166 @@ function MultiInputFieldCard({
     );
 }
 
+
+type BranchOutRoute = {
+    id: string;
+    label: string;
+    condition: LogicGroup;
+};
+
+const createEmptyCondition = (): LogicGroup => ({
+    id: "root",
+    type: "group",
+    logicType: "AND",
+    children: [],
+});
+
+const createRouteId = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return `path-${crypto.randomUUID().slice(0, 8)}`;
+    }
+    return `path-${Date.now().toString(36)}`;
+};
+
+const normalizeBranchRoutes = (value: unknown): BranchOutRoute[] => (
+    Array.isArray(value)
+        ? value.map((route, index) => {
+            const record = (route || {}) as Record<string, unknown>;
+            return {
+                id: typeof record.id === "string" && record.id.trim() ? record.id : `path-${index + 1}`,
+                label: typeof record.label === "string" && record.label.trim() ? record.label : `Path ${index + 1}`,
+                condition: record.condition && typeof record.condition === "object" ? record.condition as LogicGroup : createEmptyCondition(),
+            };
+        })
+        : []
+);
+
+function BranchRoutesBuilder({
+    value,
+    onChange,
+    nodes,
+    edges,
+    nodeId,
+    readOnly,
+}: {
+    value: unknown;
+    onChange: (val: BranchOutRoute[]) => void;
+    nodes: Node[];
+    edges: Edge[];
+    nodeId?: string;
+    readOnly?: boolean;
+}) {
+    const setSurveyEdges = useSurveyStore((state) => state.setEdges);
+    const routes = normalizeBranchRoutes(value);
+
+    const commit = (nextRoutes: BranchOutRoute[]) => {
+        if (readOnly) return;
+        onChange(nextRoutes);
+    };
+
+    const updateRoute = (index: number, patch: Partial<BranchOutRoute>) => {
+        const nextRoutes = routes.map((route, routeIndex) => routeIndex === index ? { ...route, ...patch } : route);
+        commit(nextRoutes);
+    };
+
+    const moveRoute = (index: number, direction: -1 | 1) => {
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= routes.length) return;
+        const nextRoutes = [...routes];
+        const [route] = nextRoutes.splice(index, 1);
+        if (!route) return;
+        nextRoutes.splice(targetIndex, 0, route);
+        commit(nextRoutes);
+    };
+
+    const removeRoute = (index: number) => {
+        const removedRoute = routes[index];
+        if (removedRoute && nodeId) {
+            setSurveyEdges(edges.filter((edge) => !(edge.source === nodeId && edge.sourceHandle === removedRoute.id)));
+        }
+        commit(routes.filter((_, routeIndex) => routeIndex !== index));
+    };
+
+    const addRoute = () => {
+        commit([
+            ...routes,
+            {
+                id: createRouteId(),
+                label: `Path ${routes.length + 1}`,
+                condition: createEmptyCondition(),
+            },
+        ]);
+    };
+
+    return (
+        <div className="space-y-3">
+            {routes.map((route, index) => (
+                <div key={route.id} className="rounded-lg border border-border bg-card overflow-hidden">
+                    <div className="flex items-center gap-1.5 border-b border-border bg-muted/25 p-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-cyan-500/10 text-[10px] font-bold text-cyan-700">
+                            {index + 1}
+                        </span>
+                        <input
+                            type="text"
+                            disabled={readOnly}
+                            value={route.label}
+                            onChange={(event) => updateRoute(index, { label: event.target.value })}
+                            className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs font-medium outline-hidden focus:ring-1 focus:ring-primary disabled:opacity-50"
+                            placeholder={`Path ${index + 1}`}
+                        />
+                        <button
+                            type="button"
+                            disabled={readOnly || index === 0}
+                            title="Move route up"
+                            onClick={() => moveRoute(index, -1)}
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                            <IconArrowUp size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            disabled={readOnly || index === routes.length - 1}
+                            title="Move route down"
+                            onClick={() => moveRoute(index, 1)}
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                            <IconArrowDown size={14} />
+                        </button>
+                        <button
+                            type="button"
+                            disabled={readOnly}
+                            title="Delete route"
+                            onClick={() => removeRoute(index)}
+                            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                            <IconTrash size={14} />
+                        </button>
+                    </div>
+                    <div className="p-2">
+                        <ConditionBuilder
+                            value={route.condition || createEmptyCondition()}
+                            onChange={(condition) => updateRoute(index, { condition })}
+                            nodes={nodes}
+                            edges={edges}
+                            currentNodeId={nodeId}
+                        />
+                    </div>
+                </div>
+            ))}
+            {!readOnly && (
+                <button
+                    type="button"
+                    onClick={addRoute}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-semibold text-primary transition-colors hover:border-primary/60 hover:bg-primary/5"
+                >
+                    <IconPlus size={14} />
+                    Add Route
+                </button>
+            )}
+        </div>
+    );
+}
+
 function FieldRenderer({
     field,
     value,
@@ -1015,7 +1440,7 @@ function FieldRenderer({
 
     if (readOnly) {
         // Logic fields and complex builders should be disabled
-        if (['condition', 'stepBuilder', 'emojiOptions'].includes(field.type)) {
+        if (['condition', 'branchRoutes', 'stepBuilder', 'emojiOptions'].includes(field.type)) {
             return (
                 <div className="pointer-events-none opacity-60 grayscale">
                     <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} edges={edges} readOnly={false} nodeType={nodeType} nodeId={nodeId} fieldData={fieldData} qualityPreview={qualityPreview} activePolicy={activePolicy} automaticPolicy={automaticPolicy} onPatchData={onPatchData} />
@@ -1034,6 +1459,17 @@ function FieldRenderer({
                     edges={edges}
                     currentNodeId={nodeId}
                     builderMode={nodeType === 'validation' ? 'validation' : 'default'}
+                />
+            );
+        case 'branchRoutes':
+            return (
+                <BranchRoutesBuilder
+                    value={Array.isArray(value) ? value : []}
+                    onChange={onChange}
+                    nodes={nodes}
+                    edges={edges}
+                    nodeId={nodeId}
+                    readOnly={readOnly}
                 />
             );
         case 'stepBuilder':

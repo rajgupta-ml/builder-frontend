@@ -60,7 +60,10 @@ const ICONS: Record<string, React.ElementType> = {
     start: IconPlayerPlay,
     end: IconForbid,
     branch: IconGitBranch,
+    skip: IconGitBranch,
     validation: IconShieldLock,
+    merge: IconArrowMerge,
+    branchOut: IconGitBranch,
 };
 
 const COLORS: Record<string, string> = {
@@ -73,6 +76,9 @@ const COLORS: Record<string, string> = {
     image: 'bg-indigo-500',
     video: 'bg-indigo-500',
     audio: 'bg-indigo-500',
+    merge: 'bg-sky-500',
+    skip: 'bg-rose-500',
+    branchOut: 'bg-cyan-600',
 };
 
 const getBuilder = (type: string): RegistryBuilderEntry | undefined => {
@@ -95,6 +101,23 @@ const renderCanvas = (props: NodeProps<any>) => {
     });
 };
 
+const SkipRulesBadge = (props: NodeProps<any>) => {
+    const skips = Array.isArray((props.data as any)?.skips)
+        ? ((props.data as any).skips as any[]).filter((rule) => rule && typeof rule === 'object')
+        : [];
+    if (skips.length === 0) return null;
+
+    return e(
+        'div',
+        {
+            className: 'mt-2 inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-600',
+            title: skips.map((rule, index) => String(rule?.label || `Skip rule ${index + 1}`)).join('\n'),
+        },
+        e(IconGitBranch, { size: 10 }),
+        skips.length === 1 ? 'Skip logic' : `Skip logic · ${skips.length}`,
+    );
+};
+
 const CommonRegistryNode = (props: NodeProps<any>) => {
     const type = String(props.type || '');
     const Icon = ICONS[type] || IconTextCaption;
@@ -110,6 +133,7 @@ const CommonRegistryNode = (props: NodeProps<any>) => {
             handles: { source: Position.Bottom, target: Position.Top },
         },
         renderCanvas(props),
+        e(SkipRulesBadge, props),
     );
 };
 
@@ -267,11 +291,144 @@ const ValidationRegistryNode = (props: NodeProps<any>) => {
     );
 };
 
+
+const routeRecords = (data: Record<string, unknown>) => (
+    Array.isArray(data?.routes)
+        ? (data.routes as any[]).filter((route) => route && typeof route === 'object')
+        : []
+);
+
+const routeId = (route: any, index: number) => String(route?.id || `path-${index + 1}`);
+const routeLabel = (route: any, index: number) => String(route?.label || `Path ${index + 1}`);
+
+const MergeRegistryNode = (props: NodeProps<any>) => {
+    const { deleteElements } = useReactFlow();
+    const handleDelete = (event: React.MouseEvent) => {
+        event.stopPropagation();
+        deleteElements({ nodes: [{ id: props.id }] });
+    };
+    const inputSlots = ['in-a', 'in-b', 'in-c', 'in-d'];
+
+    return e(
+        'div',
+        {
+            className: cn(
+                'group relative min-h-[78px] w-[232px] rounded-lg bg-card border-2 shadow-sm transition-all duration-200 flex items-center justify-start gap-3 px-3 py-2',
+                props.selected ? 'border-sky-500 ring-4 ring-sky-500/10 shadow-xl' : 'border-sky-500 hover:border-sky-600',
+            ),
+        },
+        ...inputSlots.map((slot, index) => e(Handle, {
+            key: slot,
+            type: 'target',
+            id: slot,
+            position: Position.Top,
+            className: 'bg-sky-500 border-2 border-background',
+            style: {
+                width: 10,
+                height: 10,
+                top: 0,
+                left: `${18 + index * 21}%`,
+                transform: 'translate(-50%, -50%)',
+            },
+        })),
+        e('div', { className: 'h-9 w-9 shrink-0 rounded-md bg-sky-100 flex items-center justify-center' }, e(IconArrowMerge, { size: 18, className: 'text-sky-700' })),
+        e('div', { className: 'min-w-0 flex-1' }, renderCanvas(props)),
+        e(Handle, {
+            type: 'source',
+            position: Position.Bottom,
+            className: 'bg-sky-600 border-2 border-background',
+            style: { width: 10, height: 10 },
+        }),
+        props.selected
+            ? e('button', {
+                onClick: handleDelete,
+                className: 'absolute -top-5 right-1 p-1 bg-destructive text-destructive-foreground rounded-full shadow-lg hover:scale-110 transition-transform',
+            }, e(IconTrash, { size: 12 }))
+            : null,
+    );
+};
+
+const BranchOutRegistryNode = (props: NodeProps<any>) => {
+    const { deleteElements } = useReactFlow();
+    const handleDelete = (event: React.MouseEvent) => {
+        event.stopPropagation();
+        deleteElements({ nodes: [{ id: props.id }] });
+    };
+    const routes = routeRecords(props.data as Record<string, unknown>);
+    const visibleRoutes = routes.length ? routes : [{ id: 'path-a', label: 'Path A' }];
+    const fallbackLabel = String((props.data as any)?.fallbackLabel || 'Otherwise');
+    const outputPorts = [
+        ...visibleRoutes.map((route, index) => ({ id: routeId(route, index), kind: 'route' as const })),
+        { id: 'fallback', kind: 'fallback' as const },
+    ];
+
+    return e(
+        'div',
+        {
+            className: cn(
+                'group relative w-[272px] rounded-lg bg-card border-2 px-3 py-2 shadow-sm transition-all duration-200',
+                props.selected ? 'border-cyan-600 ring-4 ring-cyan-500/10 shadow-xl' : 'border-cyan-500 hover:border-cyan-600',
+            ),
+        },
+        e(Handle, {
+            type: 'target',
+            position: Position.Top,
+            className: 'bg-muted-foreground border-2 border-background',
+            style: { width: 10, height: 10 },
+        }),
+        e('div', { className: 'flex items-center gap-2 border-b border-border/70 pb-2' },
+            e('div', { className: 'h-8 w-8 shrink-0 rounded-md bg-cyan-100 flex items-center justify-center' }, e(IconGitBranch, { size: 17, className: 'text-cyan-700' })),
+            e('div', { className: 'min-w-0 flex-1' }, renderCanvas(props)),
+        ),
+        e('div', { className: 'mt-2 space-y-1.5' },
+            ...visibleRoutes.map((route, index) => e(
+                'div',
+                {
+                    key: routeId(route, index),
+                    className: 'relative flex items-center gap-2 rounded-md border border-cyan-500/20 bg-cyan-500/5 px-2 py-1.5 text-[10px] font-semibold text-cyan-900',
+                },
+                e('span', { className: 'h-2 w-2 rounded-full bg-cyan-500 shrink-0' }),
+                e('span', { className: 'truncate', title: routeLabel(route, index) }, routeLabel(route, index)),
+            )),
+            e(
+                'div',
+                { className: 'relative flex items-center gap-2 rounded-md border border-slate-300 bg-muted/40 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground' },
+                e('span', { className: 'h-2 w-2 rounded-full bg-muted-foreground/70 shrink-0' }),
+                e('span', { className: 'truncate', title: fallbackLabel }, fallbackLabel),
+            ),
+        ),
+        ...outputPorts.map((port, index) => e(Handle, {
+            key: port.id,
+            type: 'source',
+            id: port.id,
+            position: Position.Bottom,
+            className: port.kind === 'fallback'
+                ? 'bg-muted-foreground border-2 border-background'
+                : 'bg-cyan-500 border-2 border-background',
+            style: {
+                width: 10,
+                height: 10,
+                bottom: 0,
+                left: `${((index + 1) / (outputPorts.length + 1)) * 100}%`,
+                transform: 'translate(-50%, 50%)',
+            },
+        })),
+        props.selected
+            ? e('button', {
+                onClick: handleDelete,
+                className: 'absolute -top-5 right-1 p-1 bg-destructive text-destructive-foreground rounded-full shadow-lg hover:scale-110 transition-transform',
+            }, e(IconTrash, { size: 12 }))
+            : null,
+    );
+};
+
 const RegistryBuilderNode = (props: NodeProps<any>) => {
     if (props.type === 'start') return e(StartRegistryNode, props);
     if (props.type === 'end') return e(EndRegistryNode, props);
     if (props.type === 'branch') return e(BranchRegistryNode, props);
     if (props.type === 'validation') return e(ValidationRegistryNode, props);
+    if (props.type === 'merge') return e(MergeRegistryNode, props);
+    if (props.type === 'branchOut') return e(BranchOutRegistryNode, props);
     return e(CommonRegistryNode, props);
 };
 
@@ -282,8 +439,10 @@ const componentMap: Record<string, React.ComponentType<any>> = Object.fromEntrie
 export const nodeTypes: NodeTypes = componentMap;
 
 import DeleteableEdge from '../edges/DeleteableEdge';
+import JumpEdge from '../edges/JumpEdge';
 export const edgeTypes = {
     default: DeleteableEdge,
+    jump: JumpEdge,
 };
 
 export * from './definitions';

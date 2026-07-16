@@ -300,7 +300,7 @@ export const ConditionBuilder = ({
     const validQuestions = useMemo(() => {
         return nodes.filter(n => {
             const def = getNodeDefinition(n.type || '');
-            const isStructural = ['start', 'end', 'branch', 'validation', 'image', 'video', 'audio'].includes(n.type || '');
+            const isStructural = ['start', 'end', 'branch', 'skip', 'validation', 'merge', 'branchOut', 'image', 'video', 'audio'].includes(n.type || '');
             const isAllowedByGraph = ancestorNodeIds ? ancestorNodeIds.has(n.id) : true;
             return def && !isStructural && n.id !== 'current' && isAllowedByGraph;
         });

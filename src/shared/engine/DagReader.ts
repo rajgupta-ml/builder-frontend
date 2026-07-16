@@ -47,18 +47,24 @@ export class DAGReader {
         const next = node.next;
         if (!next) return null;
 
-        let potentialNextId: string | null = null;
+        let potentialNextId: string | null = this.getSkipNextId(node, responses);
 
-        if (next.kind === 'branch') {
-            const condition = node.data?.condition as LogicGroup;
-            if (!condition || !condition.children || condition.children.length === 0) {
-                throw new Error(`Decision node ${currentNodeId} has no condition defined.`);
+        if (!potentialNextId) {
+            if (next.kind === 'branch') {
+                const condition = node.data?.condition as LogicGroup;
+                if (!condition || !condition.children || condition.children.length === 0) {
+                    throw new Error(`Decision node ${currentNodeId} has no condition defined.`);
+                }
+                const isTrue = this.evaluateCondition(condition, responses);
+                potentialNextId = isTrue ? next.trueId : next.falseId;
+            } else if (next.kind === 'multiBranch') {
+                potentialNextId = this.getMultiBranchNextId(node, next, responses);
+            } else if (next.kind === 'skip') {
+                potentialNextId = next.targetId;
+            } else {
+                // Linear connection
+                potentialNextId = next.nextId;
             }
-            const isTrue = this.evaluateCondition(condition, responses);
-            potentialNextId = isTrue ? next.trueId : next.falseId;
-        } else {
-            // Linear connection
-            potentialNextId = next.nextId;
         }
 
         if (!potentialNextId) return null;
@@ -81,6 +87,48 @@ export class DAGReader {
         }
 
         return potentialNextNode;
+    }
+
+    private getSkipNextId(node: any, responses: Record<string, any>): string | null {
+        const skips = Array.isArray(node?.skips) ? node.skips : [];
+
+        for (const skip of skips) {
+            if (!skip || typeof skip !== 'object') continue;
+            const condition = skip.condition as LogicGroup | undefined;
+            if (!this.conditionHasRules(condition)) continue;
+            if (this.evaluateCondition(condition, responses)) {
+                return typeof skip.targetId === 'string' && skip.targetId.length > 0 ? skip.targetId : null;
+            }
+        }
+
+        return null;
+    }
+
+    private conditionHasRules(condition: unknown): boolean {
+        if (!condition || typeof condition !== 'object') return false;
+        const record = condition as Record<string, any>;
+        if (record.type === 'rule') return typeof record.field === 'string' && record.field.length > 0;
+        if (Array.isArray(record.children)) return record.children.some((child) => this.conditionHasRules(child));
+        return false;
+    }
+
+    private getMultiBranchNextId(node: any, next: any, responses: Record<string, any>): string | null {
+        const routes = Array.isArray(next.routes)
+            ? next.routes
+            : Array.isArray(node.data?.routes)
+                ? node.data.routes
+                : [];
+
+        for (const route of routes) {
+            if (!route || typeof route !== 'object') continue;
+            const condition = route.condition as LogicGroup | undefined;
+            if (!this.conditionHasRules(condition)) continue;
+            if (this.evaluateCondition(condition, responses)) {
+                return typeof route.targetId === 'string' && route.targetId.length > 0 ? route.targetId : null;
+            }
+        }
+
+        return typeof next.fallbackId === 'string' && next.fallbackId.length > 0 ? next.fallbackId : null;
     }
 
     /**
