@@ -12,6 +12,10 @@ export const PERMISSIONS = {
   RESPONSE_EXPORT: "response.export",
   RESPONSE_SHARE: "response.share",
   RESPONSE_RESYNC: "response.resync",
+  SURVEY_QUALITY_READ: "survey.quality.read",
+  SURVEY_QUALITY_REVIEW: "survey.quality.review",
+  SURVEY_QUALITY_CONFIGURE: "survey.quality.configure",
+  SURVEY_QUALITY_EXPORT: "survey.quality.export",
   PRIVACY_MANAGE: "privacy.manage",
   TEST_RUN: "test.run",
   USER_MANAGE_ROLES: "user.manage_roles",
@@ -32,6 +36,7 @@ const rolePermissions: Record<UserRole, Set<Permission>> = {
     PERMISSIONS.QUOTA_MANAGE,
     PERMISSIONS.RESPONSE_READ,
     PERMISSIONS.RESPONSE_SHARE,
+    PERMISSIONS.SURVEY_QUALITY_READ,
     PERMISSIONS.TEST_RUN,
   ]),
   DEMO_USER: new Set([
@@ -42,6 +47,7 @@ const rolePermissions: Record<UserRole, Set<Permission>> = {
     PERMISSIONS.QUOTA_MANAGE,
     PERMISSIONS.RESPONSE_READ,
     PERMISSIONS.RESPONSE_SHARE,
+    PERMISSIONS.SURVEY_QUALITY_READ,
   ]),
 };
 

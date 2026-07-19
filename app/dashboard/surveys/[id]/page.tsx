@@ -14,6 +14,7 @@ import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { useAutosave } from '@/src/hooks/useAutosave';
 import { useUnsavedChangesGuard } from '@/src/hooks/useUnsavedChangesGuard';
 import { EditorHeader } from '@/components/editor/EditorHeader';
+import { SurveyNavTabs } from '@/components/editor/SurveyNavTabs';
 import { EditorCanvas } from '@/components/editor/EditorCanvas';
 import { ShareModal } from '@/components/editor/ShareModal';
 import { AiImportModal } from '@/components/editor/AiImportModal';
@@ -261,7 +262,7 @@ function SurveyFlow() {
     }, [surveyId, nodes, edges]);
 
     const hasQuestionNode = useMemo(
-        () => nodes.some((node) => !['start', 'end', 'branch', 'validation'].includes(node.type || '')),
+        () => nodes.some((node) => !['start', 'end', 'branch', 'skip', 'validation', 'merge', 'branchOut'].includes(node.type || '')),
         [nodes]
     );
     const selectedNode = useMemo(
@@ -358,6 +359,12 @@ function SurveyFlow() {
             <div className="flex-1 h-full relative" >
                 <EditorCanvas />
 
+                <SurveyNavTabs
+                    surveyId={surveyId || ""}
+                    confirmNavigation={confirmNavigation}
+                    className="absolute top-4 left-4 z-50"
+                />
+
                 {!hasQuestionNode && !isReadOnly && (
                     <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
                         <div className="pointer-events-auto rounded-xl border border-border bg-background/95 p-5 shadow-lg text-center max-w-sm">
@@ -441,6 +448,7 @@ function SurveyFlow() {
                     node={selectedNode}
                     nodes={nodes}
                     issues={selectedNodeIssues}
+                    surveyId={surveyId}
                     readOnly={isReadOnly}
                     onChange={(fieldName, value) => {
                         if (isReadOnly || !selectedNodeId) return;

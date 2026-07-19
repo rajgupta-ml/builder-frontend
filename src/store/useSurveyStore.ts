@@ -16,6 +16,7 @@ import { operationsApi } from '@/api/operations';
 import { toast } from 'sonner';
 import { Survey, SurveyQuota } from '@/src/shared/types/survey';
 import { hydrateNodeIds } from '@/lib/hydrateNodeIds';
+import { migrateSkipNodes } from '@/lib/skipMigration';
 import { toUserMessage } from '@/lib/api-error';
 import { reportApiError } from '@/lib/error-reporter';
 import { generateUniqueId } from '@/lib/utils';
@@ -82,7 +83,7 @@ const newUuid = (): string => {
 
 
 const needsTechnicalId = (type?: string | null): boolean => (
-    Boolean(type) && !['start', 'end', 'branch', 'validation'].includes(String(type))
+    Boolean(type) && !['start', 'end', 'branch', 'skip', 'validation', 'merge', 'branchOut'].includes(String(type))
 );
 
 const cloneRecord = (source: Record<string, any>): Record<string, any> => JSON.parse(JSON.stringify(source || {}));
@@ -233,8 +234,28 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     onNodesChange: (changes) => {
         const { nodes, isReadOnly } = get();
         if (isReadOnly) return;
+        const removedIds = new Set(
+            changes.filter((change) => change.type === 'remove').map((change) => change.id)
+        );
+        let nextNodes = applyNodeChanges(changes, nodes);
+        if (removedIds.size > 0) {
+            // Detach skip rules that jumped to a deleted node; validation surfaces the missing target.
+            nextNodes = nextNodes.map((node) => {
+                const skips = Array.isArray((node.data as any)?.skips) ? (node.data as any).skips : null;
+                if (!skips || !skips.some((rule: any) => rule && removedIds.has(rule.targetId))) return node;
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        skips: skips.map((rule: any) => (
+                            rule && removedIds.has(rule.targetId) ? { ...rule, targetId: null } : rule
+                        )),
+                    },
+                };
+            });
+        }
         set({
-            nodes: applyNodeChanges(changes, nodes),
+            nodes: nextNodes,
             saveStatus: 'unsaved'
         });
     },
@@ -255,36 +276,40 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
         if (connection.source === connection.target) return;
 
         const sourceNode = nodes.find((node) => node.id === connection.source);
-        if (!sourceNode) return;
+        const targetNode = nodes.find((node) => node.id === connection.target);
+        if (!sourceNode || !targetNode) return;
 
-        const isBranchSource = sourceNode.type === 'branch' || sourceNode.type === 'validation';
+        const isBranchLikeSource = sourceNode.type === 'branch' || sourceNode.type === 'validation' || sourceNode.type === 'branchOut';
+        const allowsMultipleIncoming = targetNode.type === 'merge';
 
         const hasDuplicate = edges.some((edge) =>
             edge.source === connection.source &&
             edge.target === connection.target &&
             (edge.sourceHandle ?? null) === (connection.sourceHandle ?? null) &&
-            (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
+            (allowsMultipleIncoming || (edge.targetHandle ?? null) === (connection.targetHandle ?? null))
         );
         if (hasDuplicate) return;
 
         const constrainedEdges = edges.filter((edge) => {
-            // Only one incoming edge per node.
-            if (edge.target === connection.target) {
+            // Most nodes accept one incoming edge; merge nodes intentionally accept many.
+            if (edge.target === connection.target && !allowsMultipleIncoming) {
                 return false;
             }
 
-            // Non-branch nodes can only have one outgoing edge.
-            if (edge.source === connection.source && !isBranchSource) {
+            if (edge.source !== connection.source) {
+                return true;
+            }
+
+            // Regular nodes keep a single outgoing edge; skip jumps live in node data, not edges.
+            if (!isBranchLikeSource) {
                 return false;
             }
 
-            // Branch nodes can have multiple outgoing edges, but one per handle (true/false).
-            if (edge.source === connection.source && isBranchSource) {
-                const existingSourceHandle = edge.sourceHandle ?? null;
-                const incomingSourceHandle = connection.sourceHandle ?? null;
-                if (existingSourceHandle === incomingSourceHandle) {
-                    return false;
-                }
+            // Branch-like sources can have multiple outgoing edges, but only one per handle.
+            const existingSourceHandle = edge.sourceHandle ?? null;
+            const incomingSourceHandle = connection.sourceHandle ?? null;
+            if (existingSourceHandle === incomingSourceHandle) {
+                return false;
             }
 
             return true;
@@ -323,20 +348,22 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                 : rawNodes;
             const repaired = ensureStableNodeIds(hydratedNodes);
+            const migrated = migrateSkipNodes(repaired.nodes, workflow?.designJson?.edges || []);
 
             set({
                 survey,
                 versions,
                 quotas,
                 workflowId: workflow?.id || null,
-                nodes: repaired.nodes,
-                edges: workflow?.designJson?.edges || [],
+                nodes: migrated.nodes,
+                edges: migrated.edges,
                 isReadOnly: false,
                 selectedVersionId: null,
-                hasChanges: hasDbChanges || repaired.changed,
+                hasChanges: hasDbChanges || repaired.changed || migrated.changed,
                 loadError: null,
                 lastSavedAt: null,
-                saveStatus: repaired.changed ? 'unsaved' : 'saved' // Autosave repaired legacy ids after load
+                // Autosave repaired legacy ids / migrated skip nodes after load
+                saveStatus: repaired.changed || migrated.changed ? 'unsaved' : 'saved'
             });
         } catch (err) {
             console.error("Failed to load survey data", err);
@@ -584,9 +611,10 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             try {
                 const data = await surveyWorkflowApi.getWorkflowById(versionId);
                 if (data && data.designJson) {
+                    const migrated = migrateSkipNodes(data.designJson.nodes || [], data.designJson.edges || []);
                     set({
-                        nodes: data.designJson.nodes || [],
-                        edges: data.designJson.edges || [],
+                        nodes: migrated.nodes,
+                        edges: migrated.edges,
                         workflowId: data.id,
                         saveStatus: 'saved' // Prevent autosave when viewing version history
                     });
@@ -606,12 +634,13 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                     ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                     : rawNodes;
                 const repaired = ensureStableNodeIds(hydratedNodes);
+                const migrated = migrateSkipNodes(repaired.nodes, workflow?.designJson?.edges || []);
 
                 set({
-                    nodes: repaired.nodes,
-                    edges: workflow?.designJson?.edges || [],
+                    nodes: migrated.nodes,
+                    edges: migrated.edges,
                     workflowId: workflow?.id || null,
-                    saveStatus: repaired.changed ? 'unsaved' : 'saved'
+                    saveStatus: repaired.changed || migrated.changed ? 'unsaved' : 'saved'
                 });
             } catch (error) {
                 console.error("Failed to load latest version", error);

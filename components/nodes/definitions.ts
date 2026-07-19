@@ -80,7 +80,9 @@ const definitionFromManifest = (rawManifest: RegistryManifest): NodeDefinition =
     };
 };
 
+// Skip logic now lives on question nodes (Logic tab) instead of a standalone canvas node.
 export const NODE_DEFINITIONS: NodeDefinition[] = Object.values(manifestRegistry as Record<string, RegistryManifest>)
+    .filter((manifest) => manifest.type !== 'skip')
     .map(definitionFromManifest);
 
 

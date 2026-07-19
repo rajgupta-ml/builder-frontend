@@ -22,6 +22,34 @@ export interface WorkflowValidationResult {
     error?: string;
 }
 
+export interface OpenEndQualityPolicyPreview {
+    enabled: boolean;
+    source: "AI_INFERRED" | "SYSTEM_DEFAULT" | "CREATOR_OVERRIDE";
+    confidence: number;
+    needsCreatorReview: boolean;
+    answerIntent: "IDENTITY" | "CONTACT" | "SHORT_FACT" | "YES_NO" | "SINGLE_WORD" | "REASON_OPINION" | "LONG_FEEDBACK" | "AMBIGUOUS";
+    expectedAnswerShape: "single_word" | "short_phrase" | "sentence" | "paragraph";
+    checks: {
+        tooShort: boolean;
+        keyboardMash: boolean;
+        duplicateWithinSession: boolean;
+        relevance: boolean;
+        gibberish: boolean;
+        languageMismatch: boolean;
+        aiGeneratedText: boolean;
+    };
+    thresholds: {
+        minWords?: number;
+        minCharacters?: number;
+    };
+    reasonCode: string;
+}
+
+export interface OpenEndQualityPreviewResult {
+    automaticPolicies: Record<string, OpenEndQualityPolicyPreview>;
+    policies: Record<string, OpenEndQualityPolicyPreview>;
+}
+
 type WorkflowImportStatus = "QUEUED" | "PROCESSING" | "SUCCEEDED" | "FAILED";
 
 export interface WorkflowImportJobStatus {
@@ -121,6 +149,28 @@ export const surveyWorkflowApi = {
     createWorkflow: async (data: { surveyId: string, runtimeJson: any, designJson: any }) => {
         const response = await apiClient.post(`/workflows`, data);
         return response.data.data;
+    },
+
+
+    previewOpenEndQuality: async (
+        data: { surveyId: string; runtimeJson: any; designJson: { nodes: any[]; edges: any[] } },
+        options?: RequestOptions
+    ): Promise<OpenEndQualityPreviewResult> => {
+        const response = await apiClient.post('/workflows/open-end-quality-preview', data, { signal: options?.signal });
+        const parsed = z.object({ data: z.unknown() }).safeParse(response.data);
+        if (!parsed.success) {
+            reportError({
+                kind: "api",
+                message: "Invalid open-end quality preview payload shape",
+                details: { endpoint: "/workflows/open-end-quality-preview" },
+            });
+            return { automaticPolicies: {}, policies: {} };
+        }
+        const payload = parsed.data.data as Partial<OpenEndQualityPreviewResult> | null | undefined;
+        return {
+            automaticPolicies: payload?.automaticPolicies || {},
+            policies: payload?.policies || {},
+        };
     },
 
     getWorkflowsMetadata: async (surveyId: string, options?: RequestOptions): Promise<any[]> => {
