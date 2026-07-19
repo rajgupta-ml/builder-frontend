@@ -18,6 +18,7 @@ export default function DeleteableEdge({
     targetPosition,
     style = {},
     markerEnd,
+    sourceHandleId,
 }: EdgeProps) {
     const { setEdges } = useReactFlow();
     const [edgePath, labelX, labelY] = getBezierPath({
@@ -34,14 +35,35 @@ export default function DeleteableEdge({
         setEdges((edges) => edges.filter((edge) => edge.id !== id));
     };
 
+    const route = sourceHandleId === 'true'
+        ? {
+            label: 'TRUE',
+            stroke: '#22c55e',
+            badgeClassName: 'border-green-200 bg-green-50 text-green-700',
+        }
+        : sourceHandleId === 'false'
+            ? {
+                label: 'FALSE',
+                stroke: '#ef4444',
+                badgeClassName: 'border-red-200 bg-red-50 text-red-700',
+            }
+            : sourceHandleId === 'jump'
+                ? {
+                    label: 'SKIP',
+                    stroke: '#f43f5e',
+                    badgeClassName: 'border-rose-200 bg-rose-50 text-rose-700',
+                }
+                : null;
+
     return (
         <>
             <BaseEdge
                 path={edgePath}
                 markerEnd={markerEnd}
                 style={{
-                    strokeWidth: 4,
                     ...style,
+                    strokeWidth: route ? 3 : 4,
+                    ...(route ? { stroke: route.stroke } : {}),
                 }}
             />
             <EdgeLabelRenderer>
@@ -52,8 +74,13 @@ export default function DeleteableEdge({
                         fontSize: 12,
                         pointerEvents: 'all',
                     }}
-                    className="nodrag nopan"
+                    className="nodrag nopan flex items-center gap-1.5"
                 >
+                    {route && (
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold shadow-sm ${route.badgeClassName}`}>
+                            {route.label}
+                        </span>
+                    )}
                     <button
                         className="w-5 h-5 bg-background border border-border shadow-sm rounded-full flex items-center justify-center hover:bg-destructive hover:text-destructive-foreground transition-all group"
                         onClick={onEdgeClick}

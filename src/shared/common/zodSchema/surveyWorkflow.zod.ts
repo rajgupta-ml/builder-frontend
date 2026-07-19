@@ -63,6 +63,16 @@ const runtimeNextSchema = z.discriminatedUnion('kind', [
         kind: z.literal('branch'), 
         trueId: z.string().nullable(), 
         falseId: z.string().nullable() 
+    }),
+    z.object({
+        kind: z.literal('multiBranch'),
+        routes: z.array(z.object({
+            id: z.string(),
+            label: z.string().optional(),
+            condition: z.any().optional().nullable(),
+            targetId: z.string().nullable(),
+        })),
+        fallbackId: z.string().nullable(),
     })
 ]);
 

@@ -273,6 +273,18 @@ export default function Dashboard() {
                               >
                                 Data
                               </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuId(null);
+                                  router.push(
+                                    `/dashboard/surveys/${survey.id}/quality`,
+                                  );
+                                }}
+                                className={`w-full text-left text-xs text-foreground hover:bg-muted rounded px-2 py-2 transition-colors ${jetBrainsMono.className}`}
+                              >
+                                Quality
+                              </button>
                               {canCreateSurvey ? (
                                 <button
                                   onClick={async (e) => {

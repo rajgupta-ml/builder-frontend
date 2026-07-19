@@ -54,6 +54,162 @@ type MetricsStreamHandlers = {
     onConnected?: () => void;
 };
 
+export type QualitySummary = {
+    averageScore: number | null;
+    totalResponses: number;
+    scoredResponses: number;
+    stateCounts: Record<string, number>;
+    detectorCounts: Record<string, number>;
+    detectorReviewMetrics: Record<string, {
+        activeCount: number;
+        reviewedValidCount: number;
+        reviewedConfirmedCount: number;
+    }>;
+};
+
+export type QualityResponseListItem = {
+    id: string;
+    respondentId: string;
+    status: string | null;
+    outcome: string | null;
+    mode: "LIVE" | "TEST";
+    startedAt: string | null;
+    completedAt: string | null;
+    updatedAt: string | null;
+    qualityScore: number | null;
+    qualityState: string | null;
+    qualityProcessingStatus: string | null;
+    qualityScoreVersion: string | null;
+    qualityCriticalOverride: boolean | null;
+    qualityReviewStatus: string | null;
+    qualityReviewReasonCode: string | null;
+    qualityReviewedAt: string | null;
+    activeFlagCount: number;
+};
+
+export type QualityResponseFlag = {
+    id: string;
+    detectorCode: string;
+    flagCode: string;
+    scopeKey: string;
+    scoreGroup: string;
+    scoreImpact: number;
+    severity: string;
+    source: string;
+    confidence: number | null;
+    questionId: string | null;
+    evidence: Record<string, unknown> | null;
+    isActive: boolean;
+    isRetroactive: boolean;
+    settingsVersion: number | null;
+    detectedAt: string;
+    retiredAt: string | null;
+};
+
+export type QualityScoreHistoryItem = {
+    id: string;
+    reason: string;
+    previousScore: number | null;
+    newScore: number | null;
+    previousState: string | null;
+    newState: string | null;
+    previousProcessingStatus: string | null;
+    newProcessingStatus: string | null;
+    previousCriticalOverride: boolean | null;
+    newCriticalOverride: boolean | null;
+    settingsVersion: number | null;
+    scoreVersion: string | null;
+    reasonPayload: Record<string, unknown> | null;
+    createdAt: string;
+};
+
+export type QualityOperationStatus = {
+    id: string;
+    status: string;
+    errorCode: string | null;
+    errorDetail: string | null;
+    attemptCount: number;
+    resultPayload: Record<string, unknown> | null;
+    createdAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    updatedAt: string;
+};
+
+export type OpenEndQualitySummary = {
+    answerCount: number;
+    eligibleAnswerCount: number;
+    aiEligibleAnswerCount: number;
+    checkedAnswerCount: number;
+    aiJudgeOperation: QualityOperationStatus | null;
+};
+
+export type QualityResponseDetail = {
+    id: string;
+    surveyId: string;
+    respondentId: string;
+    status: string | null;
+    outcome: string | null;
+    mode: "LIVE" | "TEST";
+    startedAt: string | null;
+    completedAt: string | null;
+    updatedAt: string | null;
+    qualityScore: number | null;
+    qualityState: string | null;
+    qualityProcessingStatus: string | null;
+    qualityScoreVersion: string | null;
+    qualityScoredAt: string | null;
+    qualityCriticalOverride: boolean | null;
+    qualityReviewStatus: string | null;
+    qualityReviewReasonCode: string | null;
+    qualityReviewedAt: string | null;
+    qualitySettingsVersion: number | null;
+    qualityFlags: QualityResponseFlag[];
+    qualityScoreHistory: QualityScoreHistoryItem[];
+    openEndQuality?: OpenEndQualitySummary;
+};
+
+export type QualityDetectorSettings = {
+    enabled: boolean;
+    scoreImpact?: number;
+    severity?: string;
+    thresholdSeconds?: number;
+    expectedSurveyRatio?: number;
+    minimumFloorSeconds?: number;
+    expectedTimeRatio?: number;
+    wordsPerSecond?: number;
+    interactionFloorSeconds?: number;
+    minResponses?: number;
+    nearStraightLineRatio?: number;
+    straightLineScoreImpact?: number;
+    straightLineSeverity?: string;
+    nearStraightLineScoreImpact?: number;
+    nearStraightLineSeverity?: string;
+    patternResponseScoreImpact?: number;
+    patternResponseSeverity?: string;
+};
+
+export type QualitySettings = {
+    settingId: string | null;
+    version: number | null;
+    guardrailVersion: number;
+    isEnabled: boolean;
+    scoreVersion: string;
+    thresholds: {
+        cleanMin: number;
+        watchlistMin: number;
+        flaggedMin: number;
+    };
+    scoreGroupCaps: Record<string, number>;
+    detectors: Record<string, QualityDetectorSettings>;
+    compliancePolicy?: {
+        duplicateDeviceTestOnly: boolean;
+        duplicateDeviceLiveApprovalRecorded: boolean;
+    };
+    createdAt: string | null;
+    updatedAt: string | null;
+};
+
 const parseSseFrame = (frame: string) => {
     let event = "message";
     const dataLines: string[] = [];
@@ -164,6 +320,7 @@ export const surveyResponseApi = {
                     limit: z.number().int().positive(),
                     total: z.number().int().nonnegative(),
                     totalPages: z.number().int().positive(),
+                    orderedHeaders: z.array(z.string()).optional(),
                 }).optional(),
             }),
         }).safeParse(response.data);
@@ -230,6 +387,141 @@ export const surveyResponseApi = {
     getResyncStatus: async (surveyId: string) => {
         const response = await apiClient.get(`/responses/resync/${surveyId}/status`);
         return response.data?.data;
+    },
+
+    getQualitySummary: async (surveyId: string, mode?: 'LIVE' | 'TEST', options?: RequestOptions): Promise<QualitySummary> => {
+        const response = await apiClient.get(`/responses/quality/${surveyId}/summary`, {
+            ...options,
+            params: {
+                ...(mode ? { mode } : {}),
+            },
+        });
+        const payload = response.data?.data;
+        if (!payload || typeof payload !== 'object') {
+            reportError({
+                kind: 'api',
+                message: 'Invalid quality summary payload shape',
+                details: { endpoint: `/responses/quality/${surveyId}/summary` },
+            });
+            return {
+                averageScore: null,
+                totalResponses: 0,
+                scoredResponses: 0,
+                stateCounts: {},
+                detectorCounts: {},
+                detectorReviewMetrics: {},
+            };
+        }
+        return payload as QualitySummary;
+    },
+
+    getQualityResponses: async (
+        surveyId: string,
+        options?: RequestOptions & {
+            mode?: 'LIVE' | 'TEST';
+            page?: number;
+            limit?: number;
+            state?: string;
+            reviewStatus?: string;
+        }
+    ): Promise<PaginatedFeedResult<QualityResponseListItem>> => {
+        const response = await apiClient.get(`/responses/quality/${surveyId}`, {
+            ...options,
+            params: {
+                ...(options?.mode ? { mode: options.mode } : {}),
+                ...(options?.page ? { page: options.page } : {}),
+                ...(options?.limit ? { limit: options.limit } : {}),
+                ...(options?.state ? { state: options.state } : {}),
+                ...(options?.reviewStatus ? { reviewStatus: options.reviewStatus } : {}),
+            },
+        });
+        const payload = response.data?.data;
+        if (!payload || typeof payload !== 'object' || !Array.isArray(payload.data)) {
+            reportError({
+                kind: 'api',
+                message: 'Invalid quality responses payload shape',
+                details: { endpoint: `/responses/quality/${surveyId}` },
+            });
+            return {
+                data: [],
+                meta: {
+                    page: options?.page || 1,
+                    limit: options?.limit || 25,
+                    total: 0,
+                    totalPages: 1,
+                },
+            };
+        }
+        return payload as PaginatedFeedResult<QualityResponseListItem>;
+    },
+
+    getQualityResponseDetail: async (surveyId: string, responseId: string, options?: RequestOptions): Promise<QualityResponseDetail> => {
+        const response = await apiClient.get(`/responses/quality/${surveyId}/${responseId}`, options);
+        const payload = response.data?.data;
+        if (!payload || typeof payload !== 'object') {
+            reportError({
+                kind: 'api',
+                message: 'Invalid quality response detail payload shape',
+                details: { endpoint: `/responses/quality/${surveyId}/${responseId}` },
+            });
+            throw new Error('Invalid quality response detail payload');
+        }
+        return payload as QualityResponseDetail;
+    },
+
+    reviewQualityResponse: async (
+        surveyId: string,
+        responseId: string,
+        input: {
+            reviewStatus: string;
+            reasonCode?: string;
+            note?: string;
+            reviewedFlagIds?: string[];
+        }
+    ) => {
+        const response = await apiClient.post(`/responses/quality/${surveyId}/${responseId}/review`, input);
+        return response.data?.data;
+    },
+
+    getQualitySettings: async (surveyId: string, options?: RequestOptions): Promise<QualitySettings> => {
+        const response = await apiClient.get(`/responses/quality/${surveyId}/settings`, options);
+        const payload = response.data?.data;
+        if (!payload || typeof payload !== 'object') {
+            reportError({
+                kind: 'api',
+                message: 'Invalid quality settings payload shape',
+                details: { endpoint: `/responses/quality/${surveyId}/settings` },
+            });
+            throw new Error('Invalid quality settings payload');
+        }
+        return payload as QualitySettings;
+    },
+
+    updateQualitySettings: async (
+        surveyId: string,
+        input: {
+            guardrailVersion?: number;
+            scoreVersion?: string;
+            thresholds: {
+                cleanMin: number;
+                watchlistMin: number;
+                flaggedMin: number;
+            };
+            scoreGroupCaps: Record<string, number>;
+            detectors: Record<string, QualityDetectorSettings>;
+        }
+    ): Promise<QualitySettings> => {
+        const response = await apiClient.put(`/responses/quality/${surveyId}/settings`, input);
+        const payload = response.data?.data;
+        if (!payload || typeof payload !== 'object') {
+            reportError({
+                kind: 'api',
+                message: 'Invalid quality settings update payload shape',
+                details: { endpoint: `/responses/quality/${surveyId}/settings` },
+            });
+            throw new Error('Invalid quality settings update payload');
+        }
+        return payload as QualitySettings;
     },
 
     exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode?: 'LIVE' | 'TEST') => {

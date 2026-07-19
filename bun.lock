@@ -6,7 +6,7 @@
       "dependencies": {
         "@radix-ui/react-label": "^2.1.8",
         "@sentry/browser": "^10.12.0",
-        "@surveystudio/node-registery": "1.14.12",
+        "@surveystudio/node-registery": "1.14.13",
         "@tabler/icons-react": "^3.36.1",
         "@xyflow/react": "^12.10.0",
         "amazon-cognito-identity-js": "^6.3.18",
@@ -243,7 +243,7 @@
 
     "@standard-schema/utils": ["@standard-schema/utils@0.3.0", "", {}, "sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g=="],
 
-    "@surveystudio/node-registery": ["@surveystudio/node-registery@1.14.12", "", { "peerDependencies": { "react": ">=18", "react-dom": ">=18" }, "optionalPeers": ["react", "react-dom"] }, "sha512-1TteblAj5AN9mE/yDxgc4gfYD8Mq+13QbeJ5aBDMS8wAw/e0Wa1nfMQPK0pGbBnaHclvWvQHDGIUK3KvuQ0H9g=="],
+    "@surveystudio/node-registery": ["@surveystudio/node-registery@1.14.13", "", { "peerDependencies": { "react": ">=18", "react-dom": ">=18" }, "optionalPeers": ["react", "react-dom"] }, "sha512-MEj/dFTrdNjI+zmcsFM7p13qaxUkjV80srwd2KSw1AbJuama62GW3hDoIdU6YT0PkvaAvSXxEewJsBvpOlxxUA=="],
 
     "@swc/helpers": ["@swc/helpers@0.5.15", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g=="],
 
