@@ -465,7 +465,14 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 hasChanges: false
             });
 
-            if (mode === 'LIVE') toast.success("Successfully published to LIVE mode!");
+            if (mode === 'LIVE') {
+                const resultPayload = op.resultPayload as Record<string, unknown> | null | undefined;
+                if (resultPayload?.runnerVerificationWarning) {
+                    toast.success("Published to LIVE. Runner verification pending — survey will activate shortly.");
+                } else {
+                    toast.success("Successfully published to LIVE mode!");
+                }
+            }
         } catch (error: any) {
             if (error?.code === "OPERATION_TIMEOUT") {
                 toast.info("Publish is still processing in background. We will refresh status shortly.");

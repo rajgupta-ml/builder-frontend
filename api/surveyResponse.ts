@@ -89,7 +89,7 @@ export const surveyResponseApi = {
         surveyId: string,
         handlers: MetricsStreamHandlers
     ): Promise<void> => {
-        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         if (!token) {
             throw new Error("Missing auth token for metrics stream");
         }
