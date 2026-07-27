@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
     IconPlus, IconTrash, IconAlertCircle, IconX, IconRefresh,
     IconUpload, IconFilter, IconCopy, IconArrowLeft, IconSearch,
-    IconDeviceFloppy, IconRotate,
+    IconDeviceFloppy, IconRotate, IconEye, IconEyeOff,
 } from "@tabler/icons-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Node } from "@xyflow/react";
@@ -802,6 +802,35 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
 
     const [activeTab, setActiveTab] = useState<"screener" | "survey">("screener");
     const [conditionTarget, setConditionTarget] = useState<SurveyQuota | null>(null);
+    const [hiddenTabs, setHiddenTabs] = useState<Set<"screener" | "survey">>(() => {
+        if (typeof window === "undefined") return new Set();
+        try {
+            const stored = JSON.parse(window.localStorage.getItem("ss-quota-hidden-tabs") ?? "[]") as string[];
+            return new Set(stored.filter((t): t is "screener" | "survey" => t === "screener" || t === "survey"));
+        } catch {
+            return new Set();
+        }
+    });
+
+    const toggleTabHidden = (tab: "screener" | "survey") => {
+        setHiddenTabs((prev) => {
+            const next = new Set(prev);
+            if (next.has(tab)) {
+                next.delete(tab);
+            } else if (next.size < 1) {
+                // Never hide both tabs — at least one must remain visible.
+                next.add(tab);
+            }
+            window.localStorage.setItem("ss-quota-hidden-tabs", JSON.stringify([...next]));
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        if (hiddenTabs.has(activeTab)) {
+            setActiveTab(activeTab === "screener" ? "survey" : "screener");
+        }
+    }, [hiddenTabs, activeTab]);
 
     // Screener draft state
     const [screenerDraft, setScreenerDraft] = useState<SurveyQuota[]>([]);
@@ -1239,22 +1268,40 @@ export function SurveyQuotaModal({ isOpen, onClose, surveyId, onSave }: SurveyQu
 
                             {/* Tabs (hidden while in condition builder) */}
                             {!conditionTarget && (
-                                <div className="flex border-b border-border shrink-0 px-6 gap-0">
-                                    {(["screener", "survey"] as const).map((tab) => (
-                                        <button key={tab} onClick={() => setActiveTab(tab)}
-                                            className={`px-5 py-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2 -mb-px ${
-                                                activeTab === tab
-                                                    ? "border-primary text-primary"
-                                                    : "border-transparent text-muted-foreground hover:text-foreground"
-                                            }`}
+                                <div className="flex items-center border-b border-border shrink-0 px-6 gap-0">
+                                    {(["screener", "survey"] as const).filter((tab) => !hiddenTabs.has(tab)).map((tab) => (
+                                        <div key={tab} className="group relative flex items-center">
+                                            <button onClick={() => setActiveTab(tab)}
+                                                className={`px-5 py-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2 -mb-px ${
+                                                    activeTab === tab
+                                                        ? "border-primary text-primary"
+                                                        : "border-transparent text-muted-foreground hover:text-foreground"
+                                                }`}
+                                            >
+                                                {tab}
+                                                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-black ${activeTab === tab ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                                                    {tab === "screener" ? screenerDraft.length : surveyDraft.length}
+                                                </span>
+                                                {((tab === "screener" && screenerDirty) || (tab === "survey" && surveyDirty)) && (
+                                                    <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />
+                                                )}
+                                            </button>
+                                            <button
+                                                onClick={() => toggleTabHidden(tab)}
+                                                title={`Hide ${tab} quotas`}
+                                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 -ml-1 mr-1 text-muted-foreground/50 hover:text-muted-foreground"
+                                            >
+                                                <IconEyeOff size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {(["screener", "survey"] as const).filter((tab) => hiddenTabs.has(tab)).map((tab) => (
+                                        <button key={tab} onClick={() => toggleTabHidden(tab)}
+                                            title={`Show ${tab} quotas`}
+                                            className="ml-auto flex items-center gap-1.5 px-2 py-1 mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 hover:text-muted-foreground border border-dashed border-border rounded-md"
                                         >
-                                            {tab}
-                                            <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-black ${activeTab === tab ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                                                {tab === "screener" ? screenerDraft.length : surveyDraft.length}
-                                            </span>
-                                            {((tab === "screener" && screenerDirty) || (tab === "survey" && surveyDirty)) && (
-                                                <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-500 align-middle" />
-                                            )}
+                                            <IconEye size={12} />
+                                            Show {tab}
                                         </button>
                                     ))}
                                 </div>
