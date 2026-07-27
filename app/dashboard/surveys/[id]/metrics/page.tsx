@@ -893,7 +893,9 @@ export default function SurveyMetricsPage() {
             </div>
 
             {/* Secondary Metrics Bar */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <MiniMetricCard title="On Click" value={totalMetrics.starts} color="text-blue-600" />
+                <MiniMetricCard title="On Complete" value={totalMetrics.completes} color="text-emerald-600" />
                 <MiniMetricCard title="Dropped" value={totalMetrics.dropped} color="text-rose-600" />
                 <MiniMetricCard title="Disqualified" value={totalMetrics.disqualified} color="text-amber-600" />
                 <MiniMetricCard title="Over Quota" value={totalMetrics.overQuota} color="text-fuchsia-600" />

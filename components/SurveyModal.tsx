@@ -129,6 +129,79 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-6">
+                            {canLink && (
+                                <div className="rounded-xl border border-border/60 bg-muted/10 p-4 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <IconLink size={13} className="text-primary shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-foreground">Link to a GLE project</p>
+                                            <p className="text-[11px] text-muted-foreground">Optional — auto-fills name, client &amp; description from GLE</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setShowGlePicker(false); setSelectedGleProjectId(''); }}
+                                            className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-left transition-all ${!showGlePicker ? 'border-primary bg-primary/5 ring-2 ring-primary/15' : 'border-border/60 bg-background hover:border-border'}`}
+                                        >
+                                            <span className="text-xs font-semibold text-foreground">Standalone</span>
+                                            <span className="text-[10px] text-muted-foreground">No GLE link</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => void openGlePicker()}
+                                            className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-left transition-all ${showGlePicker ? 'border-primary bg-primary/5 ring-2 ring-primary/15' : 'border-border/60 bg-background hover:border-border'}`}
+                                        >
+                                            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5"><IconLink size={11} className="text-primary" /> Link GLE project</span>
+                                            <span className="text-[10px] text-muted-foreground">Derive details from GLE</span>
+                                        </button>
+                                    </div>
+                                    {showGlePicker && (
+                                        <div className="space-y-2 pt-1">
+                                            {gleProjectsLoading ? (
+                                                <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+                                                    <IconLoader2 size={12} className="animate-spin" />
+                                                    Loading projects...
+                                                </div>
+                                            ) : gleProjects.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground py-1">No unlinked GLE projects available.</p>
+                                            ) : (
+                                                <div className="relative">
+                                                    <select
+                                                        value={selectedGleProjectId}
+                                                        onChange={(e) => {
+                                                            const id = e.target.value;
+                                                            setSelectedGleProjectId(id);
+                                                            const proj = gleProjects.find((p) => p.publicId === id);
+                                                            if (proj) {
+                                                                setFormData((prev) => ({
+                                                                    ...prev,
+                                                                    name: proj.name ?? prev.name,
+                                                                    client: proj.clientName && proj.clientName !== 'N/A' ? proj.clientName : prev.client,
+                                                                    description: proj.notes ?? prev.description,
+                                                                }));
+                                                            }
+                                                        }}
+                                                        className="w-full appearance-none bg-background border border-border/60 px-3 py-2.5 pr-8 text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground"
+                                                    >
+                                                        <option value="">— Choose a project —</option>
+                                                        {gleProjects.map((p) => (
+                                                            <option key={p.publicId} value={p.publicId}>
+                                                                {p.name} · {p.publicId}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <IconChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                                                </div>
+                                            )}
+                                            {selectedGleProjectId && (
+                                                <p className="text-[11px] text-primary/80 font-medium">Details auto-filled from GLE — you can still edit them. Linked on create.</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="space-y-1">
                                 <label htmlFor="name" className={`text-xs text-muted-foreground ${jetBrainsMono.className}`}>
                                     SURVEY NAME
@@ -172,64 +245,6 @@ export default function NewSurveyModal({ isOpen, onClose, onSuccess }: NewSurvey
                                     className="w-full bg-background border border-border/60 px-3 py-2 text-sm text-foreground rounded-md placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors resize-none mt-1"
                                 />
                             </div>
-
-                            {canLink && !showGlePicker && (
-                                <button
-                                    type="button"
-                                    onClick={openGlePicker}
-                                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-dashed border-border/50 text-xs text-muted-foreground hover:border-border hover:bg-muted/20 hover:text-foreground transition-all group"
-                                >
-                                    <IconLink size={12} className="shrink-0" />
-                                    <span>Link to a GLE project</span>
-                                    <span className="ml-auto text-[10px] text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">optional</span>
-                                </button>
-                            )}
-                            {showGlePicker && (
-                                <div className="rounded-xl border border-border/60 overflow-hidden">
-                                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-muted/20">
-                                        <span className="text-xs font-semibold flex items-center gap-2">
-                                            <IconLink size={12} className="text-primary" />
-                                            Link to a GLE project
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => { setShowGlePicker(false); setSelectedGleProjectId(''); }}
-                                            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                                        >
-                                            <IconX size={13} />
-                                        </button>
-                                    </div>
-                                    <div className="px-4 py-3 space-y-3">
-                                        {gleProjectsLoading ? (
-                                            <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
-                                                <IconLoader2 size={12} className="animate-spin" />
-                                                Loading projects...
-                                            </div>
-                                        ) : gleProjects.length === 0 ? (
-                                            <p className="text-xs text-muted-foreground py-1">No unlinked GLE projects available.</p>
-                                        ) : (
-                                            <div className="relative">
-                                                <select
-                                                    value={selectedGleProjectId}
-                                                    onChange={(e) => setSelectedGleProjectId(e.target.value)}
-                                                    className="w-full appearance-none bg-background border border-border/60 px-3 py-2.5 pr-8 text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all text-foreground"
-                                                >
-                                                    <option value="">— Choose a project —</option>
-                                                    {gleProjects.map((p) => (
-                                                        <option key={p.publicId} value={p.publicId}>
-                                                            {p.name} · {p.publicId}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <IconChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                                            </div>
-                                        )}
-                                        {selectedGleProjectId && (
-                                            <p className="text-[11px] text-primary/80 font-medium">Will be linked once the survey is created.</p>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
 
                             <div className="flex justify-end gap-3 pt-6 mt-2">
                                 <button

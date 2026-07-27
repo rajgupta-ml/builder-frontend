@@ -14,6 +14,8 @@ export interface AvailableGleProject {
     publicId: string;
     name: string;
     status: string;
+    clientName?: string;
+    notes?: string;
 }
 
 export const surveyLinkApi = {

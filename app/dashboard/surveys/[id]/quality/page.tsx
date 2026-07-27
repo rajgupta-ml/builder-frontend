@@ -25,12 +25,11 @@ import {
     type QualityResponseListItem,
     type QualitySummary,
 } from "@/api/surveyResponse";
-import { getStoredUserRole, hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { getStoredUserScopes, hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { safeDateTime, safeIdShort } from "@/lib/safe-format";
 import { toUserMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import type { Survey } from "@/src/shared/types/survey";
-import type { UserRole } from "@/types/auth";
 import { toast } from "sonner";
 import { QualitySettingsModal } from "@/components/modals/QualitySettingsModal";
 import { ModalPortal } from "@/components/ui/ModalPortal";
@@ -863,17 +862,17 @@ export default function SurveyQualityPage() {
     const [reviewReasonCode, setReviewReasonCode] = useState("");
     const [reviewNote, setReviewNote] = useState("");
     const [reviewedFlagIds, setReviewedFlagIds] = useState<string[]>([]);
-    const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
-    const [roleHydrated, setRoleHydrated] = useState(false);
+    const [userScopes, setUserScopes] = useState<string[]>([]);
+    const [scopesHydrated, setScopesHydrated] = useState(false);
 
     useEffect(() => {
-        setUserRole(getStoredUserRole());
-        setRoleHydrated(true);
+        setUserScopes(getStoredUserScopes());
+        setScopesHydrated(true);
     }, []);
 
-    const canReadQuality = hasPermission(userRole, PERMISSIONS.SURVEY_QUALITY_READ);
-    const canReviewQuality = hasPermission(userRole, PERMISSIONS.SURVEY_QUALITY_REVIEW);
-    const canConfigureQuality = hasPermission(userRole, PERMISSIONS.SURVEY_QUALITY_CONFIGURE);
+    const canReadQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_READ);
+    const canReviewQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_REVIEW);
+    const canConfigureQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_CONFIGURE);
 
     const openResponse = (responseId: string) => {
         setSelectedResponseId(responseId);
@@ -1044,7 +1043,7 @@ export default function SurveyQualityPage() {
         }
     };
 
-    if (!roleHydrated || loading) {
+    if (!scopesHydrated || loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
