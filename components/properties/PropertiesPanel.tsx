@@ -14,6 +14,7 @@ import { MediaPreview } from "../nodes/MediaPreview";
 import { surveyWorkflowApi, type OpenEndQualityPolicyPreview, type WorkflowValidationIssue } from "@/api/surveyWorkflow";
 import { generateRuntimeJson } from "@/lib/compiler";
 import { useSurveyStore } from "@/src/store/useSurveyStore";
+import { buildEndNodeScreenerRedirect, updateScreenerRedirectStatus, SCREENER_CALLBACK_BASE_URL } from "@/lib/endNodeRedirect";
 
 // ... (imports remain same)
 
@@ -353,6 +354,17 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
             }
         }
         onChange(field.name, val);
+
+        // When an End node's Session Outcome changes and its redirect is already a
+        // GLE screener callback URL, keep the two in sync by rewriting just the
+        // status. Custom URLs (non-callback) are left untouched; the "Fill
+        // automatically" button remains the manual escape hatch.
+        if (field.name === 'outcome' && node.type === 'end') {
+            const synced = updateScreenerRedirectStatus(data.redirectUrl as string | undefined, val);
+            if (synced && synced !== data.redirectUrl) {
+                onChange('redirectUrl', synced);
+            }
+        }
     };
 
     const renderPanelField = (field: PropertyField) => {
@@ -382,11 +394,27 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
             return <div key={field.name}>{control}</div>;
         }
 
+        const showAutoFillRedirect = field.name === "redirectUrl" && node.type === "end" && !readOnly;
+
         return (
             <div key={field.name} className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground">{field.label}</label>
                 {control}
                 {field.helperText && <p className="text-[10px] text-muted-foreground italic">{field.helperText}</p>}
+                {showAutoFillRedirect && (
+                    <div className="space-y-0.5">
+                        <button
+                            type="button"
+                            onClick={() => onChange("redirectUrl", buildEndNodeScreenerRedirect(data.outcome as string | undefined, SCREENER_CALLBACK_BASE_URL))}
+                            className="text-[11px] font-medium text-primary hover:underline"
+                        >
+                            Fill automatically
+                        </button>
+                        <p className="text-[10px] text-muted-foreground italic">
+                            Sets the GLE screener callback URL for this node&apos;s Session Outcome.
+                        </p>
+                    </div>
+                )}
             </div>
         );
     };

@@ -11,7 +11,9 @@ import {
   IconCopy,
   IconChevronLeft,
   IconChevronRight,
+  IconLink,
 } from "@tabler/icons-react";
+import { surveyLinkApi } from "@/api/surveyLink";
 import { motion, AnimatePresence } from "framer-motion";
 import { Surveys } from "@/src/shared/types/survey";
 import NewSurveyModal from "@/components/SurveyModal";
@@ -38,6 +40,8 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalSurveys, setTotalSurveys] = useState(0);
+  // surveyId -> linked GLE project public id (only present for linked surveys)
+  const [linkedProjects, setLinkedProjects] = useState<Record<string, string>>({});
   const pageSize = 10;
   const searchTerm = searchParams.get("search")?.trim() ?? "";
 
@@ -57,6 +61,38 @@ export default function Dashboard() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
+
+  // Resolve GLE link status for the surveys on the current page so linked
+  // surveys can show their GLE project id. Runs client-side per page (pageSize
+  // is small) to avoid coupling the cached surveys list to AIM Core.
+  useEffect(() => {
+    if (surveys.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        surveys.map(async (survey) => {
+          try {
+            const link = await surveyLinkApi.getSurveyLink(survey.id);
+            return [survey.id, link?.gleProjectId ?? null] as const;
+          } catch {
+            return [survey.id, null] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      setLinkedProjects((prev) => {
+        const next = { ...prev };
+        for (const [id, gleProjectId] of results) {
+          if (gleProjectId) next[id] = gleProjectId;
+          else delete next[id];
+        }
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [surveys]);
 
   useEffect(() => {
     const onDocumentClick = (event: MouseEvent) => {
@@ -206,6 +242,15 @@ export default function Dashboard() {
                         <div className="text-sm font-medium text-foreground truncate">
                           {survey.name}
                         </div>
+                        {linkedProjects[survey.id] && (
+                          <div
+                            className={`mt-1.5 inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-1.5 py-0.5 text-[10px] text-primary ${jetBrainsMono.className}`}
+                            title={`Linked to GLE project ${linkedProjects[survey.id]}`}
+                          >
+                            <IconLink size={11} />
+                            GLE {linkedProjects[survey.id]}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span
