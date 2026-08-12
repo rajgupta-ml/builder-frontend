@@ -13,6 +13,7 @@ import {
     IconPlayerPause,
     IconBan,
     IconDotsVertical,
+    IconRoute,
     IconSparkles
 } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,8 @@ interface EditorHeaderProps {
     onRunTest?: () => void;
     validationIssues?: WorkflowValidationIssue[];
     validationPending?: boolean;
+    analysisOpen?: boolean;
+    onAnalysisOpenChange?: (open: boolean) => void;
 }
 
 export function EditorHeader({
@@ -47,6 +50,8 @@ export function EditorHeader({
     onRunTest,
     validationIssues = [],
     validationPending = false,
+    analysisOpen = false,
+    onAnalysisOpenChange,
 }: EditorHeaderProps) {
     const router = useRouter();
     const versionDropdownRef = useRef<HTMLDivElement>(null);
@@ -288,6 +293,16 @@ export function EditorHeader({
                             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground text-center">Actions</p>
                         </div>
                         <div className="p-1 space-y-1">
+                            <button
+                                onClick={() => {
+                                    setIsActionsDropdownOpen(false);
+                                    onAnalysisOpenChange?.(!analysisOpen);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all"
+                            >
+                                <IconRoute size={15} />
+                                {analysisOpen ? 'Close flow explorer' : 'Explore flow'}
+                            </button>
                             <button
                                 onClick={() => {
                                     setIsActionsDropdownOpen(false);

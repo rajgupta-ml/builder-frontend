@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { IconTrash, IconPlus, IconGripVertical, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
-import { cn } from '@/lib/utils'; // Assuming you have a utility for classNames
+import { IconTrash, IconPlus, IconX, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
+import { cn } from '@/lib/utils';
 
 interface StepOption {
     label: string;
@@ -61,8 +61,9 @@ export const StepsBuilder = ({ value, onChange }: StepsBuilderProps) => {
             ))}
 
             <button
+                type="button"
                 onClick={addStep}
-                className="w-full py-2 border-2 border-dashed border-border rounded-md text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1"
+                className="w-full py-2 border border-dashed border-border rounded-md text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1"
             >
                 <IconPlus size={14} /> Add Step
             </button>
@@ -71,7 +72,7 @@ export const StepsBuilder = ({ value, onChange }: StepsBuilderProps) => {
 };
 
 const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: number, onUpdate: (u: Partial<Step>) => void, onRemove: () => void }) => {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(index === 0);
 
     const addOption = () => {
         const newOption = { label: `Option ${step.options.length + 1}`, value: `opt_${Date.now()}` };
@@ -93,12 +94,11 @@ const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: numb
         <div className="border border-border rounded-md bg-background overflow-hidden">
             {/* Header */}
             <div className="flex items-center gap-2 p-2 bg-muted/20 border-b border-border">
-                <div className="cursor-grab text-muted-foreground"><IconGripVertical size={14} /></div>
                 <div className="flex-1 font-semibold text-xs text-foreground">Step {index + 1}</div>
-                <button onClick={() => setIsExpanded(!isExpanded)} className="text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setIsExpanded(!isExpanded)} className="text-muted-foreground hover:text-foreground">
                     {isExpanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
                 </button>
-                <button onClick={onRemove} className="text-muted-foreground hover:text-destructive">
+                <button type="button" onClick={onRemove} className="text-muted-foreground hover:text-destructive">
                     <IconTrash size={14} />
                 </button>
             </div>
@@ -108,7 +108,7 @@ const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: numb
                 <div className="p-3 space-y-3">
                     {/* Question Title */}
                     <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Question / Title</label>
+                        <label className="text-[10px] font-semibold text-muted-foreground">Question / Title</label>
                         <input
                             type="text"
                             className="w-full text-xs p-1.5 rounded border border-input bg-background"
@@ -120,7 +120,7 @@ const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: numb
 
                     {/* Options List */}
                     <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Options</label>
+                        <label className="text-[10px] font-semibold text-muted-foreground">Options</label>
                         {step.options.map((opt, i) => (
                             <div key={i} className="flex gap-1">
                                 <input
@@ -130,12 +130,12 @@ const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: numb
                                     onChange={(e) => updateOption(i, e.target.value)}
                                     placeholder={`Option ${i + 1}`}
                                 />
-                                <button onClick={() => removeOption(i)} className="p-1.5 text-muted-foreground hover:text-destructive">
+                                <button type="button" onClick={() => removeOption(i)} className="p-1.5 text-muted-foreground hover:text-destructive">
                                     <IconX size={14} />
                                 </button>
                             </div>
                         ))}
-                        <button onClick={addOption} className="text-[10px] text-primary hover:underline flex items-center gap-1">
+                        <button type="button" onClick={addOption} className="text-[10px] text-primary hover:underline flex items-center gap-1">
                             <IconPlus size={10} /> Add Option
                         </button>
                     </div>
@@ -144,6 +144,7 @@ const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: numb
                     <div className="pt-2 border-t border-border flex items-center justify-between">
                         <label className="text-xs font-medium">Allow "Other"?</label>
                         <button
+                            type="button"
                             onClick={() => onUpdate({ allowOther: !step.allowOther })}
                             className={cn(
                                 "relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus:outline-hidden",
@@ -156,7 +157,7 @@ const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: numb
 
                     {step.allowOther && (
                         <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-                            <label className="text-[10px] uppercase font-bold text-muted-foreground">"Other" Placeholder</label>
+                            <label className="text-[10px] font-semibold text-muted-foreground">"Other" Placeholder</label>
                             <input
                                 type="text"
                                 className="w-full text-xs p-1.5 rounded border border-input bg-background"
@@ -170,8 +171,3 @@ const StepItem = ({ step, index, onUpdate, onRemove }: { step: Step, index: numb
         </div>
     );
 };
-
-// Simple Icon X wrapper since it was missing in imports for subcomponent
-const IconX = ({ size }: { size?: number }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-);

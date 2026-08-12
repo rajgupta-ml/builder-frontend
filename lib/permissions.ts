@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   SURVEY_QUALITY_REVIEW: "survey.quality.review",
   SURVEY_QUALITY_CONFIGURE: "survey.quality.configure",
   SURVEY_QUALITY_EXPORT: "survey.quality.export",
+  SURVEY_QUALITY_EXPORT_DETAILED: "survey.quality.export.detailed",
   PRIVACY_MANAGE: "privacy.manage",
   TEST_RUN: "test.run",
   USER_MANAGE_ROLES: "user.manage_roles",
@@ -39,6 +40,7 @@ const PERMISSION_TO_SCOPE: Record<Permission, string> = {
   [PERMISSIONS.SURVEY_QUALITY_REVIEW]: "survey_studio:survey.quality.review",
   [PERMISSIONS.SURVEY_QUALITY_CONFIGURE]: "survey_studio:survey.quality.configure",
   [PERMISSIONS.SURVEY_QUALITY_EXPORT]: "survey_studio:survey.quality.export",
+  [PERMISSIONS.SURVEY_QUALITY_EXPORT_DETAILED]: "survey_studio:survey.quality.export.detailed",
   [PERMISSIONS.PRIVACY_MANAGE]: "survey_studio:privacy.manage",
   [PERMISSIONS.TEST_RUN]: "survey_studio:test.run",
   [PERMISSIONS.USER_MANAGE_ROLES]: "survey_studio:ops.write",
@@ -52,10 +54,17 @@ export const getStoredUserScopes = (): string[] => {
   const raw = localStorage.getItem("user");
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw) as { platformScopes?: unknown };
-    return Array.isArray(parsed.platformScopes)
+    const parsed = JSON.parse(raw) as {
+      platformScopes?: unknown;
+      isOrgOwner?: unknown;
+      isAimAdmin?: unknown;
+    };
+    const scopes = Array.isArray(parsed.platformScopes)
       ? parsed.platformScopes.filter((scope): scope is string => typeof scope === "string")
       : [];
+    return parsed.isOrgOwner === true || parsed.isAimAdmin === true
+      ? Array.from(new Set(["*", ...scopes]))
+      : scopes;
   } catch {
     return [];
   }

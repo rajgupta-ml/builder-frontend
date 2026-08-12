@@ -9,6 +9,7 @@ import {
     IconChevronLeft,
     IconChevronRight,
     IconFilter,
+    IconDownload,
     IconFlag,
     IconGauge,
     IconInfoCircle,
@@ -25,12 +26,11 @@ import {
     type QualityResponseListItem,
     type QualitySummary,
 } from "@/api/surveyResponse";
-import { getStoredUserRole, hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { getStoredUserScopes, hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { safeDateTime, safeIdShort } from "@/lib/safe-format";
 import { toUserMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import type { Survey } from "@/src/shared/types/survey";
-import type { UserRole } from "@/types/auth";
 import { toast } from "sonner";
 import { QualitySettingsModal } from "@/components/modals/QualitySettingsModal";
 import { ModalPortal } from "@/components/ui/ModalPortal";
@@ -859,21 +859,24 @@ export default function SurveyQualityPage() {
     const [meta, setMeta] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
     const [reviewStatus, setReviewStatus] = useState("REVIEWED_VALID");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isExportOpen, setIsExportOpen] = useState(false);
     const [isReviewOpen, setIsReviewOpen] = useState(false);
     const [reviewReasonCode, setReviewReasonCode] = useState("");
     const [reviewNote, setReviewNote] = useState("");
     const [reviewedFlagIds, setReviewedFlagIds] = useState<string[]>([]);
-    const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
+    const [userScopes, setUserScopes] = useState<string[]>([]);
     const [roleHydrated, setRoleHydrated] = useState(false);
 
     useEffect(() => {
-        setUserRole(getStoredUserRole());
+        setUserScopes(getStoredUserScopes());
         setRoleHydrated(true);
     }, []);
 
-    const canReadQuality = hasPermission(userRole, PERMISSIONS.SURVEY_QUALITY_READ);
-    const canReviewQuality = hasPermission(userRole, PERMISSIONS.SURVEY_QUALITY_REVIEW);
-    const canConfigureQuality = hasPermission(userRole, PERMISSIONS.SURVEY_QUALITY_CONFIGURE);
+    const canReadQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_READ);
+    const canReviewQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_REVIEW);
+    const canConfigureQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_CONFIGURE);
+    const canExportQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_EXPORT);
+    const canExportDetailedQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_EXPORT_DETAILED);
 
     const openResponse = (responseId: string) => {
         setSelectedResponseId(responseId);
@@ -1044,7 +1047,7 @@ export default function SurveyQualityPage() {
         }
     };
 
-    if (!roleHydrated || loading) {
+    if (!roleHydrated) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
@@ -1082,6 +1085,17 @@ export default function SurveyQualityPage() {
                             Open Builder
                         </button>
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                    <p className="text-muted-foreground font-medium">Loading quality data...</p>
                 </div>
             </div>
         );
@@ -1131,6 +1145,67 @@ export default function SurveyQualityPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {(canExportQuality || canExportDetailedQuality) && (
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsExportOpen((open) => !open)}
+                                    className="flex h-9 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/15"
+                                >
+                                    <IconDownload size={16} strokeWidth={1.7} />
+                                    Export
+                                    <IconChevronDown size={14} strokeWidth={1.7} />
+                                </button>
+                                {isExportOpen && (
+                                    <>
+                                        <button
+                                            aria-label="Close export menu"
+                                            className="fixed inset-0 z-40 cursor-default"
+                                            onClick={() => setIsExportOpen(false)}
+                                        />
+                                        <div className="absolute right-0 z-50 mt-2 w-64 rounded-lg border border-border/60 bg-background p-1.5 shadow-xl">
+                                            {canExportQuality && (
+                                                <>
+                                                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Quality summary</p>
+                                                    <button
+                                                        onClick={() => {
+                                                            void surveyResponseApi.exportQualityResponses(id, 'csv', viewMode);
+                                                            setIsExportOpen(false);
+                                                        }}
+                                                        className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                                                    >
+                                                        Download CSV
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            void surveyResponseApi.exportQualityResponses(id, 'xlsx', viewMode);
+                                                            setIsExportOpen(false);
+                                                        }}
+                                                        className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                                                    >
+                                                        Download Excel
+                                                    </button>
+                                                </>
+                                            )}
+                                            {canExportDetailedQuality && (
+                                                <>
+                                                    <div className="my-1 border-t border-border/60" />
+                                                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Detailed evidence</p>
+                                                    <button
+                                                        onClick={() => {
+                                                            void surveyResponseApi.exportQualityResponses(id, 'json', viewMode, true);
+                                                            setIsExportOpen(false);
+                                                        }}
+                                                        className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                                                    >
+                                                        Download evidence JSON
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
                         <button
                             onClick={() => void refreshAll()}
                             className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"

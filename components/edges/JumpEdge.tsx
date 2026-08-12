@@ -33,16 +33,31 @@ export default function JumpEdge({
     const label = typeof (data as any)?.label === 'string' && (data as any).label.trim().length > 0
         ? (data as any).label
         : 'Skip';
+    const active = (data as any)?.active !== false;
 
     return (
         <>
+            {active && (
+                <BaseEdge
+                    path={edgePath}
+                    style={{
+                        stroke: 'var(--background)',
+                        strokeWidth: 7,
+                        strokeDasharray: '6 4',
+                        strokeLinecap: 'round',
+                        opacity: 0.96,
+                    }}
+                />
+            )}
             <BaseEdge
                 path={edgePath}
                 style={{
-                    stroke: '#f43f5e',
-                    strokeWidth: 2,
+                    stroke: '#7c3aed',
+                    strokeWidth: active ? 3.25 : 1.5,
                     strokeDasharray: '6 4',
-                    opacity: 0.9,
+                    strokeLinecap: 'round',
+                    opacity: active ? 1 : 0.42,
+                    filter: active ? 'drop-shadow(0 1px 2px rgb(124 58 237 / 0.35))' : undefined,
                 }}
             />
             <EdgeLabelRenderer>
@@ -51,11 +66,13 @@ export default function JumpEdge({
                         position: 'absolute',
                         transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
                         pointerEvents: 'none',
+                        zIndex: active ? 1001 : 11,
+                        opacity: active ? 1 : 0.65,
                     }}
-                    className="nodrag nopan flex max-w-[180px] items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 shadow-sm"
+                    className="nodrag nopan flex max-w-[180px] items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 shadow-sm"
                 >
-                    <IconArrowRampRight size={11} className="shrink-0 text-rose-600" />
-                    <span className="truncate text-[10px] font-bold text-rose-700" title={label}>{label}</span>
+                    <IconArrowRampRight size={11} className="shrink-0 text-violet-600" />
+                    <span className="truncate text-[10px] font-bold text-violet-700" title={label}>{label}</span>
                 </div>
             </EdgeLabelRenderer>
         </>

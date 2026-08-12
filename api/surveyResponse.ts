@@ -524,6 +524,41 @@ export const surveyResponseApi = {
         return payload as QualitySettings;
     },
 
+    exportQualityResponses: async (
+        surveyId: string,
+        format: 'csv' | 'xlsx' | 'json' = 'csv',
+        mode?: 'LIVE' | 'TEST',
+        detailed = false
+    ) => {
+        try {
+            const endpoint = detailed
+                ? `/responses/quality/${surveyId}/export/detailed`
+                : `/responses/quality/${surveyId}/export`;
+            const response = await apiClient.get(endpoint, {
+                params: mode ? { format, mode } : { format },
+                responseType: 'blob',
+            });
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const modeLabel = mode || 'ALL';
+            const fallbackFilename = `${detailed ? 'quality-detailed-export' : 'quality-export'}-${surveyId}-${modeLabel}-${timestamp}.${format}`;
+            const contentDisposition = response.headers['content-disposition'];
+            const filenameMatch = contentDisposition?.match(/filename="?([^";]+)"?/);
+            const filename = filenameMatch?.[1] || fallbackFilename;
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Quality export failed", error);
+            toast.error(toUserMessage(error, "Failed to export response quality. Please try again."));
+        }
+    },
+
     exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode?: 'LIVE' | 'TEST') => {
         try {
             const params = mode ? { format, mode } : { format };

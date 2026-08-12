@@ -55,7 +55,7 @@ export default function NodeViewer({
     };
 
     return (
-        <div className="absolute bottom-10 right-4 z-50 flex flex-col items-start gap-2">
+        <div className="absolute bottom-4 right-4 z-50 flex flex-col items-start gap-2">
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={cn(

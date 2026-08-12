@@ -23,6 +23,8 @@ import {
     IconTrash,
     IconMapPin,
     IconCheck,
+    IconEye,
+    IconRoute,
     IconX,
 } from '@tabler/icons-react';
 import { builderRegistry } from '@surveystudio/node-registery/builder';
@@ -101,20 +103,109 @@ const renderCanvas = (props: NodeProps<any>) => {
     });
 };
 
-const SkipRulesBadge = (props: NodeProps<any>) => {
+const countVisibilityRules = (value: unknown): number => {
+    if (!value || typeof value !== 'object') return 0;
+    const item = value as { type?: string; field?: unknown; children?: unknown[] };
+    if (item.type === 'rule' || (typeof item.field === 'string' && item.field)) return 1;
+    return Array.isArray(item.children)
+        ? item.children.reduce<number>((total, child) => total + countVisibilityRules(child), 0)
+        : 0;
+};
+
+const FlowRulesBadges = (props: NodeProps<any>) => {
+    if ((props.data as any)?.__pathAnalysis) return null;
     const skips = Array.isArray((props.data as any)?.skips)
         ? ((props.data as any).skips as any[]).filter((rule) => rule && typeof rule === 'object')
         : [];
-    if (skips.length === 0) return null;
+    const visibilityRuleCount = countVisibilityRules((props.data as any)?.condition);
+    if (skips.length === 0 && visibilityRuleCount === 0) return null;
+
+    return e(
+        'div',
+        { className: 'mt-2 flex flex-wrap items-center gap-1' },
+        visibilityRuleCount > 0
+            ? e(
+                'span',
+                {
+                    className: 'inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-bold tracking-wide text-cyan-800',
+                    title: `${visibilityRuleCount} conditional display ${visibilityRuleCount === 1 ? 'rule' : 'rules'}`,
+                },
+                e(IconEye, { size: 10 }),
+                'Show only when',
+            )
+            : null,
+        skips.length > 0
+            ? e(
+                'span',
+                {
+                    className: 'inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-bold tracking-wide text-violet-700',
+                    title: skips.map((rule, index) => String(rule?.label || `Jump rule ${index + 1}`)).join('\n'),
+                },
+                e(IconGitBranch, { size: 10 }),
+                `${skips.length} ${skips.length === 1 ? 'jump' : 'jumps'}`,
+            )
+            : null,
+    );
+};
+
+type PathAnalysisNodeState = {
+    answer?: string;
+    decisions?: string[];
+    active?: boolean;
+    skipped?: boolean;
+};
+
+const PathAnalysisState = ({ data, compact = false }: { data: any; compact?: boolean }) => {
+    const state = data?.__pathAnalysis as PathAnalysisNodeState | undefined;
+    if (!state?.active && !state?.skipped && !state?.answer && !state?.decisions?.length) return null;
+
+    if (state.skipped) {
+        return e(
+            'div',
+            { className: 'nodrag nopan mt-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-amber-950 shadow-sm' },
+            e('p', { className: 'text-[8px] font-bold uppercase tracking-[0.08em] text-amber-700' }, 'Skipped'),
+            e('p', { className: 'mt-0.5 text-[9px] font-semibold leading-3 text-amber-900' }, 'Show condition was false'),
+        );
+    }
+
+    if (state.active) {
+        return e(
+            'div',
+            { className: 'nodrag nopan mt-2 flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-sky-900 shadow-sm' },
+            e('span', { className: 'h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-sky-500' }),
+            e('p', { className: 'truncate text-[9px] font-bold' }, 'Waiting for answer · Use Flow Tester below'),
+        );
+    }
 
     return e(
         'div',
         {
-            className: 'mt-2 inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rose-600',
-            title: skips.map((rule, index) => String(rule?.label || `Skip rule ${index + 1}`)).join('\n'),
+            className: cn(
+                'nodrag nopan rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-950 shadow-sm',
+                compact ? 'mt-2 px-2 py-1' : 'mt-2 px-2.5 py-2',
+            ),
         },
-        e(IconGitBranch, { size: 10 }),
-        skips.length === 1 ? 'Skip logic' : `Skip logic · ${skips.length}`,
+        state.answer
+            ? e(
+                'div',
+                { className: 'min-w-0' },
+                e('p', { className: 'text-[8px] font-bold uppercase tracking-[0.08em] text-emerald-700' }, 'Answer'),
+                e('p', { className: 'truncate text-[11px] font-bold leading-4 text-emerald-950', title: state.answer }, state.answer),
+            )
+            : null,
+        ...(state.decisions || []).map((decision, index) => e(
+            'p',
+            {
+                key: `${decision}-${index}`,
+                className: cn(
+                    'flex items-center gap-1 truncate font-semibold text-emerald-800',
+                    state.answer ? 'mt-1 border-t border-emerald-200 pt-1 text-[9px]' : 'text-[10px]',
+                ),
+                title: decision,
+            },
+            e(IconRoute, { size: 10, className: 'shrink-0' }),
+            decision,
+        )),
     );
 };
 
@@ -133,7 +224,8 @@ const CommonRegistryNode = (props: NodeProps<any>) => {
             handles: { source: Position.Bottom, target: Position.Top },
         },
         renderCanvas(props),
-        e(SkipRulesBadge, props),
+        e(PathAnalysisState, { data: props.data }),
+        e(FlowRulesBadges, props),
     );
 };
 
@@ -230,6 +322,9 @@ const BranchRegistryNode = (props: NodeProps<any>) => {
             style: { width: 10, height: 10 },
         }),
         e('div', { className: 'absolute -left-9 top-1/2 -translate-y-1/2 text-[10px] font-bold text-red-500 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity' }, 'FALSE'),
+        e('div', { className: 'absolute left-1/2 top-[calc(100%+6px)] w-max max-w-[150px] -translate-x-1/2' },
+            e(PathAnalysisState, { data: props.data, compact: true }),
+        ),
         props.selected
             ? e('button', {
                 onClick: handleDelete,
@@ -264,6 +359,7 @@ const ValidationRegistryNode = (props: NodeProps<any>) => {
             e('div', { className: 'h-7 w-7 rounded-lg bg-amber-100 flex items-center justify-center' }, e(IconShieldLock, { size: 16, className: 'text-amber-700' })),
             renderCanvas(props),
         ),
+        e(PathAnalysisState, { data: props.data, compact: true }),
         e(Handle, {
             type: 'source',
             id: 'true',
@@ -397,6 +493,7 @@ const BranchOutRegistryNode = (props: NodeProps<any>) => {
                 e('span', { className: 'truncate', title: fallbackLabel }, fallbackLabel),
             ),
         ),
+        e(PathAnalysisState, { data: props.data, compact: true }),
         ...outputPorts.map((port, index) => e(Handle, {
             key: port.id,
             type: 'source',
@@ -438,11 +535,15 @@ const componentMap: Record<string, React.ComponentType<any>> = Object.fromEntrie
 
 export const nodeTypes: NodeTypes = componentMap;
 
+import AnalysisEdge from '../edges/AnalysisEdge';
 import DeleteableEdge from '../edges/DeleteableEdge';
 import JumpEdge from '../edges/JumpEdge';
+import VisibilityEdge from '../edges/VisibilityEdge';
 export const edgeTypes = {
+    analysis: AnalysisEdge,
     default: DeleteableEdge,
     jump: JumpEdge,
+    visibility: VisibilityEdge,
 };
 
 export * from './definitions';

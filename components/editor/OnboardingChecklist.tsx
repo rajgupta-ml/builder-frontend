@@ -39,7 +39,7 @@ export function OnboardingChecklist({
   if (dismissed || allDone) return null;
 
   return (
-    <div className="absolute top-4 left-4 z-40 w-80 rounded-xl border border-border bg-background/95 backdrop-blur shadow-lg">
+    <div className="absolute top-16 left-4 z-40 w-80 max-w-[calc(100%_-_2rem)] rounded-xl border border-border bg-background/95 backdrop-blur shadow-lg">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
           Getting Started

@@ -1,5 +1,12 @@
 import { IconTextCaption, IconNumbers, IconMail, IconCalendar, IconListDetails, IconCheckbox, IconStar, IconArrowMerge, IconForbid, IconPhoto, IconForms, IconListCheck, IconGitBranch, IconListNumbers, IconMoodSmile, IconInfoCircle, IconShieldLock } from '@tabler/icons-react';
-import { builderRegistry, NODE_CATEGORY_CONFIG, type NodeBuilderIconKey } from '@surveystudio/node-registery/builder';
+import {
+    builderRegistry,
+    NODE_CATEGORY_CONFIG,
+    resolvePropertyPanel,
+    type NodeBuilderIconKey,
+    type NodeManifest,
+    type ResolvedPropertyPanel,
+} from '@surveystudio/node-registery/builder';
 import { manifestRegistry, type PropertyFieldType } from '@surveystudio/node-registery/manifest';
 import { applyMediaFeatureFlags } from './mediaFeatureFlags';
 
@@ -18,6 +25,7 @@ export interface PropertyField {
     visible?: (data: any) => boolean;
     min?: number;
     max?: number;
+    panel?: { presentation?: "standard" | "disclosure" | "unlabeled" };
 }
 
 export interface NodeDefinition {
@@ -29,11 +37,10 @@ export interface NodeDefinition {
     component?: React.ComponentType<any>;
     properties: PropertyField[];
     defaultData: Record<string, any>;
+    propertyPanel: ResolvedPropertyPanel;
 }
 
-type RegistryManifest = Pick<NodeDefinition, 'type' | 'label' | 'description' | 'category' | 'properties'> & {
-    defaultData: Record<string, any>;
-};
+type RegistryManifest = NodeManifest<any, any>;
 
 const ICON_BY_KEY: Record<NodeBuilderIconKey, React.ElementType> = {
     text: IconTextCaption,
@@ -75,12 +82,13 @@ const definitionFromManifest = (rawManifest: RegistryManifest): NodeDefinition =
         description: manifest.description,
         category: manifest.category,
         properties: manifest.properties as PropertyField[],
-        defaultData: manifest.defaultData,
+        defaultData: manifest.defaultData as Record<string, any>,
+        propertyPanel: resolvePropertyPanel(manifest),
         icon: ICON_BY_KEY[iconKey],
     };
 };
 
-// Skip logic now lives on question nodes (Logic tab) instead of a standalone canvas node.
+// Conditional flow now lives on question nodes instead of a standalone skip node.
 export const NODE_DEFINITIONS: NodeDefinition[] = Object.values(manifestRegistry as Record<string, RegistryManifest>)
     .filter((manifest) => manifest.type !== 'skip')
     .map(definitionFromManifest);
