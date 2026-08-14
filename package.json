@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "test:dag-reader": "node --test scripts/dag-reader-choice-identity.test.mjs",
     "start": "next start",
     "lint": "eslint"
   },

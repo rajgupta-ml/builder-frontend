@@ -595,21 +595,16 @@ export default function SurveyMetricsPage() {
         'Version',
         'Survey Name',
         'activeQualityFlags',
-        'qualityScore',
         'qualityState',
         'qualityProcessingStatus',
         'qualityReviewStatus',
         'qualityReviewReasonCode',
-        'qualityScoreVersion',
-        'qualityCriticalOverride',
         'quality_flag_count',
         'quality_flags',
         'quality_flag_severities',
         'quality_review_status',
         'quality_review_reason',
-        'quality_processing_status',
-        'quality_score',
-        'quality_score_version'
+        'quality_processing_status'
     ];
     const normalizedStandardHeaders = new Set(standardHeaders.map(h => h.trim().toLowerCase()));
     const isStandardHeader = (header: string) => normalizedStandardHeaders.has(header.trim().toLowerCase());

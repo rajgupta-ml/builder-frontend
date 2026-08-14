@@ -45,27 +45,21 @@ const STATE_META: Record<string, { label: string; description: string; badge: st
         badge: "bg-emerald-50 text-emerald-600 border-emerald-200",
         dot: "bg-emerald-500",
     },
-    WATCHLIST: {
-        label: "Watchlist",
-        description: "Minor anomalies detected. No action needed yet — just being monitored.",
-        badge: "bg-amber-50 text-amber-600 border-amber-200",
+    NEEDS_REVIEW: {
+        label: "Needs Review",
+        description: "A quality finding needs a reviewer's decision.",
+        badge: "bg-amber-50 text-amber-700 border-amber-200",
         dot: "bg-amber-500",
-    },
-    FLAGGED: {
-        label: "Flagged",
-        description: "Quality issues detected. This response needs a reviewer's decision.",
-        badge: "bg-rose-50 text-rose-600 border-rose-200",
-        dot: "bg-rose-500",
     },
     HIGH_RISK: {
         label: "High Risk",
-        description: "Multiple serious flags. This response is likely bad data.",
+        description: "A duplicate respondent, critical finding, or multiple check types indicate likely bad data.",
         badge: "bg-red-50 text-red-700 border-red-200",
         dot: "bg-red-600",
     },
     UNSCORED: {
-        label: "Not Scored",
-        description: "This response hasn't been through quality scoring yet.",
+        label: "Not Evaluated",
+        description: "This response hasn't completed its quality checks yet.",
         badge: "bg-muted text-muted-foreground border-border",
         dot: "bg-slate-400",
     },
@@ -91,7 +85,7 @@ const REVIEW_META: Record<string, { label: string; description: string; badge: s
 
 const PROCESSING_META: Record<string, QualityBadgeMeta> = {
     NOT_SCORABLE: {
-        label: "Not Scorable",
+        label: "Not Evaluated",
         description: "There is not enough completed response data to run quality checks yet.",
         badge: "bg-muted text-muted-foreground border-border",
     },
@@ -213,9 +207,7 @@ const OPEN_END_DETECTOR_CODES = new Set([
 ]);
 
 const emptySummary: QualitySummary = {
-    averageScore: null,
     totalResponses: 0,
-    scoredResponses: 0,
     stateCounts: {},
     detectorCounts: {},
     detectorReviewMetrics: {},
@@ -237,14 +229,6 @@ function titleCase(value: string) {
 const formatPercent = (value: number, total: number) => {
     if (total <= 0) return "0%";
     return `${((value / total) * 100).toFixed(1)}%`;
-};
-
-const scoreMeaning = (score: number | null | undefined): string => {
-    if (score === null || score === undefined) return "Not scored yet";
-    if (score >= 90) return "Excellent — no meaningful issues";
-    if (score >= 70) return "Good — minor anomalies only";
-    if (score >= 50) return "Suspect — worth a closer look";
-    return "Poor — serious quality problems";
 };
 
 const formatOpenEndAnswerCount = (count: number) => `${count} open-ended answer${count === 1 ? "" : "s"}`;
@@ -298,7 +282,6 @@ type FlagDisplayGroup = {
     issueCopies: FlagDecisionCopy[];
     questionLabels: string[];
     answerPreview: string | null;
-    scoreImpact: number;
     severity: string;
     isOpenEnd: boolean;
 };
@@ -437,27 +420,15 @@ const getOpenEndFlagDecisionCopy = (flag: QualityResponseFlag, evidence: OpenEnd
     return {
         label: detectorMeta(flag.detectorCode).label,
         why: evidence.issueDetail || formatEvidenceSummary(flag),
-        action: flag.scoreImpact > 0
-            ? "Confirm if this should affect the quality score; dismiss if it is acceptable."
-            : "Review this warning and dismiss it if it is acceptable.",
+        action: "Confirm if this finding makes the response unusable; dismiss it if it is acceptable.",
     };
 };
 
 const getPlainFlagDecisionCopy = (flag: QualityResponseFlag): FlagDecisionCopy => ({
     label: detectorMeta(flag.detectorCode).label,
     why: formatEvidenceSummary(flag),
-    action: flag.scoreImpact > 0
-        ? "Confirm if this should affect the quality score; dismiss if it is acceptable."
-        : "Review this warning and dismiss it if it is acceptable.",
+    action: "Confirm if this finding makes the response unusable; dismiss it if it is acceptable.",
 });
-
-const getScoreImpactLabel = (flag: QualityResponseFlag) =>
-    flag.scoreImpact > 0 ? `-${flag.scoreImpact} pts` : "WARN";
-
-const getScoreImpactTitle = (flag: QualityResponseFlag) =>
-    flag.scoreImpact > 0
-        ? "Points subtracted from this response's score"
-        : "Review signal with no score penalty";
 
 const getResponseDecisionSummary = (
     detail: QualityResponseDetail | null,
@@ -485,7 +456,7 @@ const getResponseDecisionSummary = (
     const issueSummary = uniqueIssues.slice(0, 3).join(", ");
     const extraCount = uniqueIssues.length > 3 ? `, +${uniqueIssues.length - 3} more` : "";
     const state = stateMeta(detail.qualityState);
-    const seriousCount = activeFlags.filter((flag) => flag.scoreImpact >= 10 || ["HIGH", "CRITICAL"].includes(flag.severity)).length;
+    const seriousCount = activeFlags.filter((flag) => ["HIGH", "CRITICAL"].includes(flag.severity)).length;
     const action = seriousCount > 0
         ? "Review affected answers before accepting this response into analysis."
         : "Quick human review is enough; these are low-risk warnings.";
@@ -551,7 +522,6 @@ const getHighestSeverity = (flags: QualityResponseFlag[]) => {
 const getFlagDisplayPriority = (flag: QualityResponseFlag) => (
     ((DETECTOR_DISPLAY_PRIORITY[flag.detectorCode] || 10) * 1000)
     + ((SEVERITY_RANK[flag.severity] || 0) * 100)
-    + Math.max(0, flag.scoreImpact)
 );
 
 const getOpenEndGroupKey = (flag: QualityResponseFlag, evidence: OpenEndFlagEvidence) => {
@@ -569,7 +539,7 @@ const getOpenEndGroupKey = (flag: QualityResponseFlag, evidence: OpenEndFlagEvid
 const uniqueDecisionCopies = (copies: FlagDecisionCopy[]) => {
     const seen = new Set<string>();
     return copies.filter((copy) => {
-        const key = `${copy.label}::${copy.why}`;
+        const key = copy.label;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -615,15 +585,12 @@ const getFlagDisplayGroups = (flags: QualityResponseFlag[]): FlagDisplayGroup[] 
             issueCopies,
             questionLabels,
             answerPreview,
-            scoreImpact: sortedFlags.reduce((sum, flag) => sum + Math.max(0, flag.scoreImpact), 0),
             severity: getHighestSeverity(sortedFlags),
             isOpenEnd: openEndEvidenceItems.length > 0,
         };
     }).sort((a, b) => {
         const severityDelta = (SEVERITY_RANK[b.severity] || 0) - (SEVERITY_RANK[a.severity] || 0);
         if (severityDelta !== 0) return severityDelta;
-        const impactDelta = b.scoreImpact - a.scoreImpact;
-        if (impactDelta !== 0) return impactDelta;
         return flags.findIndex((flag) => flag.id === a.flags[0]?.id) - flags.findIndex((flag) => flag.id === b.flags[0]?.id);
     });
 };
@@ -634,22 +601,9 @@ const getFlagGroupHeading = (groups: FlagDisplayGroup[], flags: QualityResponseF
     return `Quality issues (${groups.length} review item${groups.length === 1 ? "" : "s"}, ${flags.length} signals)`;
 };
 
-const getGroupScoreImpactLabel = (group: FlagDisplayGroup) => (
-    group.scoreImpact > 0 ? `-${group.scoreImpact} pts` : "WARN"
-);
-
-const getGroupScoreImpactTitle = (group: FlagDisplayGroup) => (
-    group.scoreImpact > 0
-        ? "Combined points subtracted by the detector signals in this review item"
-        : "Review signal with no score penalty"
-);
-
 const getGroupSuggestedAction = (group: FlagDisplayGroup) => {
     if (group.flags.length <= 1) return group.primaryCopy.action;
-    if (group.scoreImpact > 0) {
-        return "Review this answer as one unit. Confirm if these issues make the answer unusable; dismiss if it is acceptable in context.";
-    }
-    return "Review these warnings together and dismiss them if the answer is acceptable in context.";
+    return "Review this answer as one unit. Confirm if these findings make it unusable; dismiss them if it is acceptable in context.";
 };
 
 const getOpenEndQuestionCount = (flags: QualityResponseFlag[]) => {
@@ -1002,7 +956,7 @@ export default function SurveyQualityPage() {
     const drawerProcessingMeta = processingMeta(selectedDetail?.qualityProcessingStatus);
     const openEndCheckMeta = getOpenEndCheckMeta(selectedDetail);
 
-    const needsReviewCount = (summary.stateCounts.FLAGGED || 0) + (summary.stateCounts.HIGH_RISK || 0);
+    const needsReviewCount = summary.stateCounts.NEEDS_REVIEW || 0;
 
     const refreshAll = async (page = currentPage, keepDetail = isDrawerOpen ? selectedResponseId : null) => {
         await Promise.all([
@@ -1140,7 +1094,7 @@ export default function SurveyQualityPage() {
                         <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate">{survey.name}</h1>
                         <div className="mt-2 flex items-center gap-2">
                             <p className="text-sm text-muted-foreground font-medium">{survey.client ? `${survey.client} • ` : ""}Response Quality</p>
-                            <HowScoringWorksPopover />
+                            <HowDecisionsWorkPopover />
                         </div>
                     </div>
 
@@ -1261,24 +1215,24 @@ export default function SurveyQualityPage() {
             {/* KPI Strip */}
             <div className="bg-background border border-border/60 rounded-xl shadow-sm grid grid-cols-2 lg:grid-cols-4 divide-x divide-border/60 divide-y lg:divide-y-0">
                 <KpiCell
-                    label="Average Score"
-                    hint="Responses start at 100 and lose points for each quality flag. Higher is better."
-                    value={summary.averageScore === null ? "—" : summary.averageScore.toFixed(0)}
-                    suffix={summary.averageScore === null ? undefined : "/100"}
-                    sub={`${summary.scoredResponses} scored`}
+                    label="Total Responses"
+                    hint="Responses included in this quality view."
+                    value={String(summary.totalResponses)}
+                    sub={viewMode === "LIVE" ? "live data" : "test data"}
                 />
                 <KpiCell
                     label="Needs Review"
-                    hint="Flagged and high-risk responses waiting for a reviewer to clear or confirm them."
+                    hint="Responses with one quality finding that need a reviewer to clear or confirm them."
                     value={String(needsReviewCount)}
                     sub={formatPercent(needsReviewCount, summary.totalResponses)}
                     valueClassName={needsReviewCount > 0 ? "text-rose-600" : undefined}
                 />
                 <KpiCell
-                    label="Watchlist"
-                    hint="Responses with small anomalies that aren't serious enough to flag. Monitored automatically."
-                    value={String(summary.stateCounts.WATCHLIST || 0)}
-                    sub={formatPercent(summary.stateCounts.WATCHLIST || 0, summary.totalResponses)}
+                    label="High Risk"
+                    hint="Duplicate respondents, critical findings, or findings from multiple independent checks."
+                    value={String(summary.stateCounts.HIGH_RISK || 0)}
+                    sub={formatPercent(summary.stateCounts.HIGH_RISK || 0, summary.totalResponses)}
+                    valueClassName={(summary.stateCounts.HIGH_RISK || 0) > 0 ? "text-red-600" : undefined}
                 />
                 <KpiCell
                     label="Clean"
@@ -1318,7 +1272,7 @@ export default function SurveyQualityPage() {
                                     <th className="px-6 py-3 border-b border-border/60 min-w-[220px]">Respondent</th>
                                     <th className="px-6 py-3 border-b border-border/60 min-w-[160px]">
                                         <div className="flex items-center gap-2">
-                                            <span>Score</span>
+                                            <span>Status</span>
                                             <FilterPopover
                                                 value={qualityState === "ALL" ? "" : qualityState}
                                                 onChange={(v) => {
@@ -1327,7 +1281,9 @@ export default function SurveyQualityPage() {
                                                 }}
                                                 options={[
                                                     { label: "All states", value: "" },
-                                                    ...Object.entries(STATE_META).map(([value, m]) => ({ label: m.label, value })),
+                                                    { label: "Clean", value: "CLEAN" },
+                                                    { label: "Needs Review", value: "NEEDS_REVIEW" },
+                                                    { label: "High Risk", value: "HIGH_RISK" },
                                                 ]}
                                             />
                                         </div>
@@ -1358,7 +1314,7 @@ export default function SurveyQualityPage() {
                                         <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground text-sm">
                                             {qualityState !== "ALL" || reviewStatusFilter !== "ALL"
                                                 ? "No responses match these filters. Try clearing them."
-                                                : "No responses yet — quality scores will appear here as responses come in."}
+                                                : "No responses yet — quality findings will appear here as responses come in."}
                                         </td>
                                     </tr>
                                 ) : (
@@ -1386,13 +1342,7 @@ export default function SurveyQualityPage() {
                                                     title={`${stateMeta(response.qualityState).label} — ${stateMeta(response.qualityState).description}`}
                                                 >
                                                     <span className={cn("h-2.5 w-2.5 rounded-full shrink-0", stateMeta(response.qualityState).dot)} />
-                                                    <span className="text-sm font-bold text-foreground">
-                                                        {response.qualityScore ?? "—"}
-                                                    </span>
-                                                    {response.qualityScore !== null && response.qualityScore !== undefined && (
-                                                        <span className="text-xs text-muted-foreground">/100</span>
-                                                    )}
-                                                    <span className="text-xs text-muted-foreground hidden xl:inline">· {stateMeta(response.qualityState).label}</span>
+                                                    <span className="text-sm font-semibold text-foreground">{stateMeta(response.qualityState).label}</span>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-3 border-b border-border/60 text-sm text-foreground whitespace-nowrap">
@@ -1471,7 +1421,7 @@ export default function SurveyQualityPage() {
                 </div>
                 {detectorRows.length === 0 ? (
                     <div className="px-6 py-8 text-center text-sm text-muted-foreground">
-                        No quality flags yet — every scored response passed all checks.
+                        No quality findings yet — every evaluated response passed all checks.
                     </div>
                 ) : (
                     <div className="divide-y divide-border/60">
@@ -1539,17 +1489,12 @@ export default function SurveyQualityPage() {
                                     </div>
                                 ) : (
                                     <div className="divide-y divide-border/60">
-                                        {/* Score summary */}
+                                        {/* Decision summary */}
                                         <div className="px-6 py-5 space-y-4">
-                                            <div className="flex items-center gap-5">
-                                                <div className="text-center shrink-0">
-                                                    <div className="text-4xl font-bold tracking-tight text-foreground leading-none">
-                                                        {selectedDetail.qualityScore ?? "—"}
-                                                    </div>
-                                                    <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">of 100</div>
-                                                </div>
+                                            <div className="flex items-center gap-4">
+                                                <span className={cn("h-3 w-3 rounded-full shrink-0", stateMeta(selectedDetail.qualityState).dot)} />
                                                 <div className="min-w-0 space-y-1.5">
-                                                    <p className="text-sm font-semibold text-foreground">{scoreMeaning(selectedDetail.qualityScore)}</p>
+                                                    <p className="text-lg font-semibold text-foreground">{stateMeta(selectedDetail.qualityState).label}</p>
                                                     <p className="text-xs text-muted-foreground">{stateMeta(selectedDetail.qualityState).description}</p>
                                                     <div className="flex flex-wrap items-center gap-2 pt-1">
                                                         <QualityBadge meta={stateMeta(selectedDetail.qualityState)} />
@@ -1616,9 +1561,6 @@ export default function SurveyQualityPage() {
                                                 </p>
                                             ) : (
                                                 flagGroups.map((group) => {
-                                                    const scoreTone = group.scoreImpact > 0
-                                                        ? "bg-rose-50 border-rose-200 text-rose-600"
-                                                        : "bg-amber-50 border-amber-200 text-amber-700";
                                                     const hasQuestionAnswer = group.isOpenEnd && (group.questionLabels.length > 0 || group.answerPreview);
 
                                                     return (
@@ -1641,18 +1583,12 @@ export default function SurveyQualityPage() {
                                                                     </div>
                                                                     <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{group.primaryCopy.why}</p>
                                                                 </div>
-                                                                <span
-                                                                    className={cn("rounded-md border px-2.5 py-1 text-xs font-bold shrink-0", scoreTone)}
-                                                                    title={getGroupScoreImpactTitle(group)}
-                                                                >
-                                                                    {getGroupScoreImpactLabel(group)}
-                                                                </span>
                                                             </div>
 
                                                             {group.issueCopies.length > 1 && (
                                                                 <div className="mt-3 flex flex-wrap gap-1.5">
-                                                                    {group.issueCopies.map((copy) => (
-                                                                        <span key={`${group.key}-${copy.label}`} className="rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-xs font-medium text-foreground">
+                                                                    {group.issueCopies.map((copy, index) => (
+                                                                        <span key={`${group.key}-${index}-${copy.label}`} className="rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-xs font-medium text-foreground">
                                                                             {copy.label}
                                                                         </span>
                                                                     ))}
@@ -1717,15 +1653,6 @@ export default function SurveyQualityPage() {
                                                                                         <p className="text-sm font-semibold text-foreground">{decisionCopy.label}</p>
                                                                                         <p className="mt-0.5 text-xs text-muted-foreground">{detectorText}</p>
                                                                                     </div>
-                                                                                    <span
-                                                                                        className={cn(
-                                                                                            "rounded-md border px-2 py-0.5 text-[11px] font-bold shrink-0",
-                                                                                            flag.scoreImpact > 0 ? "bg-rose-50 border-rose-200 text-rose-600" : "bg-amber-50 border-amber-200 text-amber-700"
-                                                                                        )}
-                                                                                        title={getScoreImpactTitle(flag)}
-                                                                                    >
-                                                                                        {getScoreImpactLabel(flag)}
-                                                                                    </span>
                                                                                 </div>
                                                                                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                                                                                     {openEndEvidence?.answerIntent && (
@@ -1976,7 +1903,7 @@ function KpiCell({ label, hint, value, suffix, sub, valueClassName }: {
     );
 }
 
-function HowScoringWorksPopover() {
+function HowDecisionsWorkPopover() {
     const [isOpen, setIsOpen] = useState(false);
 
     return (
@@ -1989,7 +1916,7 @@ function HowScoringWorksPopover() {
                 )}
             >
                 <IconInfoCircle size={14} strokeWidth={2} />
-                How scoring works
+                How decisions work
             </button>
 
             {isOpen && (
@@ -1997,7 +1924,7 @@ function HowScoringWorksPopover() {
                     <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
                     <div className="absolute top-full left-0 mt-2 w-80 bg-card border border-border shadow-xl rounded-xl p-4 z-50 animate-in fade-in zoom-in-95 duration-200">
                         <p className="text-sm text-foreground">
-                            Every response is automatically scored <span className="font-semibold">0–100</span> by checks for speeding, straight-lining, and duplicate submissions. Flags subtract points from a perfect 100.
+                            Quality checks create findings with supporting evidence. One finding means <span className="font-semibold">Needs Review</span>; critical, duplicate-respondent, or multiple independent findings mean <span className="font-semibold">High Risk</span>.
                         </p>
                         <p className="mt-2 text-sm text-muted-foreground">
                             Review flagged responses to either <span className="font-medium text-foreground">clear</span> them (false alarm) or <span className="font-medium text-foreground">confirm</span> them as bad data.

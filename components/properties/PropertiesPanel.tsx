@@ -26,6 +26,7 @@ interface PropertiesPanelProps {
     onChange: (fieldName: string, value: any) => void;
     onClose: () => void;
     onInspectFlowRule?: (inspection: FlowRuleInspection | null) => void;
+    onQualityPoliciesChange?: (policies: Record<string, OpenEndQualityPolicyPreview>) => void;
     readOnly?: boolean;
 }
 
@@ -166,7 +167,7 @@ const isFieldVisible = (field: PropertyField, data: Record<string, unknown>) => 
     !field.visible || field.visible(data) !== false
 );
 
-export default function PropertiesPanel({ node, nodes, issues = [], surveyId, onChange, onClose, onInspectFlowRule, readOnly = false }: PropertiesPanelProps) {
+export default function PropertiesPanel({ node, nodes, issues = [], surveyId, onChange, onClose, onInspectFlowRule, onQualityPoliciesChange, readOnly = false }: PropertiesPanelProps) {
     const { getEdges: getCanvasEdges } = useReactFlow();
     // The canvas injects transient dependency edges while inspecting flow rules; keep them out
     // of everything that compiles or inspects the persisted workflow.
@@ -222,6 +223,11 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
             window.clearTimeout(timeout);
         };
     }, [surveyId, node?.id, isOpenEndNode, selectedNodePreviewCacheKey, qualityPreviewRequestVersion]);
+
+    useEffect(() => {
+        if (!isOpenEndNode || qualityPreview.loading || qualityPreview.error) return;
+        onQualityPoliciesChange?.(qualityPreview.policies);
+    }, [isOpenEndNode, onQualityPoliciesChange, qualityPreview.error, qualityPreview.loading, qualityPreview.policies]);
 
     const retryQualityPreview = () => {
         if (selectedNodePreviewCacheKey) {

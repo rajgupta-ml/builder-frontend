@@ -5,6 +5,7 @@ import {
     IconArrowMerge,
     IconCalendar,
     IconCheckbox,
+    IconChevronRight,
     IconForbid,
     IconForms,
     IconGitBranch,
@@ -18,6 +19,7 @@ import {
     IconPhoto,
     IconPlayerPlay,
     IconShieldLock,
+    IconShieldCheck,
     IconStar,
     IconTextCaption,
     IconTrash,
@@ -32,6 +34,8 @@ import type { NodeBuilder } from '@surveystudio/node-registery/builder';
 import BaseNode from './BaseNode';
 import { cn } from '@/lib/utils';
 import { NODE_DEFINITIONS } from './definitions';
+import type { FlowRuleInspection } from '@/lib/skipMigration';
+import type { FlowRelationshipItem, NodeFlowRelationships } from '@/lib/flowRelationships';
 
 const e = createElement;
 
@@ -112,39 +116,262 @@ const countVisibilityRules = (value: unknown): number => {
         : 0;
 };
 
+type RelationshipBadgeProps = {
+    kind: 'visibility' | 'jump';
+    prefix: string;
+    direction: '←' | '→';
+    relatedNoun: 'sources' | 'targets';
+    ruleNoun: 'conditions' | 'jump rules';
+    items: FlowRelationshipItem[];
+    totalRuleCount: number;
+    missingCount?: number;
+    missingLabel: string;
+    onInspect?: (inspection: FlowRuleInspection | null) => void;
+};
+
+type RelationshipBadgeConfig = RelationshipBadgeProps & { badgeKey: string };
+
+const RelationshipBadge = ({
+    kind,
+    prefix,
+    direction,
+    relatedNoun,
+    ruleNoun,
+    items,
+    totalRuleCount,
+    missingCount = 0,
+    missingLabel,
+    onInspect,
+}: RelationshipBadgeProps) => {
+    if (items.length === 0 && missingCount === 0) return null;
+    const Icon = kind === 'visibility' ? IconEye : IconGitBranch;
+    const firstLabel = items[0]?.nodeLabel || missingLabel;
+    const extraNodeCount = Math.max(0, items.length - 1);
+    const suffix = extraNodeCount > 0
+        ? `+${extraNodeCount} ${relatedNoun}`
+        : totalRuleCount > 1
+            ? `· ${totalRuleCount} rules`
+            : missingCount > 0 && items.length > 0
+                ? `· ${missingCount} missing`
+                : '';
+    const title = [
+        `${prefix} ${items.map((item) => item.nodeLabel).join(', ') || missingLabel}`,
+        `${totalRuleCount} ${ruleNoun}`,
+        missingCount > 0 ? `${missingCount} unresolved` : '',
+    ].filter(Boolean).join(' · ');
+    const themeClass = kind === 'visibility'
+        ? 'border-cyan-200 bg-cyan-50 text-cyan-800'
+        : 'border-violet-200 bg-violet-50 text-violet-700';
+
+    const stopCanvasEvent = (event: React.SyntheticEvent) => event.stopPropagation();
+    return e(
+        'details',
+        {
+            className: 'nodrag nopan relative w-full min-w-0',
+            onClick: stopCanvasEvent,
+            onPointerDown: stopCanvasEvent,
+            onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => {
+                onInspect?.(event.currentTarget.open ? items[0]?.inspection || null : null);
+            },
+        },
+        e(
+            'summary',
+            {
+                className: cn(
+                    'flex w-full min-w-0 cursor-pointer list-none items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold outline-none transition-shadow hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary/30 [&::-webkit-details-marker]:hidden',
+                    themeClass,
+                ),
+                title,
+                'aria-label': `${title}. Open relationship list`,
+            },
+            e(Icon, { size: 10, className: 'shrink-0' }),
+            e('span', { className: 'shrink-0' }, prefix),
+            e('span', { className: 'shrink-0 opacity-70' }, direction),
+            e('span', { className: 'min-w-0 flex-1 truncate text-left', title: firstLabel }, firstLabel),
+            suffix ? e('span', { className: 'shrink-0 font-semibold opacity-80' }, suffix) : null,
+            e(IconChevronRight, { size: 9, className: 'shrink-0 opacity-60' }),
+        ),
+        e(
+            'div',
+            {
+                className: 'absolute left-[calc(100%+6px)] top-0 z-[1100] w-64 rounded-lg border border-border bg-card p-2 text-foreground shadow-xl',
+                role: 'list',
+                'aria-label': `${prefix} relationships`,
+            },
+            e(
+                'div',
+                { className: 'mb-1.5 flex items-center justify-between gap-2 px-1' },
+                e('span', { className: 'text-[9px] font-bold uppercase tracking-[0.08em] text-muted-foreground' }, prefix),
+                e('span', { className: 'text-[9px] font-semibold text-muted-foreground' }, `${totalRuleCount} ${ruleNoun}`),
+            ),
+            ...items.map((item) => e(
+                'button',
+                {
+                    key: `${prefix}-${item.nodeId}`,
+                    type: 'button',
+                    role: 'listitem',
+                    className: 'nodrag nopan mb-1 flex w-full min-w-0 items-center gap-2 rounded-md border border-border/70 bg-background px-2 py-1.5 text-left transition-colors last:mb-0 hover:border-primary/30 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                    onMouseEnter: () => onInspect?.(item.inspection),
+                    onMouseLeave: () => onInspect?.(null),
+                    onFocus: () => onInspect?.(item.inspection),
+                    onBlur: () => onInspect?.(null),
+                    onClick: (event: React.MouseEvent) => {
+                        event.stopPropagation();
+                        onInspect?.(item.inspection);
+                    },
+                    title: item.details.join('\n'),
+                },
+                e('span', { className: cn('h-1.5 w-1.5 shrink-0 rounded-full', kind === 'visibility' ? 'bg-cyan-500' : 'bg-violet-500') }),
+                e(
+                    'span',
+                    { className: 'min-w-0 flex-1' },
+                    e('span', { className: 'block truncate text-[10px] font-semibold', title: item.nodeLabel }, `${direction} ${item.nodeLabel}`),
+                    e('span', { className: 'block truncate text-[9px] text-muted-foreground' }, item.ruleCount === 1 ? `1 ${ruleNoun.replace(/s$/, '')}` : `${item.ruleCount} ${ruleNoun}`),
+                ),
+            )),
+            missingCount > 0
+                ? e(
+                    'div',
+                    { className: 'flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[9px] font-semibold text-amber-800' },
+                    e('span', { className: 'h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500' }),
+                    `${missingCount} ${missingLabel.toLowerCase()}`,
+                )
+                : null,
+        ),
+    );
+};
+
 const FlowRulesBadges = (props: NodeProps<any>) => {
-    if ((props.data as any)?.__pathAnalysis) return null;
-    const skips = Array.isArray((props.data as any)?.skips)
-        ? ((props.data as any).skips as any[]).filter((rule) => rule && typeof rule === 'object')
-        : [];
-    const visibilityRuleCount = countVisibilityRules((props.data as any)?.condition);
-    if (skips.length === 0 && visibilityRuleCount === 0) return null;
+    const data = props.data as Record<string, unknown>;
+    if (data.__pathAnalysis) return null;
+    const relationships = data.__flowRelationships as NodeFlowRelationships | undefined;
+    const onInspect = data.__onInspectFlowRule as ((inspection: FlowRuleInspection | null) => void) | undefined;
+
+    // Keep the old summary available in isolated node previews where canvas-level
+    // mirrored relationship metadata has not been injected.
+    if (!relationships) {
+        const skips = Array.isArray(data.skips)
+            ? data.skips.filter((rule) => rule && typeof rule === 'object')
+            : [];
+        const visibilityRuleCount = countVisibilityRules(data.condition);
+        if (skips.length === 0 && visibilityRuleCount === 0) return null;
+        return e(
+            'div',
+            { className: 'mt-2 flex flex-wrap items-center gap-1' },
+            visibilityRuleCount > 0
+                ? e('span', { className: 'inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-bold text-cyan-800' }, e(IconEye, { size: 10 }), `${visibilityRuleCount} conditions`)
+                : null,
+            skips.length > 0
+                ? e('span', { className: 'inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-bold text-violet-700' }, e(IconGitBranch, { size: 10 }), `${skips.length} ${skips.length === 1 ? 'jump' : 'jumps'}`)
+                : null,
+        );
+    }
+
+    const visibilityTargetRuleCount = relationships.visibilityTo.reduce((total, item) => total + item.ruleCount, 0);
+    const badgeConfigs: RelationshipBadgeConfig[] = [
+        {
+            badgeKey: 'visibility-from', kind: 'visibility', prefix: 'Depends on', direction: '←', relatedNoun: 'sources', ruleNoun: 'conditions',
+            items: relationships.visibilityFrom, totalRuleCount: relationships.visibilityRuleCount,
+            missingCount: relationships.unresolvedVisibilityRuleCount, missingLabel: 'Missing source', onInspect,
+        },
+        {
+            badgeKey: 'visibility-to', kind: 'visibility', prefix: 'Controls', direction: '→', relatedNoun: 'targets', ruleNoun: 'conditions',
+            items: relationships.visibilityTo, totalRuleCount: visibilityTargetRuleCount,
+            missingLabel: 'Missing target', onInspect,
+        },
+        {
+            badgeKey: 'jumps-to', kind: 'jump', prefix: 'Jumps to', direction: '→', relatedNoun: 'targets', ruleNoun: 'jump rules',
+            items: relationships.jumpsTo, totalRuleCount: relationships.outgoingJumpRuleCount,
+            missingCount: relationships.unresolvedJumpRuleCount, missingLabel: 'Target not set', onInspect,
+        },
+        {
+            badgeKey: 'jumps-from', kind: 'jump', prefix: 'Jumped from', direction: '←', relatedNoun: 'sources', ruleNoun: 'jump rules',
+            items: relationships.jumpsFrom, totalRuleCount: relationships.incomingJumpRuleCount,
+            missingLabel: 'Missing source', onInspect,
+        },
+    ];
+    const visibleBadgeConfigs = badgeConfigs.filter((badge) => badge.items.length > 0 || (badge.missingCount || 0) > 0);
+    if (visibleBadgeConfigs.length === 0) return null;
 
     return e(
         'div',
-        { className: 'mt-2 flex flex-wrap items-center gap-1' },
-        visibilityRuleCount > 0
-            ? e(
-                'span',
-                {
-                    className: 'inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[9px] font-bold tracking-wide text-cyan-800',
-                    title: `${visibilityRuleCount} conditional display ${visibilityRuleCount === 1 ? 'rule' : 'rules'}`,
-                },
-                e(IconEye, { size: 10 }),
-                'Show only when',
-            )
-            : null,
-        skips.length > 0
-            ? e(
-                'span',
-                {
-                    className: 'inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-bold tracking-wide text-violet-700',
-                    title: skips.map((rule, index) => String(rule?.label || `Jump rule ${index + 1}`)).join('\n'),
-                },
-                e(IconGitBranch, { size: 10 }),
-                `${skips.length} ${skips.length === 1 ? 'jump' : 'jumps'}`,
-            )
-            : null,
+        { className: 'nodrag nopan mt-2 flex min-w-0 flex-col items-stretch gap-1' },
+        ...visibleBadgeConfigs.map(({ badgeKey, ...badge }) => e(RelationshipBadge, { ...badge, key: badgeKey })),
+    );
+};
+
+const qualityPolicyIsActive = (source: unknown) => {
+    if (!source || typeof source !== 'object') return false;
+    return (source as Record<string, unknown>).openEndPolicyMode !== 'disabled';
+};
+
+const QualityControlBadge = (props: NodeProps<any>) => {
+    const type = String(props.type || '');
+    const data = props.data as Record<string, unknown>;
+    const resolved = data.__qualityControl as {
+        resolved?: boolean;
+        enabled?: boolean;
+        activeFields?: number;
+        totalFields?: number;
+    } | undefined;
+    let state: 'on' | 'off' | 'auto' | null = null;
+    let label: string | null = null;
+    let title: string | null = null;
+
+    if (type === 'textInput') {
+        if (resolved?.resolved) {
+            state = resolved.enabled ? 'on' : 'off';
+        } else {
+            state = qualityPolicyIsActive(data) ? 'auto' : 'off';
+        }
+        label = state === 'on' ? 'Quality on' : state === 'off' ? 'Quality off' : 'Quality auto';
+        title = state === 'on'
+            ? 'The effective open-end quality policy is enabled'
+            : state === 'off'
+                ? 'The effective open-end quality policy is disabled'
+                : 'Auto-detect is configured; open the Quality panel to resolve its effective status';
+    }
+
+    if (type === 'multiInput') {
+        const fields = Array.isArray(data.fields)
+            ? data.fields.filter((field) => field && typeof field === 'object')
+            : [];
+        if (fields.length > 0) {
+            const configuredFields = fields.filter(qualityPolicyIsActive).length;
+            if (resolved?.resolved) {
+                const activeFields = resolved.activeFields || 0;
+                state = activeFields > 0 ? 'on' : 'off';
+                label = activeFields > 0 ? `Quality on · ${activeFields}/${fields.length}` : 'Quality off';
+                title = `The effective quality policy is enabled for ${activeFields} of ${fields.length} fields`;
+            } else {
+                state = configuredFields > 0 ? 'auto' : 'off';
+                label = state === 'auto' ? `Quality auto · ${configuredFields}/${fields.length}` : 'Quality off';
+                title = state === 'auto'
+                    ? 'Per-field auto-detect is configured; open the Quality panel to resolve effective status'
+                    : 'Quality control is disabled for every field';
+            }
+        }
+    }
+
+    if (!label) return null;
+
+    return e(
+        'div',
+        { className: 'nodrag nopan mt-2 flex flex-wrap items-center gap-1' },
+        e(
+            'span',
+            {
+                className: cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold tracking-wide',
+                    state === 'on' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                    state === 'off' && 'border-border bg-muted text-muted-foreground',
+                    state === 'auto' && 'border-primary/20 bg-primary/5 text-primary',
+                ),
+                title: title || undefined,
+            },
+            e(IconShieldCheck, { size: 10, strokeWidth: 2.2 }),
+            label,
+        ),
     );
 };
 
@@ -224,6 +451,7 @@ const CommonRegistryNode = (props: NodeProps<any>) => {
             handles: { source: Position.Bottom, target: Position.Top },
         },
         renderCanvas(props),
+        e(QualityControlBadge, props),
         e(PathAnalysisState, { data: props.data }),
         e(FlowRulesBadges, props),
     );
@@ -270,6 +498,7 @@ const EndRegistryNode = (props: NodeProps<any>) => {
         }),
         e(IconForbid, { size: 16 }),
         renderCanvas(props),
+        e('div', { className: 'absolute left-1/2 top-full w-[220px] -translate-x-1/2 text-left' }, e(FlowRulesBadges, props)),
         props.selected
             ? e('button', {
                 onClick: handleDelete,

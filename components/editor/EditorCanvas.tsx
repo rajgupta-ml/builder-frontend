@@ -1,5 +1,5 @@
 "use client"
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ReactFlow,
     Background,
@@ -21,12 +21,16 @@ import {
     type FlowRuleInspection,
 } from '@/lib/skipMigration';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
-import { generateUniqueId } from "@/lib/utils";
+import { cn, generateUniqueId } from "@/lib/utils";
 import { FlowDebugger } from '@/lib/flowDebugger';
 import { PathAnalysisDrawer } from '@/components/editor/PathAnalysisDrawer';
-import { RoutePreviewPanel } from '@/components/editor/RoutePreviewPanel';
+import type { OpenEndQualityPolicyPreview } from '@/api/surveyWorkflow';
+import { buildFlowRelationships } from '@/lib/flowRelationships';
 
 const getId = () => generateUniqueId('node');
+const DEFAULT_DEBUG_CANVAS_PERCENT = 32;
+const MIN_DEBUG_CANVAS_PERCENT = 20;
+const MAX_DEBUG_CANVAS_PERCENT = 65;
 
 const canvasNodeLabel = (node: ReactFlowNode | undefined) => String(
     node?.data?.label || node?.data?.title || node?.data?.message || node?.type || node?.id || 'Step',
@@ -41,8 +45,10 @@ const hasVisibilityCondition = (node: ReactFlowNode) => {
 
 interface EditorCanvasProps {
     inspectedFlowRule?: FlowRuleInspection | null;
+    onInspectFlowRule?: (inspection: FlowRuleInspection | null) => void;
     analysisOpen?: boolean;
     onAnalysisOpenChange?: (open: boolean) => void;
+    qualityPolicies?: Record<string, OpenEndQualityPolicyPreview>;
 }
 
 type FlowDebugSnapshot = {
@@ -58,13 +64,18 @@ type FlowDebugSession = FlowDebugSnapshot & {
 
 export function EditorCanvas({
     inspectedFlowRule = null,
+    onInspectFlowRule,
     analysisOpen = false,
     onAnalysisOpenChange,
+    qualityPolicies = {},
 }: EditorCanvasProps) {
     const { screenToFlowPosition, fitView } = useReactFlow();
     const [debugSession, setDebugSession] = useState<FlowDebugSession | null>(null);
     const [debuggerEngine, setDebuggerEngine] = useState<FlowDebugger | null>(null);
     const [debugError, setDebugError] = useState<string | null>(null);
+    const [debugCanvasPercent, setDebugCanvasPercent] = useState(DEFAULT_DEBUG_CANVAS_PERCENT);
+    const [isResizingDebugger, setIsResizingDebugger] = useState(false);
+    const editorCanvasRef = useRef<HTMLDivElement>(null);
     const {
         nodes,
         edges,
@@ -169,22 +180,91 @@ export function EditorCanvas({
     const debugCurrentQuestion = debugSession && debuggerEngine && !debugSession.finished && debugCurrentNodeId
         ? debuggerEngine.nodeLabel(debugCurrentNodeId)
         : null;
+    const debugCurrentNode = debugSession && debuggerEngine && !debugSession.finished && debugCurrentNodeId
+        ? debuggerEngine.getNode(debugCurrentNodeId)
+        : null;
     const debugConditions = debugSession && debuggerEngine && !debugSession.finished && debugCurrentNodeId
         ? debuggerEngine.getConditionSummaries(debugCurrentNodeId)
         : [];
 
     useEffect(() => {
         if (!analysisOpen || !debugCurrentNodeId) return;
-        const animationFrame = window.requestAnimationFrame(() => {
-            void fitView({
-                nodes: [{ id: debugCurrentNodeId }],
-                duration: 350,
-                padding: 1.2,
-                maxZoom: 1,
+        let fitFrame = 0;
+        const layoutFrame = window.requestAnimationFrame(() => {
+            fitFrame = window.requestAnimationFrame(() => {
+                void fitView({
+                    nodes: [{ id: debugCurrentNodeId }],
+                    duration: 350,
+                    padding: 0.6,
+                    maxZoom: 1,
+                });
             });
         });
-        return () => window.cancelAnimationFrame(animationFrame);
+        return () => {
+            window.cancelAnimationFrame(layoutFrame);
+            window.cancelAnimationFrame(fitFrame);
+        };
     }, [analysisOpen, debugCurrentNodeId, fitView]);
+
+    const refitActiveDebugNode = useCallback(() => {
+        if (!analysisOpen || !debugCurrentNodeId) return;
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                void fitView({
+                    nodes: [{ id: debugCurrentNodeId }],
+                    duration: 250,
+                    padding: 0.6,
+                    maxZoom: 1,
+                });
+            });
+        });
+    }, [analysisOpen, debugCurrentNodeId, fitView]);
+
+    const resizeDebuggerFromPointer = useCallback((clientY: number) => {
+        const bounds = editorCanvasRef.current?.getBoundingClientRect();
+        if (!bounds || bounds.height <= 0) return;
+        const requestedPercent = ((clientY - bounds.top) / bounds.height) * 100;
+        const nextPercent = Math.min(
+            MAX_DEBUG_CANVAS_PERCENT,
+            Math.max(MIN_DEBUG_CANVAS_PERCENT, requestedPercent),
+        );
+        setDebugCanvasPercent(Number(nextPercent.toFixed(1)));
+    }, []);
+
+    const handleDividerPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setIsResizingDebugger(true);
+        resizeDebuggerFromPointer(event.clientY);
+    }, [resizeDebuggerFromPointer]);
+
+    const handleDividerPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        resizeDebuggerFromPointer(event.clientY);
+    }, [resizeDebuggerFromPointer]);
+
+    const finishDividerResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        setIsResizingDebugger(false);
+        refitActiveDebugNode();
+    }, [refitActiveDebugNode]);
+
+    const handleDividerKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+        let nextPercent: number | null = null;
+        if (event.key === 'ArrowUp') nextPercent = debugCanvasPercent - 4;
+        if (event.key === 'ArrowDown') nextPercent = debugCanvasPercent + 4;
+        if (event.key === 'Home') nextPercent = MIN_DEBUG_CANVAS_PERCENT;
+        if (event.key === 'End') nextPercent = MAX_DEBUG_CANVAS_PERCENT;
+        if (nextPercent === null) return;
+        event.preventDefault();
+        setDebugCanvasPercent(Math.min(
+            MAX_DEBUG_CANVAS_PERCENT,
+            Math.max(MIN_DEBUG_CANVAS_PERCENT, nextPercent),
+        ));
+        refitActiveDebugNode();
+    }, [debugCanvasPercent, refitActiveDebugNode]);
 
     const inspectedJumpRule = useMemo(() => {
         if (inspectedFlowRule?.kind !== 'jump') return null;
@@ -217,6 +297,59 @@ export function EditorCanvas({
     ), [inspectedJumpRule, inspectedVisibilityRule]);
     const shouldDimCanvas = Boolean(debugSession || activeInspection);
 
+    const nodesWithQualityStatus = useMemo<ReactFlowNode[]>(() => {
+        const flowRelationships = buildFlowRelationships(nodes);
+        return nodes.map((node) => {
+            const relationshipData = {
+                __flowRelationships: flowRelationships.get(node.id),
+                __onInspectFlowRule: onInspectFlowRule,
+            };
+
+            if (node.type === 'textInput') {
+                const policy = qualityPolicies[node.id];
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        ...relationshipData,
+                        __qualityControl: policy
+                            ? { resolved: true, enabled: policy.enabled }
+                            : { resolved: false },
+                    },
+                };
+            }
+
+            if (node.type === 'multiInput') {
+                const fields = Array.isArray(node.data?.fields)
+                    ? (node.data.fields as Array<Record<string, unknown>>)
+                    : [];
+                if (fields.length === 0) {
+                    return { ...node, data: { ...node.data, ...relationshipData } };
+                }
+                const policies = fields.map((field) => {
+                    const fieldId = String(field.id || field.exportId || '');
+                    return fieldId ? qualityPolicies[`${node.id}::${encodeURIComponent(fieldId)}`] : undefined;
+                });
+                const resolved = policies.every(Boolean);
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        ...relationshipData,
+                        __qualityControl: {
+                            resolved,
+                            enabled: resolved ? policies.some((policy) => policy?.enabled) : undefined,
+                            activeFields: resolved ? policies.filter((policy) => policy?.enabled).length : undefined,
+                            totalFields: fields.length,
+                        },
+                    },
+                };
+            }
+
+            return { ...node, data: { ...node.data, ...relationshipData } };
+        });
+    }, [nodes, onInspectFlowRule, qualityPolicies]);
+
     const displayNodes = useMemo(() => {
         if (debugSession && debuggerEngine) {
             const pathNodeIds = new Set(debugSession.path);
@@ -226,8 +359,8 @@ export function EditorCanvas({
 
             debugSession.path.slice(0, -1).forEach((sourceId, index) => {
                 const targetId = debugSession.path[index + 1];
-                const sourceNode = nodes.find((node) => node.id === sourceId);
-                const targetNode = nodes.find((node) => node.id === targetId);
+                const sourceNode = nodesWithQualityStatus.find((node) => node.id === sourceId);
+                const targetNode = nodesWithQualityStatus.find((node) => node.id === targetId);
                 if (!sourceNode) return;
                 const decisions: string[] = [];
                 const jumpRule = getNodeSkipRules(sourceNode.data).find((rule) => rule.targetId === targetId);
@@ -254,7 +387,7 @@ export function EditorCanvas({
                         seenSkipped.add(skippedSourceId);
                         const skippedEdge = edges.find((edge) => {
                             if (edge.source !== skippedSourceId || pathNodeIds.has(edge.target)) return false;
-                            const candidate = nodes.find((node) => node.id === edge.target);
+                            const candidate = nodesWithQualityStatus.find((node) => node.id === edge.target);
                             return Boolean(candidate && hasVisibilityCondition(candidate));
                         });
                         if (!skippedEdge) break;
@@ -265,7 +398,7 @@ export function EditorCanvas({
                 if (decisions.length > 0) decisionsByNodeId.set(sourceId, decisions);
             });
 
-            return nodes.map((node) => {
+            return nodesWithQualityStatus.map((node) => {
                 const isOnPath = pathNodeIds.has(node.id);
                 const isSkipped = skippedConditionalNodeIds.has(node.id);
                 const isCurrent = node.id === currentNodeId;
@@ -296,8 +429,8 @@ export function EditorCanvas({
                 };
             });
         }
-        if (!activeInspection || !shouldDimCanvas) return nodes;
-        return nodes.map((node) => {
+        if (!activeInspection || !shouldDimCanvas) return nodesWithQualityStatus;
+        return nodesWithQualityStatus.map((node) => {
             const isSource = activeInspection.sourceIds.includes(node.id);
             const isTarget = node.id === activeInspection.targetId;
             const inspectionColor = activeInspection.kind === 'visibility' ? 'cyan' : 'violet';
@@ -313,7 +446,7 @@ export function EditorCanvas({
                 style: { ...node.style, opacity: isSource || isTarget ? 1 : 0.18 },
             };
         });
-    }, [nodes, edges, debugSession, debuggerEngine, activeInspection, shouldDimCanvas]);
+    }, [nodesWithQualityStatus, edges, debugSession, debuggerEngine, activeInspection, shouldDimCanvas]);
 
     // Flow rules live in node data, not persisted edges. Keep the normal canvas
     // clean and reveal only the dependency being inspected.
@@ -400,7 +533,7 @@ export function EditorCanvas({
     const onDrop = useCallback(
         (event: React.DragEvent) => {
             event.preventDefault();
-            if (isReadOnly) return;
+            if (isReadOnly || analysisOpen) return;
 
             const type = event.dataTransfer.getData('application/reactflow');
             if (!type) return;
@@ -418,7 +551,7 @@ export function EditorCanvas({
             setSaveStatus('unsaved');
             setSelectedNodeId(newNode.id);
         },
-        [isReadOnly, screenToFlowPosition, nodes, setNodes, setSaveStatus, setSelectedNodeId]
+        [analysisOpen, isReadOnly, screenToFlowPosition, nodes, setNodes, setSaveStatus, setSelectedNodeId]
     );
 
     const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
@@ -433,6 +566,7 @@ export function EditorCanvas({
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (analysisOpen) return;
             if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
                 e.preventDefault();
                 duplicateNode();
@@ -441,41 +575,80 @@ export function EditorCanvas({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [duplicateNode]);
+    }, [analysisOpen, duplicateNode]);
 
     return (
-        <div className="flex-1 h-full relative border-r border-border" onDragOver={onDragOver} onDrop={onDrop}>
-            <ReactFlow
-                nodes={displayNodes}
-                edges={displayEdges}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                onNodesChange={onNodesChange}
-                onEdgesChange={handleEdgesChange}
-                onConnect={onConnect}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
-                connectionRadius={40}
-                defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-                className="bg-muted/10 px-10"
-                nodesDraggable={!isReadOnly && !analysisOpen}
-                nodesConnectable={!isReadOnly && !analysisOpen}
-
+        <div
+            ref={editorCanvasRef}
+            className={cn(
+                'flex-1 h-full relative border-r border-border',
+                analysisOpen && 'flex flex-col',
+            )}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+        >
+            <div
+                className={cn('relative min-h-0', analysisOpen ? 'shrink-0' : 'h-full')}
+                style={analysisOpen ? { height: `${debugCanvasPercent}%` } : undefined}
             >
-                <Background />
-                <Controls />
-            </ReactFlow>
+                <ReactFlow
+                    nodes={displayNodes}
+                    edges={displayEdges}
+                    nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
+                    onNodesChange={analysisOpen ? undefined : onNodesChange}
+                    onEdgesChange={analysisOpen ? undefined : handleEdgesChange}
+                    onConnect={analysisOpen ? undefined : onConnect}
+                    onNodeClick={analysisOpen ? undefined : onNodeClick}
+                    onPaneClick={analysisOpen ? undefined : onPaneClick}
+                    connectionRadius={40}
+                    defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+                    className={cn(
+                        'bg-muted/10 px-10',
+                        analysisOpen && '[&_.react-flow__node]:pointer-events-none [&_.react-flow__handle]:pointer-events-none',
+                    )}
+                    nodesDraggable={!isReadOnly && !analysisOpen}
+                    nodesConnectable={!isReadOnly && !analysisOpen}
+                    elementsSelectable={!analysisOpen}
+                    nodesFocusable={!analysisOpen}
+                    edgesFocusable={!analysisOpen}
+                    edgesReconnectable={!isReadOnly && !analysisOpen}
+                    deleteKeyCode={analysisOpen ? null : ['Backspace', 'Delete']}
+                >
+                    <Background />
+                    <Controls />
+                </ReactFlow>
+            </div>
             {analysisOpen && (
                 <>
+                    <div
+                        role="separator"
+                        aria-label="Resize flowchart and debugger"
+                        aria-orientation="horizontal"
+                        aria-valuemin={MIN_DEBUG_CANVAS_PERCENT}
+                        aria-valuemax={MAX_DEBUG_CANVAS_PERCENT}
+                        aria-valuenow={Math.round(debugCanvasPercent)}
+                        tabIndex={0}
+                        onPointerDown={handleDividerPointerDown}
+                        onPointerMove={handleDividerPointerMove}
+                        onPointerUp={finishDividerResize}
+                        onPointerCancel={finishDividerResize}
+                        onKeyDown={handleDividerKeyDown}
+                        className={cn(
+                            'group relative z-60 h-3 shrink-0 touch-none cursor-row-resize bg-background outline-none',
+                            isResizingDebugger && 'bg-primary/5',
+                        )}
+                    >
+                        <div className="absolute inset-x-0 top-1/2 border-t border-border" />
+                        <div className="absolute left-1/2 top-1/2 h-1 w-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary group-focus-visible:ring-2 group-focus-visible:ring-primary/20 group-focus-visible:ring-offset-2" />
+                    </div>
                     <PathAnalysisDrawer
-                        hasRoutePreview={debugConditions.length > 0}
-                        currentNodeId={debugCurrentNodeId}
+                        currentNode={debugCurrentNode}
                         currentQuestion={debugCurrentQuestion}
                         choices={debugSession && debuggerEngine && !debugSession.finished && debugCurrentNodeId
                             ? debuggerEngine.getChoices(debugCurrentNodeId, debugSession.responses)
                             : []}
-                        inputType={debugCurrentNodeId && debuggerEngine ? debuggerEngine.inputType(debugCurrentNodeId) : 'text'}
-                        allowCustom={Boolean(debugCurrentNodeId && debuggerEngine?.allowsCustomAnswer(debugCurrentNodeId))}
+                        conditions={debugConditions}
                         onAnswer={handleDebugAnswer}
                         answeredCount={debugSession ? Object.keys(debugSession.answerLabels).length : 0}
                         pathLength={debugSession?.path.length || 0}
@@ -487,7 +660,6 @@ export function EditorCanvas({
                         onRestart={handleDebugRestart}
                         onClose={closeDebugger}
                     />
-                    <RoutePreviewPanel conditions={debugConditions} currentQuestion={debugCurrentQuestion} />
                 </>
             )}
         </div>

@@ -2,17 +2,24 @@
 
 import { IconArrowRight, IconRoute } from '@tabler/icons-react';
 import type { FlowDebugCondition } from '@/lib/flowDebugger';
+import { cn } from '@/lib/utils';
 
 interface RoutePreviewPanelProps {
     conditions: FlowDebugCondition[];
     currentQuestion: string | null;
+    embedded?: boolean;
 }
 
-export function RoutePreviewPanel({ conditions, currentQuestion }: RoutePreviewPanelProps) {
+export function RoutePreviewPanel({ conditions, currentQuestion, embedded = false }: RoutePreviewPanelProps) {
     if (conditions.length === 0) return null;
 
     return (
-        <aside className="absolute right-4 top-64 bottom-4 z-50 flex w-[360px] flex-col overflow-hidden rounded-2xl border border-border bg-background/95 shadow-xl backdrop-blur-md">
+        <aside className={cn(
+            'flex flex-col overflow-hidden bg-background/95',
+            embedded
+                ? 'min-h-0 w-[360px] shrink-0 border-l border-border'
+                : 'absolute right-4 top-64 bottom-4 z-50 w-[360px] rounded-2xl border border-border shadow-xl backdrop-blur-md',
+        )}>
             <header className="flex items-center gap-3 border-b border-border px-4 py-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-700">
                     <IconRoute size={18} />

@@ -296,16 +296,6 @@ export function EditorHeader({
                             <button
                                 onClick={() => {
                                     setIsActionsDropdownOpen(false);
-                                    onAnalysisOpenChange?.(!analysisOpen);
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium hover:bg-muted text-foreground transition-all"
-                            >
-                                <IconRoute size={15} />
-                                {analysisOpen ? 'Close flow explorer' : 'Explore flow'}
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setIsActionsDropdownOpen(false);
                                     setIsQuotaOpen(true);
                                 }}
                                 disabled={isReadOnly}
@@ -336,6 +326,30 @@ export function EditorHeader({
                                 <IconShare size={15} />
                                 Share
                             </button>
+                            <div className="border-t border-border pt-1">
+                                <button
+                                    onClick={() => {
+                                        setIsActionsDropdownOpen(false);
+                                        onAnalysisOpenChange?.(!analysisOpen);
+                                    }}
+                                    className={cn(
+                                        'group flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all',
+                                        analysisOpen
+                                            ? 'border-primary/30 bg-primary/10 text-foreground'
+                                            : 'border-primary/15 bg-primary/5 text-foreground hover:border-primary/30 hover:bg-primary/10',
+                                    )}
+                                >
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                                        <IconRoute size={15} strokeWidth={2} />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block text-xs font-semibold">{analysisOpen ? 'Close flow explorer' : 'Explore flow'}</span>
+                                        <span className="mt-0.5 block text-[9px] font-normal text-muted-foreground">
+                                            {analysisOpen ? 'Return to editing' : 'Test answers and inspect routes'}
+                                        </span>
+                                    </span>
+                                </button>
+                            </div>
                             {!featureFlags.hideAiQuestionImporter && (
                                 <button
                                     onClick={() => {

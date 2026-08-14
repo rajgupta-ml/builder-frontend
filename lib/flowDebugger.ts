@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
+import { matchesStructuredItemKey, resolveStructuredItemKey } from '@surveystudio/node-registery/logic';
 import { generateRuntimeJson } from '@/lib/compiler';
 import { DAGReader } from '@/src/shared/engine/DagReader';
 
@@ -6,6 +7,12 @@ export interface FlowDebugChoice {
     label: string;
     value: unknown;
     tone?: 'match' | 'alternate';
+}
+
+export interface FlowDebugNode {
+    id: string;
+    type: string;
+    data: Record<string, unknown>;
 }
 
 export interface FlowDebugCondition {
@@ -66,10 +73,35 @@ const optionRecords = (node: any) => Array.isArray(node?.data?.options)
     ? node.data.options.filter((option: any) => option && typeof option === 'object')
     : [];
 
-const optionLabel = (node: any, value: unknown) => {
+const normalizeChoiceAlias = (value: unknown) => String(value ?? '')
+    .toLocaleLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const choiceOptionMatches = (option: any, value: unknown) => (
+    matchesStructuredItemKey(option, value)
+    || [option?.label, option?.exportId, option?.technicalId, option?.value, option?.id]
+        .some((alias) => alias !== undefined && normalizeChoiceAlias(alias) === normalizeChoiceAlias(value))
+);
+
+const stableOptionValue = (node: any, value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map((item) => stableOptionValue(node, item));
+    const option = optionRecords(node).find((candidate: any) => choiceOptionMatches(candidate, value));
+    return option
+        ? resolveStructuredItemKey(option, String(option.value ?? option.id ?? value ?? ''))
+        : value;
+};
+
+const optionLabel = (node: any, value: unknown): string => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return Object.entries(value as Record<string, unknown>)
+            .map(([key, itemValue]) => `${readableKey(key)}: ${optionLabel(node, itemValue)}`)
+            .join(', ');
+    }
     const rawValues = Array.isArray(value) ? value : [value];
     return rawValues.map((rawValue) => {
-        const option = optionRecords(node).find((candidate: any) => normalizeKey(candidate.value) === normalizeKey(rawValue));
+        const option = optionRecords(node).find((candidate: any) => choiceOptionMatches(candidate, rawValue));
         return String(option?.label ?? rawValue);
     }).join(', ');
 };
@@ -127,8 +159,8 @@ const readableKey = (value: unknown) => String(value || 'matches')
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
 const alternateValue = (node: any, target: unknown) => {
-    const option = optionRecords(node).find((candidate: any) => normalizeKey(candidate.value) !== normalizeKey(target));
-    if (option) return { value: option.value, label: String(option.label ?? option.value) };
+    const option = optionRecords(node).find((candidate: any) => !choiceOptionMatches(candidate, target));
+    if (option) return { value: stableOptionValue(node, option.value), label: String(option.label ?? option.value) };
     const targetText = String(target ?? '').toLocaleLowerCase();
     const candidates = ['Different answer', 'Another response', '∅'];
     const value = candidates.find((candidate) => !candidate.toLocaleLowerCase().includes(targetText) && candidate.toLocaleLowerCase() !== targetText)
@@ -149,7 +181,7 @@ const numericTarget = (value: unknown) => Number(
 
 const addRuleChoices = (choices: FlowDebugChoice[], node: any, rule: LogicRule, responses: Record<string, unknown>) => {
     const operator = String(rule.operator || '');
-    const target = rule.value;
+    const target = stableOptionValue(node, rule.value);
     const targetLabel = optionLabel(node, target);
     const hasOptions = optionRecords(node).length > 0;
     const other = alternateValue(node, target);
@@ -208,11 +240,11 @@ const addRuleChoices = (choices: FlowDebugChoice[], node: any, rule: LogicRule, 
     }
 };
 
-const optionToneForRules = (rules: LogicRule[], value: unknown): FlowDebugChoice['tone'] => {
+const optionToneForRules = (node: any, rules: LogicRule[], value: unknown): FlowDebugChoice['tone'] => {
     for (const rule of rules) {
         const operator = String(rule.operator || '');
         if (!['equals', 'not_equals', 'contains', 'not_contains'].includes(operator)) continue;
-        const matchesTarget = normalizeKey(value) === normalizeKey(rule.value);
+        const matchesTarget = normalizeKey(stableOptionValue(node, value)) === normalizeKey(stableOptionValue(node, rule.value));
         const positiveOperator = operator === 'equals' || operator === 'contains';
         return matchesTarget === positiveOperator ? 'match' : 'alternate';
     }
@@ -240,8 +272,14 @@ export class FlowDebugger {
         return String(node?.data?.label || node?.data?.title || node?.data?.message || node?.type || nodeId || 'Question');
     }
 
-    nodeType(nodeId: string) {
-        return String(this.runtime[nodeId]?.type || '');
+    getNode(nodeId: string): FlowDebugNode | null {
+        const node = this.runtime[nodeId];
+        if (!node) return null;
+        return {
+            id: String(node.id || nodeId),
+            type: String(node.type || ''),
+            data: node.data && typeof node.data === 'object' ? node.data : {},
+        };
     }
 
     private destinationLabel(nodeId: unknown) {
@@ -358,18 +396,6 @@ export class FlowDebugger {
         return summaries;
     }
 
-    inputType(nodeId: string): 'text' | 'number' | 'date' | 'email' {
-        const type = this.nodeType(nodeId);
-        if (['numberInput', 'rating', 'slider'].includes(type)) return 'number';
-        if (type === 'dateInput') return 'date';
-        if (type === 'emailInput') return 'email';
-        return 'text';
-    }
-
-    allowsCustomAnswer(nodeId: string) {
-        return !['singleChoice', 'multipleChoice', 'dropdown', 'ranking', 'matrixChoice', 'cascadingChoice', 'consent', 'emojiRating'].includes(this.nodeType(nodeId));
-    }
-
     getChoices(nodeId: string, responses: Record<string, unknown>): FlowDebugChoice[] {
         const node = this.runtime[nodeId];
         if (!node) return [];
@@ -378,8 +404,8 @@ export class FlowDebugger {
         fieldRules.forEach((rule) => addRuleChoices(choices, node, rule, responses));
         optionRecords(node).forEach((option: any) => addChoice(choices, node, {
             label: String(option.label ?? option.value),
-            value: option.value,
-            tone: optionToneForRules(fieldRules, option.value),
+            value: stableOptionValue(node, option.value),
+            tone: optionToneForRules(node, fieldRules, option.value),
         }));
         if (node.type === 'consent' && choices.length === 0) {
             addChoice(choices, node, { label: 'Agree', value: true });

@@ -25,7 +25,7 @@ import { generateUniqueId } from '@/lib/utils';
 import { toast } from 'sonner';
 import { NodeSearchPalette } from '@/components/editor/NodeSearchPalette';
 import type { Node as ReactFlowNode, XYPosition } from '@xyflow/react';
-import { surveyWorkflowApi, type WorkflowValidationIssue } from '@/api/surveyWorkflow';
+import { surveyWorkflowApi, type OpenEndQualityPolicyPreview, type WorkflowValidationIssue } from '@/api/surveyWorkflow';
 import type { FlowRuleInspection } from '@/lib/skipMigration';
 
 const DEFAULT_NODE_WIDTH = 260;
@@ -139,6 +139,7 @@ function SurveyFlow() {
     const [hasConfiguredSettings, setHasConfiguredSettings] = useState(false);
     const [validationIssues, setValidationIssues] = useState<WorkflowValidationIssue[]>([]);
     const [validationPending, setValidationPending] = useState(false);
+    const [qualityPolicies, setQualityPolicies] = useState<Record<string, OpenEndQualityPolicyPreview>>({});
     const [inspectedFlowRule, setInspectedFlowRule] = useState<FlowRuleInspection | null>(null);
     const validateRunRef = useRef(0);
     useEffect(() => {
@@ -148,6 +149,7 @@ function SurveyFlow() {
     // Load Data
     useEffect(() => {
         if (surveyId) {
+            setQualityPolicies({});
             loadSurveyData(surveyId);
         }
     }, [surveyId, loadSurveyData]);
@@ -192,6 +194,14 @@ function SurveyFlow() {
                 return;
             }
 
+            if (analysisOpen) {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setAnalysisOpen(false);
+                }
+                return;
+            }
+
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
                 event.preventDefault();
                 setIsNodeSearchOpen((prev) => !prev);
@@ -231,7 +241,14 @@ function SurveyFlow() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedNodeId, isReadOnly, nodes, edges, setNodes, setEdges, setSelectedNodeId, zoomIn, zoomOut]);
+    }, [analysisOpen, selectedNodeId, isReadOnly, nodes, edges, setNodes, setEdges, setSelectedNodeId, zoomIn, zoomOut]);
+
+    useEffect(() => {
+        if (!analysisOpen) return;
+        setSelectedNodeId(null);
+        setIsNodeSearchOpen(false);
+        setInspectedFlowRule(null);
+    }, [analysisOpen, setSelectedNodeId]);
 
     // Autosave Hook
     useAutosave(surveyId || "");
@@ -356,17 +373,19 @@ function SurveyFlow() {
 
     return (
         <div className="flex w-full h-screen bg-background overflow-hidden relative">
-            <SurveyNodeSidebar
+            {!analysisOpen && <SurveyNodeSidebar
                 confirmNavigation={confirmNavigation}
                 isCollapsed={isSidebarCollapsed}
                 onCollapsedChange={setIsSidebarCollapsed}
-            />
+            />}
 
             <div className="flex-1 h-full relative" >
                 <EditorCanvas
                     inspectedFlowRule={inspectedFlowRule}
+                    onInspectFlowRule={setInspectedFlowRule}
                     analysisOpen={analysisOpen}
                     onAnalysisOpenChange={setAnalysisOpen}
+                    qualityPolicies={qualityPolicies}
                 />
 
                 <SurveyNavTabs
@@ -375,7 +394,7 @@ function SurveyFlow() {
                     className="absolute top-4 left-4 z-50"
                 />
 
-                {!hasQuestionNode && !isReadOnly && (
+                {!analysisOpen && !hasQuestionNode && !isReadOnly && (
                     <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
                         <div className="pointer-events-auto rounded-xl border border-border bg-background/95 p-5 shadow-lg text-center max-w-sm">
                             <h3 className="text-sm font-semibold mb-1">Start building your survey</h3>
@@ -392,23 +411,23 @@ function SurveyFlow() {
                     </div>
                 )}
 
-                <OnboardingChecklist
+                {!analysisOpen && <OnboardingChecklist
                     surveyId={surveyId || ""}
                     hasQuestion={hasQuestionNode}
                     hasConfiguredSettings={hasConfiguredSettings}
                     hasRunTest={hasRunTest}
-                />
+                />}
 
-                <ValidationDrawer
+                {!analysisOpen && <ValidationDrawer
                     issues={validationIssues}
                     onFocusNode={(nodeId) => setSelectedNodeId(nodeId)}
-                />
+                />}
 
-                <NodeSearchPalette
+                {!analysisOpen && <NodeSearchPalette
                     isOpen={isNodeSearchOpen}
                     onClose={() => setIsNodeSearchOpen(false)}
                     onSelectType={handleAddNodeFromPalette}
-                />
+                />}
 
                 {!analysisOpen && <NodeViewer nodes={nodes} onSelect={setSelectedNodeId} openSignal={nodeViewerOpenSignal} />}
 
@@ -464,7 +483,7 @@ function SurveyFlow() {
             />
 
             {/* Right Sidebar: Properties Panel */}
-            {selectedNode && (
+            {selectedNode && !analysisOpen && (
                 <PropertiesPanel
                     node={selectedNode}
                     nodes={nodes}
@@ -472,6 +491,7 @@ function SurveyFlow() {
                     surveyId={surveyId}
                     readOnly={isReadOnly}
                     onInspectFlowRule={setInspectedFlowRule}
+                    onQualityPoliciesChange={setQualityPolicies}
                     onChange={(fieldName, value) => {
                         if (isReadOnly || !selectedNodeId) return;
                         updateNodeData(selectedNodeId, { [fieldName]: value });
