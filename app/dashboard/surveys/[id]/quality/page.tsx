@@ -13,6 +13,7 @@ import {
     IconFlag,
     IconGauge,
     IconInfoCircle,
+    IconListCheck,
     IconRefresh,
     IconSettings,
     IconShieldLock,
@@ -35,6 +36,9 @@ import { toast } from "sonner";
 import { QualitySettingsModal } from "@/components/modals/QualitySettingsModal";
 import { ModalPortal } from "@/components/ui/ModalPortal";
 import { SurveyNavTabs } from "@/components/editor/SurveyNavTabs";
+import { StraightLineRulesModal } from "@/components/modals/StraightLineRulesModal";
+import { useAutosave } from "@/src/hooks/useAutosave";
+import { useSurveyStore } from "@/src/store/useSurveyStore";
 
 type QualityBadgeMeta = { label: string; description: string; badge: string };
 
@@ -148,8 +152,8 @@ const DETECTOR_META: Record<string, { label: string; description: string }> = {
         description: "Answered individual questions too quickly to have read them.",
     },
     STRAIGHT_LINE_BEHAVIOR: {
-        label: "Straight-lining",
-        description: "Picked the same answer position down a grid of questions.",
+        label: "Uniform response pattern",
+        description: "Repeated the same answer position across an eligible grid or multi-item scale; this is a review signal, not proof of careless responding.",
     },
     DUPLICATE_PID: {
         label: "Duplicate Panelist",
@@ -795,6 +799,14 @@ const getNoActiveFlagsMessage = (
 export default function SurveyQualityPage() {
     const { id } = useParams() as { id: string };
     const router = useRouter();
+    const {
+        nodes: workflowNodes,
+        setNodes: setWorkflowNodes,
+        loadSurveyData,
+        isReadOnly: isWorkflowReadOnly,
+        loadError: workflowLoadError,
+    } = useSurveyStore();
+    useAutosave(id);
     const [survey, setSurvey] = useState<Survey | null>(null);
     const [summary, setSummary] = useState<QualitySummary>(emptySummary);
     const [responses, setResponses] = useState<QualityResponseListItem[]>([]);
@@ -813,6 +825,8 @@ export default function SurveyQualityPage() {
     const [meta, setMeta] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
     const [reviewStatus, setReviewStatus] = useState("REVIEWED_VALID");
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isComparisonRulesOpen, setIsComparisonRulesOpen] = useState(false);
+    const [comparisonRulesLoading, setComparisonRulesLoading] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isReviewOpen, setIsReviewOpen] = useState(false);
     const [reviewReasonCode, setReviewReasonCode] = useState("");
@@ -829,8 +843,21 @@ export default function SurveyQualityPage() {
     const canReadQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_READ);
     const canReviewQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_REVIEW);
     const canConfigureQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_CONFIGURE);
+    const canEditComparisonRules = canConfigureQuality && hasPermission(userScopes, PERMISSIONS.SURVEY_EDIT);
     const canExportQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_EXPORT);
     const canExportDetailedQuality = hasPermission(userScopes, PERMISSIONS.SURVEY_QUALITY_EXPORT_DETAILED);
+
+    useEffect(() => {
+        if (!id || !canEditComparisonRules) return;
+        let cancelled = false;
+        setComparisonRulesLoading(true);
+        void loadSurveyData(id).finally(() => {
+            if (!cancelled) setComparisonRulesLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [canEditComparisonRules, id, loadSurveyData]);
 
     const openResponse = (responseId: string) => {
         setSelectedResponseId(responseId);
@@ -1168,21 +1195,52 @@ export default function SurveyQualityPage() {
                             <IconRefresh size={16} strokeWidth={1.7} />
                         </button>
 
-                        {canConfigureQuality && (
-                            <button
-                                onClick={() => setIsSettingsOpen(true)}
-                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
-                                title="Quality Settings"
-                            >
-                                <IconSettings size={16} strokeWidth={1.7} />
-                            </button>
-                        )}
                     </div>
                 </div>
 
                 {/* Section navigation */}
                 <SurveyNavTabs surveyId={id} variant="underline" />
             </header>
+
+            <section className="flex flex-col gap-4 rounded-xl border border-border/60 bg-background p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700">
+                        <IconListCheck size={20} strokeWidth={1.8} />
+                    </div>
+                    <div>
+                        <h2 className="text-sm font-semibold text-foreground">Quality rules</h2>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            Configure survey-wide detectors and explicitly choose which questions are comparable for straight-lining.
+                        </p>
+                    </div>
+                </div>
+                {canConfigureQuality ? (
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsSettingsOpen(true)}
+                            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-border/60 bg-background px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                        >
+                            <IconSettings size={16} strokeWidth={1.7} />
+                            Detector settings
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsComparisonRulesOpen(true)}
+                            disabled={!canEditComparisonRules || comparisonRulesLoading || Boolean(workflowLoadError)}
+                            className="flex h-9 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={!canEditComparisonRules
+                                ? "Survey editing permission is required"
+                                : workflowLoadError || "Configure straight-line comparison rules"}
+                        >
+                            <IconListCheck size={16} strokeWidth={1.8} />
+                            {comparisonRulesLoading ? "Loading rules..." : "Straight-line comparison rules"}
+                        </button>
+                    </div>
+                ) : (
+                    <p className="shrink-0 text-xs text-muted-foreground">You have read-only access to quality rules.</p>
+                )}
+            </section>
 
             {/* Data scope */}
             <div className="flex h-10 w-fit items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-1">
@@ -1873,6 +1931,13 @@ export default function SurveyQualityPage() {
                 onSave={() => {
                     void refreshAll();
                 }}
+            />
+            <StraightLineRulesModal
+                isOpen={isComparisonRulesOpen}
+                onClose={() => setIsComparisonRulesOpen(false)}
+                nodes={workflowNodes}
+                readOnly={isWorkflowReadOnly || !canEditComparisonRules}
+                onApply={setWorkflowNodes}
             />
         </div>
     );

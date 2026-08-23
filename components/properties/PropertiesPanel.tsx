@@ -46,6 +46,22 @@ const EMPTY_OPEN_END_PREVIEW: OpenEndQualityPreviewState = {
 };
 
 const OPEN_END_NODE_TYPES = new Set(["textInput", "multiInput"]);
+const supportsStraightLiningPolicy = (node: Node | null, data: Record<string, unknown>) => {
+    if (node?.type === "matrixChoice") return data.multiple !== true;
+    if (node?.type !== "rating" && node?.type !== "slider") return false;
+    const items = Array.isArray(data.items) ? data.items : [];
+    return data.responseMode === "multi" && items.length >= 2;
+};
+
+type StraightLiningPolicyMode = "inherit" | "enabled" | "disabled";
+
+const straightLiningPolicyMode = (data: Record<string, unknown>): StraightLiningPolicyMode => {
+    const policy = data.straightLiningPolicy && typeof data.straightLiningPolicy === "object"
+        ? data.straightLiningPolicy as Record<string, unknown>
+        : {};
+    return policy.mode === "enabled" || policy.mode === "disabled" ? policy.mode : "inherit";
+};
+
 const OPEN_END_QUALITY_PREVIEW_CACHE_LIMIT = 150;
 
 const OPEN_END_QUALITY_PREVIEW_CACHE = new Map<string, Pick<OpenEndQualityPreviewState, "automaticPolicies" | "policies">>();
@@ -239,6 +255,7 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
     // Get the definition for this node type
     const definition = node ? getNodeDefinition(node.type || "") : null;
     const data = useMemo(() => (node?.data || {}) as Record<string, unknown>, [node?.data]);
+    const hasStraightLiningPolicy = supportsStraightLiningPolicy(node, data);
 
     const panelGroups = useMemo(() => (definition
         ? definition.propertyPanel.groups
@@ -272,9 +289,9 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
         const tabs: PanelTab[] = [];
         if (contentFields.length > 0) tabs.push("content");
         if (flowFields.length > 0 || supportsConditionalDestinations) tabs.push("flow");
-        if (qualityFields.length > 0) tabs.push("quality");
+        if (qualityFields.length > 0 || hasStraightLiningPolicy) tabs.push("quality");
         return tabs.length > 0 ? tabs : (["content"] as PanelTab[]);
-    }, [contentFields.length, flowFields.length, qualityFields.length, supportsConditionalDestinations]);
+    }, [contentFields.length, flowFields.length, hasStraightLiningPolicy, qualityFields.length, supportsConditionalDestinations]);
 
     const [activeTab, setActiveTab] = useState<PanelTab>(LAST_ACTIVE_TAB);
     const [search, setSearch] = useState("");
@@ -322,6 +339,11 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
 
     const qualityBadge = useMemo<"manual" | "off" | null>(() => {
         if (!node) return null;
+        if (hasStraightLiningPolicy) {
+            const mode = straightLiningPolicyMode(data);
+            if (mode === "enabled") return "manual";
+            if (mode === "disabled") return "off";
+        }
         if (node.type === "multiInput") {
             const subFields = Array.isArray(data.fields) ? data.fields as Record<string, unknown>[] : [];
             if (subFields.some((field) => getPolicyMode(field) === "manual")) return "manual";
@@ -332,7 +354,7 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
         if (mode === "manual") return "manual";
         if (mode === "disabled") return "off";
         return null;
-    }, [node, data]);
+    }, [data, hasStraightLiningPolicy, node]);
 
     const searchResults = useMemo(() => {
         const query = search.trim().toLowerCase();
@@ -646,7 +668,19 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                                     flowFields.map(renderPanelField)
                                 )
                             )}
-                            {activeTab === "quality" && qualityFields.map(renderPanelField)}
+                            {activeTab === "quality" && (
+                                <>
+                                    {qualityFields.map(renderPanelField)}
+                                    {hasStraightLiningPolicy && (
+                                        <StraightLiningQualityEditor
+                                            nodeType={String(node.type)}
+                                            fieldData={data}
+                                            readOnly={readOnly}
+                                            onChange={(policy) => onChange("straightLiningPolicy", policy)}
+                                        />
+                                    )}
+                                </>
+                            )}
                         </>
                     )}
                 </div>
@@ -657,6 +691,136 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                 {node.id} · {node.type}
             </div>
         </aside>
+    );
+}
+
+function StraightLiningQualityEditor({
+    nodeType,
+    fieldData,
+    readOnly,
+    onChange,
+}: {
+    nodeType: string;
+    fieldData: Record<string, unknown>;
+    readOnly?: boolean;
+    onChange: (policy: Record<string, unknown>) => void;
+}) {
+    const rawPolicy = fieldData.straightLiningPolicy && typeof fieldData.straightLiningPolicy === "object"
+        ? fieldData.straightLiningPolicy as Record<string, unknown>
+        : {};
+    const mode = straightLiningPolicyMode(fieldData);
+    const comparableItems = nodeType === "matrixChoice"
+        ? (Array.isArray(fieldData.rows) ? fieldData.rows.length : 0)
+        : (Array.isArray(fieldData.items) ? fieldData.items.length : 0);
+    const optionCount = nodeType === "matrixChoice"
+        ? (Array.isArray(fieldData.columns) ? fieldData.columns.length : 0)
+        : nodeType === "rating"
+            ? Math.max(0, Math.floor(Number(fieldData.maxRating) || 0))
+            : (() => {
+                const min = Number(fieldData.min);
+                const max = Number(fieldData.max);
+                const step = Number(fieldData.step);
+                return Number.isFinite(min) && Number.isFinite(max) && Number.isFinite(step) && step > 0 && max >= min
+                    ? Math.floor((max - min) / step) + 1
+                    : 0;
+            })();
+    const defaultMinResponses = optionCount === 2 ? 10 : 8;
+    const minResponses = Number.isInteger(Number(rawPolicy.minResponses)) && Number(rawPolicy.minResponses) >= 2
+        ? Number(rawPolicy.minResponses)
+        : defaultMinResponses;
+    const configuredRatio = Number(rawPolicy.nearStraightLineRatio);
+    const thresholdPercent = Number.isFinite(configuredRatio) && configuredRatio > 0 && configuredRatio <= 1
+        ? Math.round(configuredRatio * 100)
+        : 90;
+    const inputClass = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50";
+
+    const setMode = (nextMode: StraightLiningPolicyMode) => {
+        if (nextMode === "inherit" || nextMode === "disabled") {
+            onChange({ mode: nextMode });
+            return;
+        }
+        onChange({
+            mode: "enabled",
+            minResponses,
+            nearStraightLineRatio: thresholdPercent / 100,
+        });
+    };
+
+    const updateEnabledPolicy = (updates: Record<string, unknown>) => {
+        onChange({
+            mode: "enabled",
+            minResponses,
+            nearStraightLineRatio: thresholdPercent / 100,
+            ...updates,
+        });
+    };
+
+    return (
+        <section className="space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+            <div>
+                <p className="text-xs font-semibold text-foreground">Uniform response patterns</p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                    Applies only to comparable items in this {nodeType === "matrixChoice" ? "grid" : "multi-item scale"}. A finding requests review; it does not prove careless responding.
+                </p>
+            </div>
+
+            <div className="space-y-1.5">
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Policy</label>
+                <select
+                    disabled={readOnly}
+                    value={mode}
+                    onChange={(event) => setMode(event.target.value as StraightLiningPolicyMode)}
+                    className={inputClass}
+                >
+                    <option value="inherit">Use survey defaults</option>
+                    <option value="enabled">Override for this question</option>
+                    <option value="disabled">Disable for this question</option>
+                </select>
+            </div>
+
+            {mode === "enabled" && (
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-muted-foreground">Minimum comparable answers</label>
+                        <input
+                            type="number"
+                            min={2}
+                            step={1}
+                            disabled={readOnly}
+                            value={minResponses}
+                            onChange={(event) => updateEnabledPolicy({ minResponses: Math.max(2, Math.floor(Number(event.target.value) || 2)) })}
+                            className={inputClass}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-muted-foreground">Same-answer threshold</label>
+                        <div className="relative">
+                            <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                step={1}
+                                disabled={readOnly}
+                                value={thresholdPercent}
+                                onChange={(event) => updateEnabledPolicy({
+                                    nearStraightLineRatio: Math.min(100, Math.max(1, Number(event.target.value) || 1)) / 100,
+                                })}
+                                className={`${inputClass} pr-8`}
+                            />
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="rounded-md bg-background px-3 py-2 text-[11px] text-muted-foreground">
+                This question currently has <span className="font-semibold text-foreground">{comparableItems}</span> comparable item{comparableItems === 1 ? "" : "s"}
+                {optionCount > 0 && <> and <span className="font-semibold text-foreground">{optionCount}</span> answer options</>}.
+                {mode === "inherit" && " Survey-level minimums and threshold apply."}
+                {mode === "disabled" && " This question will not be evaluated for uniform patterns."}
+                {mode === "enabled" && comparableItems < minResponses && ` It will not be evaluated until it has at least ${minResponses} comparable items.`}
+            </div>
+        </section>
     );
 }
 

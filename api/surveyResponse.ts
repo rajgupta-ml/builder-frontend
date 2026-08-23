@@ -152,6 +152,7 @@ export type QualityDetectorSettings = {
     wordsPerSecond?: number;
     interactionFloorSeconds?: number;
     minResponses?: number;
+    binaryMinResponses?: number;
     nearStraightLineRatio?: number;
 };
 

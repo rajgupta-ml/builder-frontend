@@ -25,7 +25,12 @@ function getActiveTab(pathname: string, surveyId: string): SurveyTabKey {
     return 'builder';
 }
 
-export function SurveyNavTabs({ surveyId, confirmNavigation = () => true, className, variant = 'pill' }: SurveyNavTabsProps) {
+export function SurveyNavTabs({
+    surveyId,
+    confirmNavigation = () => true,
+    className,
+    variant = 'pill',
+}: SurveyNavTabsProps) {
     const router = useRouter();
     const pathname = usePathname();
     const activeTab = getActiveTab(pathname || '', surveyId);

@@ -23,6 +23,7 @@ type FormState = {
     straightLiningEnabled: boolean;
     straightLiningPercent: string;
     straightLiningMinAnswers: string;
+    straightLiningBinaryMinAnswers: string;
     duplicateRespondentEnabled: boolean;
     duplicateDeviceEnabled: boolean;
 };
@@ -37,8 +38,9 @@ const buildFormState = (settings: QualitySettings): FormState => ({
     surveySpeedingPercent: percentString(settings.detectors.SURVEY_SPEEDER?.expectedSurveyRatio, 0.3),
     questionSpeedingEnabled: settings.detectors.QUESTION_SPEEDER?.enabled ?? true,
     straightLiningEnabled: settings.detectors.STRAIGHT_LINE_BEHAVIOR?.enabled ?? true,
-    straightLiningPercent: percentString(settings.detectors.STRAIGHT_LINE_BEHAVIOR?.nearStraightLineRatio, 0.85),
-    straightLiningMinAnswers: String(settings.detectors.STRAIGHT_LINE_BEHAVIOR?.minResponses ?? 5),
+    straightLiningPercent: percentString(settings.detectors.STRAIGHT_LINE_BEHAVIOR?.nearStraightLineRatio, 0.90),
+    straightLiningMinAnswers: String(settings.detectors.STRAIGHT_LINE_BEHAVIOR?.minResponses ?? 8),
+    straightLiningBinaryMinAnswers: String(settings.detectors.STRAIGHT_LINE_BEHAVIOR?.binaryMinResponses ?? 10),
     duplicateRespondentEnabled: settings.detectors.DUPLICATE_PID?.enabled ?? true,
     duplicateDeviceEnabled: settings.detectors.DUPLICATE_DEVICE?.enabled ?? false,
 });
@@ -83,6 +85,8 @@ export function QualitySettingsModal({ isOpen, onClose, surveyId, onSave }: Qual
         if (form.straightLiningEnabled && !validPercent(form.straightLiningPercent)) return "Straight-lining percentage must be between 1 and 100.";
         const minAnswers = Number(form.straightLiningMinAnswers);
         if (form.straightLiningEnabled && (!Number.isInteger(minAnswers) || minAnswers < 2)) return "Straight-lining needs at least 2 comparable answers.";
+        const binaryMinAnswers = Number(form.straightLiningBinaryMinAnswers);
+        if (form.straightLiningEnabled && (!Number.isInteger(binaryMinAnswers) || binaryMinAnswers < 2)) return "Binary grids need an integer minimum of at least 2 comparable answers.";
         return null;
     }, [form]);
 
@@ -114,6 +118,7 @@ export function QualitySettingsModal({ isOpen, onClose, surveyId, onSave }: Qual
                     STRAIGHT_LINE_BEHAVIOR: {
                         enabled: form.straightLiningEnabled,
                         minResponses: Number(form.straightLiningMinAnswers),
+                        binaryMinResponses: Number(form.straightLiningBinaryMinAnswers),
                         nearStraightLineRatio: Number(form.straightLiningPercent) / 100,
                     },
                     DUPLICATE_PID: { enabled: form.duplicateRespondentEnabled },
@@ -196,8 +201,8 @@ export function QualitySettingsModal({ isOpen, onClose, surveyId, onSave }: Qual
                                         />
 
                                         <RuleCard
-                                            title="Straight lining"
-                                            description={`Flag comparable answers when at least ${form.straightLiningPercent || "—"}% repeat the same choice.`}
+                                            title="Uniform response patterns"
+                                            description={`Create a review finding when eligible grids or multi-item scales repeat one answer at least ${form.straightLiningPercent || "—"}% of the time.`}
                                             enabled={form.straightLiningEnabled}
                                             onToggle={(enabled) => setForm({ ...form, straightLiningEnabled: enabled })}
                                         >
@@ -213,7 +218,15 @@ export function QualitySettingsModal({ isOpen, onClose, surveyId, onSave }: Qual
                                                     value={form.straightLiningMinAnswers}
                                                     onChange={(straightLiningMinAnswers) => setForm({ ...form, straightLiningMinAnswers })}
                                                 />
+                                                <NumberField
+                                                    label="Minimum answers for two-option grids"
+                                                    value={form.straightLiningBinaryMinAnswers}
+                                                    onChange={(straightLiningBinaryMinAnswers) => setForm({ ...form, straightLiningBinaryMinAnswers })}
+                                                />
                                             </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                These are survey defaults. Eligible questions can inherit them, override them, or disable this check. A finding is evidence for review, not proof of careless responding.
+                                            </p>
                                         </RuleCard>
 
                                         <RuleCard
