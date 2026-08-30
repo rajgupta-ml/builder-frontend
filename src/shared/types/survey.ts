@@ -1,3 +1,6 @@
+import type { LogicGroup, LogicRule } from "@/components/properties/conditionTypes";
+export type { LogicGroup, LogicRule };
+
 export interface Surveys {
   id: string;
   name: string;
@@ -37,14 +40,31 @@ export interface SurveyWorkflow {
     updatedAt: string;
 }
 
+export interface QuotaCondition {
+    id?: string;
+    questionId: string;
+    matchType: 'option' | 'number_range' | 'postal_regex' | 'postal_list';
+    optionValues: string[];
+    minValue?: number;
+    maxValue?: number;
+    sortOrder?: number;
+    isOrphaned?: boolean;
+}
+
 export interface SurveyQuota {
     id: string;
     surveyId: string;
     name?: string;
-    rule: any; // Can be LogicGroup or a simple rule object
+    type: 'screener' | 'survey';
+    groupOperator: 'and' | 'or';
+    rule?: LogicGroup | null;
     limit: number;
     isActive: boolean;
+    isFull: boolean;
+    currentCount: number;
+    syncId?: string;
     createdAt: string;
+    conditions: QuotaCondition[];
 }
 
 export interface StartResponseParams {
@@ -61,21 +81,4 @@ export interface UpdateResponseParams {
     outcome?: string;
     respondentId?: string;
     redirectUrl?: string;
-}
-
-// Logic types for workflow conditions
-export interface LogicRule {
-    type: 'rule';
-    field: string;
-    subField?: string;
-    compareField?: string;
-    operator: string;
-    value: any;
-    valueType?: 'static' | 'variable';
-}
-
-export interface LogicGroup {
-    type: 'group';
-    logicType: 'AND' | 'OR';
-    children: (LogicGroup | LogicRule)[];
 }

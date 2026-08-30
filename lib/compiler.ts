@@ -1,13 +1,34 @@
+import { inferQuestionResponseMode } from '@surveystudio/node-registery/logic';
 import { type Node as ReactFlowNode, type Edge as ReactFlowEdge } from '@xyflow/react';
+import { migrateSkipNodes, getNodeSkipRules } from '@/lib/skipMigration';
 
-import { v4 as uuidv4 } from 'uuid'; // You'll need this
+const buildBranchOutRoutes = (nodeData: Record<string, any>) => (
+    Array.isArray(nodeData.routes)
+        ? nodeData.routes.map((route: any, index: number) => ({
+            id: String(route?.id || `path-${index + 1}`),
+            label: String(route?.label || `Path ${index + 1}`),
+            condition: route?.condition || null,
+            targetId: null,
+        }))
+        : []
+);
 
-const inferResponseMode = (data: any): 'single' | 'multi' => {
-    if (data?.responseMode === 'single' || data?.responseMode === 'multi') return data.responseMode;
-    return Array.isArray(data?.items) && data.items.length > 0 ? 'multi' : 'single';
+const buildNextState = (nodeType: string | undefined, nodeData: Record<string, any>) => {
+    if (nodeType === 'branch' || nodeType === 'validation') {
+        return { kind: 'branch', trueId: null, falseId: null };
+    }
+
+    if (nodeType === 'branchOut') {
+        return { kind: 'multiBranch', routes: buildBranchOutRoutes(nodeData), fallbackId: null };
+    }
+
+    return { kind: 'linear', nextId: null };
 };
 
-export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge[]) => {
+
+export const generateRuntimeJson = (rawNodes: ReactFlowNode[], rawEdges: ReactFlowEdge[]) => {
+    // Legacy drafts may still contain standalone skip nodes; fold them into node data first.
+    const { nodes, edges: normalizedEdges } = migrateSkipNodes(rawNodes, rawEdges);
     const runtimeJson: Record<string, any> = {};
 
     // Initialize nodes
@@ -15,10 +36,6 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         // Deep clone the data to avoid mutations
         const nodeData = JSON.parse(JSON.stringify(node.data));
         
-        // Add stable UUIDs if they don't exist
-        if (!nodeData.technicalId) {
-            nodeData.technicalId = uuidv4();
-        }
         if (nodeData.isPii === undefined) {
             nodeData.isPii = false;
         }
@@ -28,7 +45,7 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             if (nodeData.options && Array.isArray(nodeData.options)) {
                 nodeData.options = nodeData.options.map((opt: any) => ({
                     ...opt,
-                    exportId: opt.exportId || uuidv4()
+                    exportId: opt.exportId
                 }));
             }
         }
@@ -38,18 +55,18 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             if (nodeData.choices && Array.isArray(nodeData.choices)) {
                 nodeData.choices = nodeData.choices.map((opt: any) => ({
                     ...opt,
-                    exportId: opt.exportId || uuidv4()
+                    exportId: opt.exportId
                 }));
             }
         }
 
         // Add stable IDs to rating and slider items
         if (["rating", "slider"].includes(node.type as string)) {
-            nodeData.responseMode = inferResponseMode(nodeData);
+            nodeData.responseMode = inferQuestionResponseMode(nodeData);
             if (nodeData.items && Array.isArray(nodeData.items)) {
                 nodeData.items = nodeData.items.map((item: any) => ({
                     ...item,
-                    exportId: item.exportId || uuidv4()
+                    exportId: item.exportId
                 }));
             }
         }
@@ -59,13 +76,13 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             if (nodeData.rows && Array.isArray(nodeData.rows)) {
                 nodeData.rows = nodeData.rows.map((row: any) => ({
                     ...row,
-                    exportId: row.exportId || uuidv4()
+                    exportId: row.exportId
                 }));
             }
             if (nodeData.columns && Array.isArray(nodeData.columns)) {
                 nodeData.columns = nodeData.columns.map((col: any) => ({
                     ...col,
-                    exportId: col.exportId || uuidv4()
+                    exportId: col.exportId
                 }));
             }
         }
@@ -74,10 +91,10 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         if (node.type === "cascadingChoice" && nodeData.steps && Array.isArray(nodeData.steps)) {
             nodeData.steps = nodeData.steps.map((step: any) => ({
                 ...step,
-                exportId: step.exportId || uuidv4(),
+                exportId: step.exportId,
                 options: step.options?.map((opt: any) => ({
                     ...opt,
-                    exportId: opt.exportId || uuidv4()
+                    exportId: opt.exportId
                 })) || []
             }));
         }
@@ -86,8 +103,8 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
         if (node.type === "multiInput" && nodeData.fields && Array.isArray(nodeData.fields)) {
             nodeData.fields = nodeData.fields.map((field: any) => ({
                 ...field,
-                id: field.id || uuidv4(), // Generate stable ID
-                exportId: field.exportId || uuidv4()
+                id: field.id,
+                exportId: field.exportId
             }));
         }
 
@@ -95,26 +112,43 @@ export const generateRuntimeJson = (nodes: ReactFlowNode[], edges: ReactFlowEdge
             id: node.id,
             type: node.type,
             data: nodeData,
-            next: (node.type === 'branch' || node.type === 'validation')
-                ? { kind: 'branch', trueId: null, falseId: null }
-                : { kind: 'linear', nextId: null }
+            next: buildNextState(node.type, nodeData)
         };
+
+        const skips = getNodeSkipRules(nodeData).filter((rule) =>
+            typeof rule.targetId === 'string' && rule.targetId.length > 0);
+        if (skips.length > 0) {
+            runtimeJson[node.id].skips = skips.map((rule) => ({
+                id: rule.id,
+                label: rule.label || 'Skip rule',
+                condition: rule.condition || null,
+                targetId: rule.targetId,
+            }));
+        }
     });
 
     // Populate edges (connections)
-    edges.forEach(edge => {
+    normalizedEdges.forEach(edge => {
         const sourceNode = runtimeJson[edge.source];
-        if (sourceNode) {
-            if (sourceNode.next.kind === 'branch') {
-                if (edge.sourceHandle === 'true') {
-                    sourceNode.next.trueId = edge.target;
-                } else if (edge.sourceHandle === 'false') {
-                    sourceNode.next.falseId = edge.target;
-                }
-            } else {
-                // Linear connection
-                sourceNode.next.nextId = edge.target;
+        const targetNode = runtimeJson[edge.target];
+        if (!sourceNode || !targetNode) return;
+
+        if (sourceNode.next.kind === 'branch') {
+            if (edge.sourceHandle === 'true') {
+                sourceNode.next.trueId = edge.target;
+            } else if (edge.sourceHandle === 'false') {
+                sourceNode.next.falseId = edge.target;
             }
+        } else if (sourceNode.next.kind === 'multiBranch') {
+            if (edge.sourceHandle === 'fallback') {
+                sourceNode.next.fallbackId = edge.target;
+            } else {
+                const route = sourceNode.next.routes.find((candidate: any) => candidate.id === edge.sourceHandle);
+                if (route) route.targetId = edge.target;
+            }
+        } else {
+            // Linear connection
+            sourceNode.next.nextId = edge.target;
         }
     });
 

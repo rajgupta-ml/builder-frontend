@@ -1,6 +1,9 @@
+import { inferQuestionResponseMode, resolveStructuredItemKey } from '@surveystudio/node-registery/logic';
 import React, { useMemo } from 'react';
 import { Edge, Node } from '@xyflow/react';
-import { getNodeDefinition, LogicGroup, LogicItem, LogicRule, POSTAL_CODE_COUNTRIES } from '@/components/nodes/definitions';
+import { getNodeDefinition } from '@/components/nodes/definitions';
+import { POSTAL_CODE_COUNTRIES } from './postalCodeCountries';
+import type { LogicGroup, LogicItem, LogicRule } from './conditionTypes';
 import { IconTrash, IconPlus, IconVariable, IconTypography, IconFolderPlus, IconX } from '@tabler/icons-react';
 import { cn, generateUniqueId } from '@/lib/utils';
 
@@ -21,13 +24,13 @@ interface ConditionBuilderProps {
     /**
      * Controls which identifier is written into rule.field
      * - 'nodeId' (default): uses the ReactFlow node id
-     * - 'technicalId': uses node.data.technicalId/exportId fallback
+     * - 'technicalId': uses node.data.technicalId
      */
     fieldKeyMode?: FieldKeyMode;
     /**
      * Controls which identifier is written into rule.value for choice options
      * - 'value' (default): uses option.value
-     * - 'exportId': uses option.exportId/value fallback
+     * - 'exportId': uses the registry stable item key
      */
     optionKeyMode?: OptionKeyMode;
     builderMode?: BuilderMode;
@@ -140,8 +143,7 @@ const isNumericNodeType = (nodeType?: string) => nodeType ? NUMERIC_NODE_TYPES.i
 
 const getQuestionKey = (node: Node, mode: FieldKeyMode): string => {
     if (mode === 'technicalId') {
-        const data: any = node.data || {};
-        return data.technicalId || data.exportId || node.id;
+        return String((node.data as any)?.technicalId || '');
     }
     return node.id;
 };
@@ -149,19 +151,16 @@ const getQuestionKey = (node: Node, mode: FieldKeyMode): string => {
 const findQuestionByKey = (nodes: Node[], key: string, mode: FieldKeyMode): Node | undefined => {
     if (!key) return undefined;
     if (mode === 'technicalId') {
-        return nodes.find(n => {
-            const data: any = n.data || {};
-            return data.technicalId === key || data.exportId === key || n.id === key;
-        });
+        return nodes.find(n => String((n.data as any)?.technicalId || '') === key);
     }
     return nodes.find(n => n.id === key);
 };
 
 const getOptionKey = (opt: any, mode: OptionKeyMode): string => {
     if (mode === 'exportId') {
-        return opt.exportId || opt.value || opt.label;
+        return resolveStructuredItemKey(opt);
     }
-    return opt.value ?? opt.label;
+    return String(opt.value || '');
 };
 
 const getValuePlaceholder = (nodeType?: string, operator?: string): string => {
@@ -301,7 +300,7 @@ export const ConditionBuilder = ({
     const validQuestions = useMemo(() => {
         return nodes.filter(n => {
             const def = getNodeDefinition(n.type || '');
-            const isStructural = ['start', 'end', 'branch', 'validation', 'image', 'video', 'audio'].includes(n.type || '');
+            const isStructural = ['start', 'end', 'branch', 'skip', 'validation', 'merge', 'branchOut', 'image', 'video', 'audio'].includes(n.type || '');
             const isAllowedByGraph = ancestorNodeIds ? ancestorNodeIds.has(n.id) : true;
             return def && !isStructural && n.id !== 'current' && isAllowedByGraph;
         });
@@ -497,10 +496,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
     const availableOperators = getOperatorsForContext(selectedQuestion?.type as string, builderMode);
     const isScaleMultiMode =
         (selectedQuestion?.type === 'rating' || selectedQuestion?.type === 'slider')
-            ? (selectedQuestionData.responseMode === 'multi' ||
-                (selectedQuestionData.responseMode !== 'single' &&
-                    Array.isArray(selectedQuestionData.items) &&
-                    selectedQuestionData.items.length > 0))
+            ? inferQuestionResponseMode(selectedQuestionData) === 'multi'
             : false;
     const shouldShowSubField =
         selectedQuestion?.type === 'matrixChoice' ||
@@ -580,14 +576,18 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                 }}
             >
                 <option value="">Field...</option>
-                {validQuestions.map(n => (
+                {validQuestions.map(n => {
+                    const questionKey = getQuestionKey(n, fieldKeyMode);
+                    if (!questionKey) return null;
+                    return (
                     <option
-                        key={getQuestionKey(n, fieldKeyMode)}
-                        value={getQuestionKey(n, fieldKeyMode)}
+                        key={questionKey}
+                        value={questionKey}
                     >
                         {String((n.data as any)?.label || n.id)}
                     </option>
-                ))}
+                    );
+                })}
             </select>
             {validQuestions.length === 0 && (
                 <span className="basis-full text-[10px] text-muted-foreground italic">
@@ -609,11 +609,15 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                     {(selectedType === 'multiInput'
                         ? (selectedQuestionData.fields as any[] || [])
                         : (selectedQuestionData.items as any[] || selectedQuestionData.rows as any[] || [])
-                    ).map((sub: any, i: number) => (
-                        <option key={i} value={getOptionKey(sub, optionKeyMode)}>
+                    ).map((sub: any, i: number) => {
+                        const optionKey = getOptionKey(sub, optionKeyMode);
+                        if (!optionKey) return null;
+                        return (
+                        <option key={optionKey} value={optionKey}>
                             {sub.label || sub.text || sub.id}
                         </option>
-                    ))}
+                        );
+                    })}
                 </select>
             )}
 
@@ -938,14 +942,18 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                         <option value="">Compare with...</option>
                                         {validQuestions
                                             .filter(n => getQuestionKey(n, fieldKeyMode) !== rule.field)
-                                            .map(n => (
+                                            .map(n => {
+                                                const questionKey = getQuestionKey(n, fieldKeyMode);
+                                                if (!questionKey) return null;
+                                                return (
                                                 <option
-                                                    key={getQuestionKey(n, fieldKeyMode)}
-                                                    value={getQuestionKey(n, fieldKeyMode)}
+                                                    key={questionKey}
+                                                    value={questionKey}
                                                 >
                                                     {String((n.data as any)?.label || n.id)}
                                                 </option>
-                                            ))}
+                                                );
+                                            })}
                                     </select>
                                 ) : rule.operator === 'is_postal_code' ? (
                                     <select
@@ -967,14 +975,18 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                         onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
                                     >
                                         <option value="">Select option...</option>
-                                        {questionOptions.map((opt: any, i: number) => (
+                                        {questionOptions.map((opt: any) => {
+                                            const optionKey = getOptionKey(opt, optionKeyMode);
+                                            if (!optionKey) return null;
+                                            return (
                                             <option
-                                                key={i}
-                                                value={getOptionKey(opt, optionKeyMode)}
+                                                key={optionKey}
+                                                value={optionKey}
                                             >
                                                 {opt.label || opt.value}
                                             </option>
-                                        ))}
+                                            );
+                                        })}
                                     </select>
                                 ) : (
                                     <input

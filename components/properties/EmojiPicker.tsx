@@ -57,6 +57,7 @@ export default function EmojiPicker({ value, onChange }: EmojiPickerProps) {
                             placeholder="Label (optional)"
                         />
                         <button
+                            type="button"
                             onClick={() => removeEmoji(index)}
                             className="p-2 text-muted-foreground hover:text-destructive transition-colors shrink-0"
                         >
@@ -68,8 +69,9 @@ export default function EmojiPicker({ value, onChange }: EmojiPickerProps) {
 
             {/* Add Emoji Button */}
             <button
+                type="button"
                 onClick={() => setShowPicker(!showPicker)}
-                className="flex items-center gap-2 text-xs text-primary hover:underline"
+                className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
             >
                 <IconPlus size={14} />
                 Add Emoji
@@ -77,11 +79,12 @@ export default function EmojiPicker({ value, onChange }: EmojiPickerProps) {
 
             {/* Emoji Picker Popup */}
             {showPicker && (
-                <div className="border border-border rounded-lg bg-background shadow-lg p-3 space-y-3">
+                <div className="border border-border rounded-md bg-background shadow-lg p-3 space-y-3">
                     {/* Category Tabs */}
                     <div className="flex gap-1 overflow-x-auto pb-2 border-b border-border">
                         {Object.keys(EMOJI_CATEGORIES).map((category) => (
                             <button
+                                type="button"
                                 key={category}
                                 onClick={() => setSelectedCategory(category as keyof typeof EMOJI_CATEGORIES)}
                                 className={cn(
@@ -100,6 +103,7 @@ export default function EmojiPicker({ value, onChange }: EmojiPickerProps) {
                     <div className="grid grid-cols-8 gap-1 max-h-48 overflow-y-auto">
                         {EMOJI_CATEGORIES[selectedCategory].map((emoji, idx) => (
                             <button
+                                type="button"
                                 key={idx}
                                 onClick={() => addEmoji(emoji)}
                                 className="w-8 h-8 flex items-center justify-center text-xl hover:bg-muted rounded transition-colors"

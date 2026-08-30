@@ -16,6 +16,7 @@ import { operationsApi } from '@/api/operations';
 import { toast } from 'sonner';
 import { Survey, SurveyQuota } from '@/src/shared/types/survey';
 import { hydrateNodeIds } from '@/lib/hydrateNodeIds';
+import { migrateSkipNodes } from '@/lib/skipMigration';
 import { toUserMessage } from '@/lib/api-error';
 import { reportApiError } from '@/lib/error-reporter';
 import { generateUniqueId } from '@/lib/utils';
@@ -80,6 +81,80 @@ const newUuid = (): string => {
     return generateUniqueId('id');
 };
 
+
+const needsTechnicalId = (type?: string | null): boolean => (
+    Boolean(type) && !['start', 'end', 'branch', 'skip', 'validation', 'merge', 'branchOut'].includes(String(type))
+);
+
+const cloneRecord = (source: Record<string, any>): Record<string, any> => JSON.parse(JSON.stringify(source || {}));
+
+const ensureStableNodeDataIds = (type: string | undefined, source: Record<string, any>): { data: Record<string, any>; changed: boolean } => {
+    const data = cloneRecord(source);
+    let changed = false;
+
+    const ensureKey = (record: Record<string, any>, key: string) => {
+        if (typeof record[key] !== 'string' || record[key].trim().length === 0) {
+            record[key] = newUuid();
+            changed = true;
+        }
+    };
+
+    const ensureExportIds = (items: unknown) => {
+        if (!Array.isArray(items)) return;
+        items.forEach((item) => {
+            if (item && typeof item === 'object') ensureKey(item as Record<string, any>, 'exportId');
+        });
+    };
+
+    if (needsTechnicalId(type)) ensureKey(data, 'technicalId');
+
+    if (['singleChoice', 'multipleChoice', 'dropdown', 'ranking', 'emojiRating'].includes(String(type))) {
+        ensureExportIds(data.options);
+    }
+
+    if (['image', 'video', 'audio'].includes(String(type))) {
+        ensureExportIds(data.choices);
+    }
+
+    if (['rating', 'slider'].includes(String(type))) {
+        ensureExportIds(data.items);
+    }
+
+    if (type === 'matrixChoice') {
+        ensureExportIds(data.rows);
+        ensureExportIds(data.columns);
+    }
+
+    if (type === 'cascadingChoice' && Array.isArray(data.steps)) {
+        data.steps.forEach((step: any) => {
+            if (!step || typeof step !== 'object') return;
+            ensureKey(step, 'exportId');
+            ensureExportIds(step.options);
+        });
+    }
+
+    if (type === 'multiInput' && Array.isArray(data.fields)) {
+        data.fields.forEach((field: any) => {
+            if (!field || typeof field !== 'object') return;
+            ensureKey(field, 'id');
+            ensureKey(field, 'exportId');
+        });
+    }
+
+    return { data, changed };
+};
+
+const ensureStableNodeIds = (nodes: ReactFlowNode[]): { nodes: ReactFlowNode[]; changed: boolean } => {
+    let changed = false;
+    const repairedNodes = nodes.map((node) => {
+        const repaired = ensureStableNodeDataIds(node.type, (node.data || {}) as Record<string, any>);
+        if (!repaired.changed) return node;
+        changed = true;
+        return { ...node, data: repaired.data };
+    });
+    return { nodes: repairedNodes, changed };
+};
+
 const regenerateDuplicatedNodeDataIds = (source: Record<string, any>): Record<string, any> => {
     const data = JSON.parse(JSON.stringify(source || {}));
     data.technicalId = newUuid();
@@ -137,14 +212,21 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     autosaveRequestSeq: 0,
     lastSavedAt: null,
 
-    setNodes: (nodes) => set({ nodes, saveStatus: 'unsaved' }),
+    setNodes: (nodes) => {
+        const repaired = ensureStableNodeIds(nodes);
+        set({ nodes: repaired.nodes, saveStatus: 'unsaved' });
+    },
     setEdges: (edges) => set({ edges, saveStatus: 'unsaved' }),
 
     updateNodeData: (nodeId, newData) => {
         const { nodes, isReadOnly } = get();
         if (isReadOnly) return;
         set({
-            nodes: nodes.map(n => n.id === nodeId ? { ...n, data: { ...n.data, ...newData } } : n),
+            nodes: nodes.map(n => {
+                if (n.id !== nodeId) return n;
+                const repaired = ensureStableNodeDataIds(n.type, { ...n.data, ...newData });
+                return { ...n, data: repaired.data };
+            }),
             saveStatus: 'unsaved'
         });
     },
@@ -152,8 +234,28 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
     onNodesChange: (changes) => {
         const { nodes, isReadOnly } = get();
         if (isReadOnly) return;
+        const removedIds = new Set(
+            changes.filter((change) => change.type === 'remove').map((change) => change.id)
+        );
+        let nextNodes = applyNodeChanges(changes, nodes);
+        if (removedIds.size > 0) {
+            // Detach skip rules that jumped to a deleted node; validation surfaces the missing target.
+            nextNodes = nextNodes.map((node) => {
+                const skips = Array.isArray((node.data as any)?.skips) ? (node.data as any).skips : null;
+                if (!skips || !skips.some((rule: any) => rule && removedIds.has(rule.targetId))) return node;
+                return {
+                    ...node,
+                    data: {
+                        ...node.data,
+                        skips: skips.map((rule: any) => (
+                            rule && removedIds.has(rule.targetId) ? { ...rule, targetId: null } : rule
+                        )),
+                    },
+                };
+            });
+        }
         set({
-            nodes: applyNodeChanges(changes, nodes),
+            nodes: nextNodes,
             saveStatus: 'unsaved'
         });
     },
@@ -174,36 +276,40 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
         if (connection.source === connection.target) return;
 
         const sourceNode = nodes.find((node) => node.id === connection.source);
-        if (!sourceNode) return;
+        const targetNode = nodes.find((node) => node.id === connection.target);
+        if (!sourceNode || !targetNode) return;
 
-        const isBranchSource = sourceNode.type === 'branch' || sourceNode.type === 'validation';
+        const isBranchLikeSource = sourceNode.type === 'branch' || sourceNode.type === 'validation' || sourceNode.type === 'branchOut';
+        const allowsMultipleIncoming = targetNode.type === 'merge';
 
         const hasDuplicate = edges.some((edge) =>
             edge.source === connection.source &&
             edge.target === connection.target &&
             (edge.sourceHandle ?? null) === (connection.sourceHandle ?? null) &&
-            (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
+            (allowsMultipleIncoming || (edge.targetHandle ?? null) === (connection.targetHandle ?? null))
         );
         if (hasDuplicate) return;
 
         const constrainedEdges = edges.filter((edge) => {
-            // Only one incoming edge per node.
-            if (edge.target === connection.target) {
+            // Most nodes accept one incoming edge; merge nodes intentionally accept many.
+            if (edge.target === connection.target && !allowsMultipleIncoming) {
                 return false;
             }
 
-            // Non-branch nodes can only have one outgoing edge.
-            if (edge.source === connection.source && !isBranchSource) {
+            if (edge.source !== connection.source) {
+                return true;
+            }
+
+            // Regular nodes keep a single outgoing edge; skip jumps live in node data, not edges.
+            if (!isBranchLikeSource) {
                 return false;
             }
 
-            // Branch nodes can have multiple outgoing edges, but one per handle (true/false).
-            if (edge.source === connection.source && isBranchSource) {
-                const existingSourceHandle = edge.sourceHandle ?? null;
-                const incomingSourceHandle = connection.sourceHandle ?? null;
-                if (existingSourceHandle === incomingSourceHandle) {
-                    return false;
-                }
+            // Branch-like sources can have multiple outgoing edges, but only one per handle.
+            const existingSourceHandle = edge.sourceHandle ?? null;
+            const incomingSourceHandle = connection.sourceHandle ?? null;
+            if (existingSourceHandle === incomingSourceHandle) {
+                return false;
             }
 
             return true;
@@ -241,20 +347,23 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             const hydratedNodes = workflow?.runtimeJson
                 ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                 : rawNodes;
+            const repaired = ensureStableNodeIds(hydratedNodes);
+            const migrated = migrateSkipNodes(repaired.nodes, workflow?.designJson?.edges || []);
 
             set({
                 survey,
                 versions,
                 quotas,
                 workflowId: workflow?.id || null,
-                nodes: hydratedNodes,
-                edges: workflow?.designJson?.edges || [],
+                nodes: migrated.nodes,
+                edges: migrated.edges,
                 isReadOnly: false,
                 selectedVersionId: null,
-                hasChanges: hasDbChanges,
+                hasChanges: hasDbChanges || repaired.changed || migrated.changed,
                 loadError: null,
                 lastSavedAt: null,
-                saveStatus: 'saved' // Prevent autosave from triggering on initial load
+                // Autosave repaired legacy ids / migrated skip nodes after load
+                saveStatus: repaired.changed || migrated.changed ? 'unsaved' : 'saved'
             });
         } catch (err) {
             console.error("Failed to load survey data", err);
@@ -383,7 +492,14 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 hasChanges: false
             });
 
-            if (mode === 'LIVE') toast.success("Successfully published to LIVE mode!");
+            if (mode === 'LIVE') {
+                const resultPayload = op.resultPayload as Record<string, unknown> | null | undefined;
+                if (resultPayload?.runnerVerificationWarning) {
+                    toast.success("Published to LIVE. Runner verification pending — survey will activate shortly.");
+                } else {
+                    toast.success("Successfully published to LIVE mode!");
+                }
+            }
         } catch (error: any) {
             if (error?.code === "OPERATION_TIMEOUT") {
                 toast.info("Publish is still processing in background. We will refresh status shortly.");
@@ -502,9 +618,10 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
             try {
                 const data = await surveyWorkflowApi.getWorkflowById(versionId);
                 if (data && data.designJson) {
+                    const migrated = migrateSkipNodes(data.designJson.nodes || [], data.designJson.edges || []);
                     set({
-                        nodes: data.designJson.nodes || [],
-                        edges: data.designJson.edges || [],
+                        nodes: migrated.nodes,
+                        edges: migrated.edges,
                         workflowId: data.id,
                         saveStatus: 'saved' // Prevent autosave when viewing version history
                     });
@@ -523,12 +640,14 @@ export const useSurveyStore = create<SurveyState>((set, get) => ({
                 const hydratedNodes = workflow?.runtimeJson
                     ? hydrateNodeIds(rawNodes, workflow.runtimeJson)
                     : rawNodes;
+                const repaired = ensureStableNodeIds(hydratedNodes);
+                const migrated = migrateSkipNodes(repaired.nodes, workflow?.designJson?.edges || []);
 
                 set({
-                    nodes: hydratedNodes,
-                    edges: workflow?.designJson?.edges || [],
+                    nodes: migrated.nodes,
+                    edges: migrated.edges,
                     workflowId: workflow?.id || null,
-                    saveStatus: 'saved' // Prevent autosave when returning to latest version
+                    saveStatus: repaired.changed || migrated.changed ? 'unsaved' : 'saved'
                 });
             } catch (error) {
                 console.error("Failed to load latest version", error);

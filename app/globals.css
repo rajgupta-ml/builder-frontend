@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../node_modules/@surveystudio/node-registery/dist/runner.mjs";
 
 @custom-variant dark (&:is(.dark *));
 

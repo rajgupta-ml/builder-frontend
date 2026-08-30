@@ -1,10 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { surveyApi } from "@/api/survey";
 import { Survey } from "@/src/shared/types/survey";
 import { surveyResponseApi } from "@/api/surveyResponse";
+import type { MetricsRealtimePayload } from "@/api/surveyResponse";
 import { operationsApi } from "@/api/operations";
+import { sharedDashboardApi, sharedExportApi, type SharedExportFormat, type SharedExportMode } from "@/api/sharedLinks";
 import { toast } from "sonner";
 import {
     IconClick,
@@ -17,7 +19,13 @@ import {
     IconChevronLeft,
     IconChevronRight,
     IconFilter,
-    IconSettings
+    IconSettings,
+    IconDotsVertical,
+    IconMailForward,
+    IconLink,
+    IconLayoutDashboard,
+    IconShare,
+    IconX
 } from "@tabler/icons-react";
 import { motion } from "motion/react";
 import {
@@ -36,10 +44,11 @@ import { cn } from "@/lib/utils";
 import { SurveySettingsModal } from "@/components/modals/SurveySettingsModal";
 import { SurveyQuotaModal } from "@/components/modals/SurveyQuotaModal";
 import { ReconcileResponseModal } from "@/components/modals/ReconcileResponseModal";
+import { ModalPortal } from "@/components/ui/ModalPortal";
 import { safeDateTime, safeIdShort } from "@/lib/safe-format";
 import { toUserMessage } from "@/lib/api-error";
-import { getStoredUserRole, hasPermission, PERMISSIONS } from "@/lib/permissions";
-import type { UserRole } from "@/types/auth";
+import { getStoredUserScopes, hasPermission, PERMISSIONS } from "@/lib/permissions";
+import { SurveyNavTabs } from "@/components/editor/SurveyNavTabs";
 
 interface MetricData {
     mode: string;
@@ -50,6 +59,7 @@ interface MetricData {
     disqualified: number;
     overQuota: number;
     securityTerminate: number;
+    qualityTerminate: number;
     ir: number;
     avgTime: number;
 }
@@ -88,6 +98,52 @@ const formatDurationMs = (ms: number): string => {
     return `${mins}m ${secs}s`;
 };
 
+const formatTableCellValue = (value: unknown): string | null => {
+    if (value === undefined || value === null || value === '' || value === '-') return null;
+    if (Array.isArray(value)) {
+        const compact = value
+            .map((entry) => {
+                if (entry && typeof entry === 'object') {
+                    const record = entry as Record<string, unknown>;
+                    const flagCode = typeof record.flagCode === 'string' ? record.flagCode : null;
+                    const severity = typeof record.severity === 'string' ? record.severity : null;
+                    if (flagCode && severity) return `${flagCode} (${severity})`;
+                    try {
+                        return JSON.stringify(record);
+                    } catch {
+                        return String(entry);
+                    }
+                }
+                return String(entry);
+            })
+            .filter(Boolean);
+        return compact.length > 0 ? compact.join(', ') : null;
+    }
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    }
+    return String(value);
+};
+
+const getRespondentExternalId = (response: Record<string, unknown>): string | null => {
+    const externalId = formatTableCellValue(
+        response.respondentExternalId ??
+        response["external RespondentId"] ??
+        response.externalRespondentId
+    );
+    const publicId = formatTableCellValue(
+        response.respondentId ??
+        response["public respondent ID"]
+    );
+
+    if (!externalId || externalId === publicId) return null;
+    return externalId;
+};
+
 export default function SurveyMetricsPage() {
     const { id } = useParams() as { id: string };
     const router = useRouter();
@@ -102,14 +158,30 @@ export default function SurveyMetricsPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isMoreOpen, setIsMoreOpen] = useState(false);
+    const [isSecureShareOpen, setIsSecureShareOpen] = useState(false);
+    const [secureShareMode, setSecureShareMode] = useState<"EXPORT" | "DASHBOARD">("EXPORT");
     const [isReconcileOpen, setIsReconcileOpen] = useState(false);
     const [resyncing, setResyncing] = useState(false);
-    const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
+    const [userScopes, setUserScopes] = useState<string[]>([]);
+    const [shareEmail, setShareEmail] = useState("");
+    const [shareFormat, setShareFormat] = useState<SharedExportFormat>("csv");
+    const [shareMode, setShareMode] = useState<SharedExportMode>("LIVE");
+    const [sendShareEmail, setSendShareEmail] = useState(true);
+    const [shareBusy, setShareBusy] = useState(false);
+    const [lastShareUrl, setLastShareUrl] = useState<string | null>(null);
+    const [dashboardShareEmail, setDashboardShareEmail] = useState("");
+    const [sendDashboardShareEmail, setSendDashboardShareEmail] = useState(true);
+    const [dashboardShareBusy, setDashboardShareBusy] = useState(false);
+    const [lastDashboardShareUrl, setLastDashboardShareUrl] = useState<string | null>(null);
 
     // Pagination State
     // Pagination & Search State
     const [currentPage, setCurrentPage] = useState(1);
     const [filters, setFilters] = useState<Record<string, string>>({});
+    const modeFilter = filters["mode"] || "";
+    const respondentIdFilter = filters["respondentId"] || "";
+    const statusFilter = filters["status"] || "";
     const itemsPerPage = 10;
     const [feedMeta, setFeedMeta] = useState({
         page: 1,
@@ -118,8 +190,10 @@ export default function SurveyMetricsPage() {
         totalPages: 1,
     });
     const fetchRunRef = useRef(0);
+    const responsesFetchRunRef = useRef(0);
+    const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const fetchData = async (signal?: AbortSignal) => {
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
         const runId = fetchRunRef.current + 1;
         fetchRunRef.current = runId;
         setLoading(true);
@@ -144,15 +218,15 @@ export default function SurveyMetricsPage() {
 
             setLoading(false);
             setResponsesLoading(true);
-            const selectedMode = filters["mode"] === "LIVE" || filters["mode"] === "TEST"
-                ? (filters["mode"] as "LIVE" | "TEST")
+            const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                ? (modeFilter as "LIVE" | "TEST")
                 : viewMode;
             const responsesData = await surveyResponseApi.getResponses(id, selectedMode, {
                 signal,
                 page: currentPage,
                 limit: itemsPerPage,
-                respondentId: filters["respondentId"] || undefined,
-                status: filters["status"] || undefined,
+                respondentId: respondentIdFilter || undefined,
+                status: statusFilter || undefined,
             });
             if (signal?.aborted || fetchRunRef.current !== runId) return;
 
@@ -184,20 +258,194 @@ export default function SurveyMetricsPage() {
                 setResponsesLoading(false);
             }
         }
-    };
+    }, [currentPage, id, modeFilter, respondentIdFilter, statusFilter, viewMode]);
+
+    const fetchResponsesOnly = useCallback(async (signal?: AbortSignal) => {
+        const runId = responsesFetchRunRef.current + 1;
+        responsesFetchRunRef.current = runId;
+        setResponsesLoading(true);
+        try {
+            const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                ? (modeFilter as "LIVE" | "TEST")
+                : viewMode;
+            const responsesData = await surveyResponseApi.getResponses(id, selectedMode, {
+                signal,
+                page: currentPage,
+                limit: itemsPerPage,
+                respondentId: respondentIdFilter || undefined,
+                status: statusFilter || undefined,
+            });
+            if (signal?.aborted || responsesFetchRunRef.current !== runId) return;
+
+            const enrichedResponses = (responsesData.data || []).map((r: any) => {
+                const durationMs = getResponseDurationMs(r);
+                return { ...r, duration: formatDurationMs(durationMs) };
+            });
+
+            setResponses(enrichedResponses);
+            setOrderedHeaders(responsesData.meta?.orderedHeaders || []);
+            setFeedMeta({
+                page: responsesData.meta.page,
+                limit: responsesData.meta.limit,
+                total: responsesData.meta.total,
+                totalPages: responsesData.meta.totalPages,
+            });
+        } catch (error) {
+            if (signal?.aborted || responsesFetchRunRef.current !== runId) return;
+            console.warn("Failed to refresh realtime response feed:", error);
+        } finally {
+            if (!signal?.aborted && responsesFetchRunRef.current === runId) {
+                setResponsesLoading(false);
+            }
+        }
+    }, [currentPage, id, modeFilter, respondentIdFilter, statusFilter, viewMode]);
+
+    const applyRealtimeMetricsUpdate = useCallback((payload: MetricsRealtimePayload) => {
+        setMetrics((current) => {
+            const nextMetric: MetricData = {
+                mode: payload.mode,
+                ...payload.metrics,
+            };
+            const index = current.findIndex((metric) => metric.mode === payload.mode);
+            if (index === -1) return [...current, nextMetric];
+
+            const next = [...current];
+            next[index] = {
+                ...current[index]!,
+                ...nextMetric,
+            };
+            return next;
+        });
+    }, []);
 
     useEffect(() => {
         if (!id) return;
         const controller = new AbortController();
-        setUserRole(getStoredUserRole());
+        setUserScopes(getStoredUserScopes());
         fetchData(controller.signal);
         return () => controller.abort();
-    }, [id, viewMode, currentPage, filters["respondentId"], filters["status"], filters["mode"]]);
+    }, [fetchData, id]);
 
-    const canManageSurvey = hasPermission(userRole, PERMISSIONS.SURVEY_EDIT);
-    const canManageQuotas = hasPermission(userRole, PERMISSIONS.QUOTA_MANAGE);
-    const canExport = hasPermission(userRole, PERMISSIONS.RESPONSE_EXPORT);
-    const canResync = hasPermission(userRole, PERMISSIONS.RESPONSE_RESYNC);
+    useEffect(() => {
+        if (!id) return;
+
+        let stopped = false;
+        let activeController: AbortController | null = null;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const connect = () => {
+            activeController = new AbortController();
+            void surveyResponseApi.subscribeToMetricsUpdates(id, {
+                signal: activeController.signal,
+                onMetricsUpdated: (payload) => {
+                    if (payload.surveyId !== id) return;
+                    applyRealtimeMetricsUpdate(payload);
+
+                    const selectedMode = modeFilter === "LIVE" || modeFilter === "TEST"
+                        ? modeFilter
+                        : viewMode;
+                    if (currentPage === 1 && payload.mode === selectedMode) {
+                        if (realtimeRefreshTimerRef.current) {
+                            clearTimeout(realtimeRefreshTimerRef.current);
+                        }
+                        realtimeRefreshTimerRef.current = setTimeout(() => {
+                            void fetchResponsesOnly();
+                        }, 600);
+                    }
+                },
+            }).catch((error) => {
+                if (stopped || activeController?.signal.aborted) return;
+                console.warn("Metrics stream disconnected. Reconnecting...", error);
+                reconnectTimer = setTimeout(connect, 3000);
+            });
+        };
+
+        connect();
+
+        return () => {
+            stopped = true;
+            activeController?.abort();
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            if (realtimeRefreshTimerRef.current) {
+                clearTimeout(realtimeRefreshTimerRef.current);
+                realtimeRefreshTimerRef.current = null;
+            }
+        };
+    }, [applyRealtimeMetricsUpdate, currentPage, fetchResponsesOnly, id, modeFilter, viewMode]);
+
+    const canManageSurvey = hasPermission(userScopes, PERMISSIONS.SURVEY_EDIT);
+    const canManageQuotas = hasPermission(userScopes, PERMISSIONS.QUOTA_MANAGE);
+    const canExport = hasPermission(userScopes, PERMISSIONS.RESPONSE_EXPORT);
+    const canShareResponses = hasPermission(userScopes, PERMISSIONS.RESPONSE_SHARE);
+    const canResync = hasPermission(userScopes, PERMISSIONS.RESPONSE_RESYNC);
+
+    const copyGeneratedLink = async (url: string) => {
+        if (typeof navigator === "undefined" || !navigator.clipboard) return false;
+        try {
+            await navigator.clipboard.writeText(url);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    const handleCreateSharedExport = async () => {
+        const recipientEmail = shareEmail.trim();
+        if (!id || !recipientEmail || shareBusy) return;
+
+        try {
+            setShareBusy(true);
+            const result = await sharedExportApi.create({
+                surveyId: id,
+                recipientEmail,
+                format: shareFormat,
+                mode: shareMode,
+                sendEmail: sendShareEmail,
+            });
+            const url = result.shareUrl || result.url || null;
+            setLastShareUrl(url);
+            const copied = url ? await copyGeneratedLink(url) : false;
+            if (sendShareEmail && result.emailSent === false) {
+                toast.warning(copied
+                    ? "Secure export link generated and copied, but email delivery failed."
+                    : "Secure export link generated, but email delivery failed.");
+            } else {
+                toast.success(copied ? "Secure export link generated and copied." : "Secure export link generated.");
+            }
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to generate secure export link"));
+        } finally {
+            setShareBusy(false);
+        }
+    };
+
+    const handleCreateSharedDashboard = async () => {
+        const recipientEmail = dashboardShareEmail.trim();
+        if (!id || !recipientEmail || dashboardShareBusy) return;
+
+        try {
+            setDashboardShareBusy(true);
+            const result = await sharedDashboardApi.create({
+                surveyId: id,
+                recipientEmail,
+                sendEmail: sendDashboardShareEmail,
+            });
+            const url = result.shareUrl || result.url || null;
+            setLastDashboardShareUrl(url);
+            const copied = url ? await copyGeneratedLink(url) : false;
+            if (sendDashboardShareEmail && result.emailSent === false) {
+                toast.warning(copied
+                    ? "Secure dashboard link generated and copied, but email delivery failed."
+                    : "Secure dashboard link generated, but email delivery failed.");
+            } else {
+                toast.success(copied ? "Secure dashboard link generated and copied." : "Secure dashboard link generated.");
+            }
+        } catch (error) {
+            toast.error(toUserMessage(error, "Failed to generate secure dashboard link"));
+        } finally {
+            setDashboardShareBusy(false);
+        }
+    };
 
     const handleForceResync = async () => {
         if (!id || resyncing) return;
@@ -317,6 +565,8 @@ export default function SurveyMetricsPage() {
     // Filter out standard columns that we handle statically
     const standardHeaders = [
         'Respondent ID',
+        'external RespondentId',
+        'public respondent ID',
         'Date',
         'Status',
         'Outcome',
@@ -335,12 +585,26 @@ export default function SurveyMetricsPage() {
         'updatedAt',
         'createdAt',
         'respondentId',
+        'respondentExternalId',
+        'respondentPublicId',
+        'externalRespondentId',
         'status',
         'outcome',
         'Response ID',
         'Submitted At',
         'Version',
-        'Survey Name'
+        'Survey Name',
+        'activeQualityFlags',
+        'qualityState',
+        'qualityProcessingStatus',
+        'qualityReviewStatus',
+        'qualityReviewReasonCode',
+        'quality_flag_count',
+        'quality_flags',
+        'quality_flag_severities',
+        'quality_review_status',
+        'quality_review_reason',
+        'quality_processing_status'
     ];
     const normalizedStandardHeaders = new Set(standardHeaders.map(h => h.trim().toLowerCase()));
     const isStandardHeader = (header: string) => normalizedStandardHeaders.has(header.trim().toLowerCase());
@@ -398,89 +662,36 @@ export default function SurveyMetricsPage() {
 
     return (
         <div className="p-8 md:p-12 w-full max-w-7xl mx-auto space-y-8">
-            {/* Top Navigation / Actions */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-semibold tracking-tight text-foreground">{survey?.name}</h1>
-                    <p className="mt-2 text-sm text-muted-foreground font-medium">{survey?.client} • Performance Overview</p>
-                </div>
-                <div className="flex items-center gap-3">
+            {/* Header: identity + actions, with section tabs woven into the divider */}
+            <header className="space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate">{survey?.name}</h1>
+                        <p className="mt-2 text-sm text-muted-foreground font-medium">{survey?.client} • Performance Overview</p>
+                    </div>
 
-                    <button
-                        onClick={() => fetchData()}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
-                        title="Refresh Data"
-                    >
-                        <IconRefresh size={18} strokeWidth={1.5} />
-                    </button>
-
-                    {canManageSurvey && (
+                    <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setIsSettingsOpen(true)}
-                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all border border-transparent hover:border-border/60"
-                            title="Settings"
+                            onClick={() => fetchData()}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+                            title="Refresh Data"
                         >
-                            <IconSettings size={18} strokeWidth={1.5} />
+                            <IconRefresh size={16} strokeWidth={1.7} />
                         </button>
-                    )}
 
-                    <div className="w-px h-6 bg-border/60 mx-1" />
-
-                    <button
-                        onClick={() => router.push(`/dashboard/surveys/${id}`)}
-                        className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
-                    >
-                        Open Builder
-                    </button>
-
-
-                    {canManageQuotas && (
-                        <button
-                            onClick={() => setIsQuotaOpen(true)}
-                            className="px-4 py-2 text-sm font-medium border border-border/60 rounded-md hover:bg-muted transition-all"
-                        >
-                            Quotas
-                        </button>
-                    )}
-
-
-                    <div className="w-px h-6 bg-border/60 mx-1" />
-
-                    {canResync && (
-                        <>
-                            <button
-                                onClick={() => setIsReconcileOpen(true)}
-                                className="px-4 py-2 text-sm font-medium border border-amber-600/30 text-amber-600 bg-amber-50 hover:bg-amber-100 transition-all rounded-md shadow-sm"
-                            >
-                                Reconcile
-                            </button>
-                            <button
-                                onClick={handleForceResync}
-                                disabled={resyncing}
-                                className={cn(
-                                    "px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm border",
-                                    resyncing
-                                        ? "bg-muted text-muted-foreground border-border/60 cursor-not-allowed"
-                                        : "bg-sky-50 text-sky-600 border-sky-600/30 hover:bg-sky-100"
-                                )}
-                            >
-                                {resyncing ? "Resyncing..." : "Force Resync"}
-                            </button>
-                        </>
-                    )}
-
-                    {canExport && (
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsExportOpen(!isExportOpen)}
-                                className={cn(
-                                    "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all border",
-                                    isExportOpen ? "bg-primary/10 text-primary border-primary/30 shadow-sm" : "bg-background border-border/60 text-foreground hover:bg-muted/50"
-                                )}
-                            >
-                                <IconDownload size={18} strokeWidth={1.5} />
-                                Export Data
-                            </button>
+                    {!canExport && <button disabled className="px-4 py-2 text-sm border border-border/60 rounded-md opacity-40 cursor-not-allowed" title="Requires permission: survey_studio:response.export"><IconDownload size={18} className="inline mr-2" />Export Data</button>}
+                        {canExport && (
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsExportOpen(!isExportOpen)}
+                                    className={cn(
+                                        "flex h-9 items-center gap-2 rounded-lg border px-4 text-sm font-medium shadow-sm transition-all",
+                                        isExportOpen ? "border-primary/40 bg-primary/15 text-primary" : "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
+                                    )}
+                                >
+                                    <IconDownload size={16} strokeWidth={1.7} />
+                                    Export Data
+                                </button>
 
                             {isExportOpen && (
                                 <>
@@ -522,17 +733,110 @@ export default function SurveyMetricsPage() {
                                     </div>
                                 </>
                             )}
-                        </div>
-                    )}
-                </div>
-            </div>
+                            </div>
+                        )}
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 bg-muted/20 p-1 rounded-md w-fit border border-border/60">
+                        {(canShareResponses || canManageSurvey || canManageQuotas || canResync) && (
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsMoreOpen(!isMoreOpen)}
+                                    className={cn(
+                                        "flex h-9 w-9 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors",
+                                        isMoreOpen && "bg-muted text-foreground"
+                                    )}
+                                    title="More actions"
+                                >
+                                    <IconDotsVertical size={16} strokeWidth={1.7} />
+                                </button>
+
+                                {isMoreOpen && (
+                                    <>
+                                        <div
+                                            className="fixed inset-0 z-40"
+                                            onClick={() => setIsMoreOpen(false)}
+                                        />
+                                        <div className="absolute right-0 mt-2 w-52 bg-background border border-border/60 shadow-lg rounded-md p-1 z-50 animate-in fade-in zoom-in-95 duration-200">
+                                            {canShareResponses && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSecureShareMode("EXPORT");
+                                                        setIsSecureShareOpen(true);
+                                                        setIsMoreOpen(false);
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
+                                                >
+                                                    <IconShare size={16} className="text-muted-foreground" />
+                                                    Secure Share
+                                                </button>
+                                            )}
+                                            {canManageSurvey && (
+                                                <button
+                                                    onClick={() => {
+                                                        setIsSettingsOpen(true);
+                                                        setIsMoreOpen(false);
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
+                                                >
+                                                    <IconSettings size={16} className="text-muted-foreground" />
+                                                    Settings
+                                                </button>
+                                            )}
+                                            {canManageQuotas && (
+                                                <button
+                                                    onClick={() => {
+                                                        setIsQuotaOpen(true);
+                                                        setIsMoreOpen(false);
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-muted transition-colors flex items-center gap-2 text-foreground"
+                                                >
+                                                    <IconFilter size={16} className="text-muted-foreground" />
+                                                    Quotas
+                                                </button>
+                                            )}
+                                            {canResync && (
+                                                <>
+                                                    <div className="my-1 border-t border-border/60" />
+                                                    <button
+                                                        onClick={() => {
+                                                            setIsReconcileOpen(true);
+                                                            setIsMoreOpen(false);
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-amber-500/10 transition-colors flex items-center gap-2 text-amber-600"
+                                                    >
+                                                        <IconCheck size={16} />
+                                                        Reconcile
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setIsMoreOpen(false);
+                                                            handleForceResync();
+                                                        }}
+                                                        disabled={resyncing}
+                                                        className="w-full text-left px-3 py-2 text-sm font-medium rounded-sm hover:bg-sky-500/10 transition-colors flex items-center gap-2 text-sky-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        <IconRefresh size={16} />
+                                                        {resyncing ? "Resyncing..." : "Force Resync"}
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Section navigation */}
+                <SurveyNavTabs surveyId={id} variant="underline" />
+            </header>
+
+            {/* Data scope */}
+            <div className="flex h-10 w-fit items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-1">
                 <button
                     onClick={() => setViewMode('LIVE')}
                     className={cn(
-                        "px-6 py-1.5 text-xs font-semibold rounded-sm transition-all",
+                        "h-8 rounded-md px-5 text-xs font-semibold transition-all",
                         viewMode === 'LIVE' ? "bg-background text-foreground shadow-sm border border-border/60" : "text-muted-foreground hover:bg-muted/50 border border-transparent"
                     )}
                 >
@@ -541,7 +845,7 @@ export default function SurveyMetricsPage() {
                 <button
                     onClick={() => setViewMode('TEST')}
                     className={cn(
-                        "px-6 py-1.5 text-xs font-semibold rounded-sm transition-all",
+                        "h-8 rounded-md px-5 text-xs font-semibold transition-all",
                         viewMode === 'TEST' ? "bg-background text-foreground shadow-sm border border-border/60" : "text-muted-foreground hover:bg-muted/50 border border-transparent"
                     )}
                 >
@@ -594,12 +898,12 @@ export default function SurveyMetricsPage() {
             {/* Charts Area */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Status Breakdown Bar Chart */}
-                <div className="lg:col-span-2 bg-background border border-border/60 rounded-xl p-6 shadow-sm">
+                <div className="lg:col-span-2 min-w-0 bg-background border border-border/60 rounded-xl p-6 shadow-sm">
                     <h3 className="text-sm font-semibold mb-6 flex items-center gap-2 text-foreground">
                         <IconChartBar size={18} className="text-muted-foreground" />
                         Conversion Funnel
                     </h3>
-                    <div className="h-[300px] w-full">
+                    <div className="h-[300px] w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
@@ -627,13 +931,13 @@ export default function SurveyMetricsPage() {
                 </div>
 
                 {/* Mode Breakdown Pie Chart */}
-                <div className="bg-background border border-border/60 rounded-xl p-6 shadow-sm">
+                <div className="min-w-0 bg-background border border-border/60 rounded-xl p-6 shadow-sm">
                     <h3 className="text-sm font-semibold mb-6 flex items-center gap-2 text-foreground">
                         <IconClock size={18} className="text-muted-foreground" />
                         Mode Distribution
                     </h3>
                     <div className="space-y-4">
-                        <div className="h-[240px] w-full">
+                        <div className="h-[240px] w-full min-w-0">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                                     <Pie
@@ -684,7 +988,7 @@ export default function SurveyMetricsPage() {
                                 <tr className="bg-muted/30 text-muted-foreground text-xs font-medium">
                                     <th className="px-6 py-3 border-b border-border/60 z-20 min-w-[200px]">
                                         <div className="flex items-center gap-2">
-                                            <span>Respondent</span>
+                                            <span>Respondent ID</span>
                                             <FilterPopover
                                                 value={filters['respondentId'] || ''}
                                                 onChange={(v) => handleFilterChange('respondentId', v)}
@@ -747,14 +1051,19 @@ export default function SurveyMetricsPage() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    responses.map((resp, idx) => (
-                                        <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-primary/5 transition-colors group">
-                                            <td className="px-6 py-3 border-b border-border/60 border-l-2 group-hover:border-primary transition-colors">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{resp.respondentId || "Anonymous"}</span>
-                                                    <span className="text-xs text-muted-foreground opacity-80 font-mono">ID-{safeIdShort(resp.id)}</span>
-                                                </div>
-                                            </td>
+                                    responses.map((resp, idx) => {
+                                        const externalRespondentId = getRespondentExternalId(resp);
+
+                                        return (
+                                            <tr key={`${resp.id || "resp"}-${idx}`} className="hover:bg-primary/5 transition-colors group">
+                                                <td className="px-6 py-3 border-b border-border/60 border-l-2 group-hover:border-primary transition-colors">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{resp.respondentId || "Anonymous"}</span>
+                                                        {externalRespondentId && (
+                                                            <span className="text-xs text-muted-foreground opacity-80 font-mono">{externalRespondentId}</span>
+                                                        )}
+                                                    </div>
+                                                </td>
                                             <td className="px-6 py-3 border-b border-border/60">
                                                 <div className="flex flex-col gap-1">
                                                     <StatusBadge status={resp.status} />
@@ -774,12 +1083,12 @@ export default function SurveyMetricsPage() {
                                                 </span>
                                             </td>
                                             {finalDynamicHeaders.map((header: string) => {
-                                                const displayValue = resp[header];
+                                                const displayValue = formatTableCellValue(resp[header]);
 
                                                 return (
                                                     <td key={header} className="px-6 py-3 border-b border-border/60">
-                                                        <div className="text-sm text-foreground line-clamp-2" title={String(displayValue || '')}>
-                                                            {displayValue !== undefined && displayValue !== null && displayValue !== '' && displayValue !== '-' ? (
+                                                        <div className="text-sm text-foreground line-clamp-2" title={displayValue || ''}>
+                                                            {displayValue ? (
                                                                 displayValue
                                                             ) : (
                                                                 <span className="text-muted-foreground opacity-50 block">-</span>
@@ -794,8 +1103,9 @@ export default function SurveyMetricsPage() {
                                             <td className="px-6 py-3 border-b border-border/60 text-sm text-muted-foreground whitespace-nowrap">
                                                 {safeDateTime(resp.createdAt)}
                                             </td>
-                                        </tr>
-                                    ))
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -845,6 +1155,222 @@ export default function SurveyMetricsPage() {
                     </div>
                 )}
             </div>
+
+            {isSecureShareOpen && (
+                <ModalPortal>
+                    <div className="fixed inset-0 z-[120] h-dvh w-screen flex items-center justify-center bg-black/45 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                        <button
+                            className="absolute inset-0 cursor-default"
+                            onClick={() => setIsSecureShareOpen(false)}
+                            aria-label="Close secure share modal"
+                        />
+                        <div className="relative w-full max-w-xl bg-background border border-border/70 rounded-xl shadow-2xl overflow-hidden">
+                            <div className="px-6 py-5 border-b border-border/60 flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                    <div className={cn(
+                                        "flex h-10 w-10 items-center justify-center rounded-lg border",
+                                        secureShareMode === "EXPORT"
+                                            ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                            : "bg-sky-50 text-sky-600 border-sky-200"
+                                    )}>
+                                        {secureShareMode === "EXPORT" ? (
+                                            <IconMailForward size={20} strokeWidth={1.8} />
+                                        ) : (
+                                            <IconLayoutDashboard size={20} strokeWidth={1.8} />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-semibold text-foreground">Secure Sharing</h3>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Recipient-bound links with email OTP verification.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    title="Close"
+                                    onClick={() => setIsSecureShareOpen(false)}
+                                    className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                                >
+                                    <IconX size={18} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-5">
+                                <div className="grid grid-cols-2 gap-1 rounded-lg border border-border/70 bg-muted/20 p-1">
+                                    <button
+                                        onClick={() => setSecureShareMode("EXPORT")}
+                                        className={cn(
+                                            "h-10 rounded-md text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                                            secureShareMode === "EXPORT"
+                                                ? "bg-background text-foreground shadow-sm border border-border/70"
+                                                : "text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        <IconMailForward size={16} strokeWidth={1.8} />
+                                        Channel Export
+                                    </button>
+                                    <button
+                                        onClick={() => setSecureShareMode("DASHBOARD")}
+                                        className={cn(
+                                            "h-10 rounded-md text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                                            secureShareMode === "DASHBOARD"
+                                                ? "bg-background text-foreground shadow-sm border border-border/70"
+                                                : "text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        <IconLayoutDashboard size={16} strokeWidth={1.8} />
+                                        Client Dashboard
+                                    </button>
+                                </div>
+
+                                <div className="rounded-lg border border-border/70 bg-muted/10 p-4">
+                                    <div className="mb-4">
+                                        <h4 className="text-sm font-semibold text-foreground">
+                                            {secureShareMode === "EXPORT" ? "Secure Channel Export" : "Secure Client Dashboard"}
+                                        </h4>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            {secureShareMode === "EXPORT"
+                                                ? "Generate a single-use response export for one authorized recipient."
+                                                : "Generate a live client-facing dashboard link for one authorized recipient."}
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <label className="block">
+                                            <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                                                {secureShareMode === "EXPORT" ? "Recipient email" : "Client email"}
+                                            </span>
+                                            <input
+                                                type="email"
+                                                placeholder={secureShareMode === "EXPORT" ? "recipient@work.com" : "client@work.com"}
+                                                value={secureShareMode === "EXPORT" ? shareEmail : dashboardShareEmail}
+                                                onChange={(event) => {
+                                                    if (secureShareMode === "EXPORT") {
+                                                        setShareEmail(event.target.value);
+                                                    } else {
+                                                        setDashboardShareEmail(event.target.value);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "w-full h-11 rounded-lg border border-border/70 bg-background px-3 text-sm outline-none transition focus:ring-2",
+                                                    secureShareMode === "EXPORT"
+                                                        ? "focus:border-emerald-500 focus:ring-emerald-500/15"
+                                                        : "focus:border-sky-500 focus:ring-sky-500/15"
+                                                )}
+                                            />
+                                        </label>
+
+                                        {secureShareMode === "EXPORT" && (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <label className="block">
+                                                    <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Format</span>
+                                                    <select
+                                                        value={shareFormat}
+                                                        onChange={(event) => setShareFormat(event.target.value as SharedExportFormat)}
+                                                        className="w-full h-11 rounded-lg border border-border/70 bg-background px-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15"
+                                                    >
+                                                        <option value="csv">CSV Format</option>
+                                                        <option value="xlsx">XLSX Format</option>
+                                                        <option value="spss">SPSS Format</option>
+                                                        <option value="json">JSON Format</option>
+                                                    </select>
+                                                </label>
+                                                <label className="block">
+                                                    <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">Dataset</span>
+                                                    <select
+                                                        value={shareMode}
+                                                        onChange={(event) => setShareMode(event.target.value as SharedExportMode)}
+                                                        className="w-full h-11 rounded-lg border border-border/70 bg-background px-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15"
+                                                    >
+                                                        <option value="LIVE">Live Data</option>
+                                                        <option value="TEST">Test Data</option>
+                                                    </select>
+                                                </label>
+                                            </div>
+                                        )}
+
+                                        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background px-3 py-2">
+                                            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={secureShareMode === "EXPORT" ? sendShareEmail : sendDashboardShareEmail}
+                                                    onChange={(event) => {
+                                                        if (secureShareMode === "EXPORT") {
+                                                            setSendShareEmail(event.target.checked);
+                                                        } else {
+                                                            setSendDashboardShareEmail(event.target.checked);
+                                                        }
+                                                    }}
+                                                    className={cn(
+                                                        "h-4 w-4",
+                                                        secureShareMode === "EXPORT" ? "accent-emerald-600" : "accent-sky-600"
+                                                    )}
+                                                />
+                                                Auto-dispatch email
+                                            </label>
+                                            <span className="text-xs text-muted-foreground">
+                                                {secureShareMode === "EXPORT" ? "72h TTL" : "Until archive"}
+                                            </span>
+                                        </div>
+
+                                        <button
+                                            onClick={secureShareMode === "EXPORT" ? handleCreateSharedExport : handleCreateSharedDashboard}
+                                            disabled={
+                                                secureShareMode === "EXPORT"
+                                                    ? !shareEmail.trim() || shareBusy
+                                                    : !dashboardShareEmail.trim() || dashboardShareBusy
+                                            }
+                                            className={cn(
+                                                "w-full h-11 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                                                secureShareMode === "EXPORT"
+                                                    ? (!shareEmail.trim() || shareBusy
+                                                        ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                        : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm")
+                                                    : (!dashboardShareEmail.trim() || dashboardShareBusy
+                                                        ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                                        : "bg-sky-600 text-white hover:bg-sky-700 shadow-sm")
+                                            )}
+                                        >
+                                            <IconLink size={17} strokeWidth={1.8} />
+                                            {secureShareMode === "EXPORT"
+                                                ? (shareBusy ? "Generating..." : "Generate Access Link")
+                                                : (dashboardShareBusy ? "Generating..." : "Generate Dashboard Link")}
+                                        </button>
+
+                                        {secureShareMode === "EXPORT" && lastShareUrl && (
+                                            <button
+                                                onClick={() => void copyGeneratedLink(lastShareUrl).then((copied) => {
+                                                    if (copied) toast.success("Link copied.");
+                                                    else toast.info("Copy unavailable.");
+                                                })}
+                                                className="group w-full rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-3 text-left hover:bg-emerald-50 transition"
+                                                title={lastShareUrl}
+                                            >
+                                                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-emerald-700">Generated export link</span>
+                                                <span className="block truncate text-xs font-mono text-emerald-900 group-hover:underline">{lastShareUrl}</span>
+                                            </button>
+                                        )}
+
+                                        {secureShareMode === "DASHBOARD" && lastDashboardShareUrl && (
+                                            <button
+                                                onClick={() => void copyGeneratedLink(lastDashboardShareUrl).then((copied) => {
+                                                    if (copied) toast.success("Link copied.");
+                                                    else toast.info("Copy unavailable.");
+                                                })}
+                                                className="group w-full rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-3 text-left hover:bg-sky-50 transition"
+                                                title={lastDashboardShareUrl}
+                                            >
+                                                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-sky-700">Generated dashboard link</span>
+                                                <span className="block truncate text-xs font-mono text-sky-900 group-hover:underline">{lastDashboardShareUrl}</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </ModalPortal>
+            )}
 
             <SurveySettingsModal
                 isOpen={isSettingsOpen}

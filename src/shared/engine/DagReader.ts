@@ -1,4 +1,5 @@
-import { LogicGroup, LogicRule } from "@/src/shared/types/survey";
+import { matchesStructuredItemKey, resolveStructuredItemKey } from "@surveystudio/node-registery/logic";
+import type { LogicGroup, LogicRule } from "@/src/shared/types/survey";
 
 export class DAGReader {
     private graph: Record<string, any>;
@@ -47,25 +48,31 @@ export class DAGReader {
         const next = node.next;
         if (!next) return null;
 
-        let potentialNextId: string | null = null;
+        let potentialNextId: string | null = this.getSkipNextId(node, responses);
 
-        if (next.kind === 'branch') {
-            const condition = node.data?.condition as LogicGroup;
-            if (!condition || !condition.children || condition.children.length === 0) {
-                throw new Error(`Decision node ${currentNodeId} has no condition defined.`);
+        if (!potentialNextId) {
+            if (next.kind === 'branch') {
+                const condition = node.data?.condition as LogicGroup;
+                if (!this.conditionHasRules(condition)) {
+                    throw new Error(`Decision node ${currentNodeId} has no condition defined.`);
+                }
+                const isTrue = this.evaluateCondition(condition, responses);
+                potentialNextId = isTrue ? next.trueId : next.falseId;
+            } else if (next.kind === 'multiBranch') {
+                potentialNextId = this.getMultiBranchNextId(node, next, responses);
+            } else if (next.kind === 'skip') {
+                potentialNextId = next.targetId;
+            } else {
+                // Linear connection
+                potentialNextId = next.nextId;
             }
-            const isTrue = this.evaluateCondition(condition, responses);
-            potentialNextId = isTrue ? next.trueId : next.falseId;
-        } else {
-            // Linear connection
-            potentialNextId = next.nextId;
         }
 
         if (!potentialNextId) return null;
 
         // Check for Skip Logic on the destination node
         const potentialNextNode = this.graph[potentialNextId];
-        if (potentialNextNode && potentialNextNode.data?.condition) {
+        if (potentialNextNode && this.conditionHasRules(potentialNextNode.data?.condition)) {
             try {
                 const isMet = this.evaluateCondition(potentialNextNode.data.condition, responses);
                 if (!isMet) {
@@ -83,21 +90,65 @@ export class DAGReader {
         return potentialNextNode;
     }
 
+    private getSkipNextId(node: any, responses: Record<string, any>): string | null {
+        const skips = Array.isArray(node?.skips) ? node.skips : [];
+
+        for (const skip of skips) {
+            if (!skip || typeof skip !== 'object') continue;
+            const condition = skip.condition as LogicGroup | undefined;
+            if (!this.conditionHasRules(condition)) continue;
+            if (this.evaluateCondition(condition, responses)) {
+                return typeof skip.targetId === 'string' && skip.targetId.length > 0 ? skip.targetId : null;
+            }
+        }
+
+        return null;
+    }
+
+    private conditionHasRules(condition: unknown): boolean {
+        if (!condition || typeof condition !== 'object') return false;
+        const record = condition as Record<string, any>;
+        if (record.type === 'rule') return typeof record.field === 'string' && record.field.length > 0;
+        if (Array.isArray(record.children)) return record.children.some((child) => this.conditionHasRules(child));
+        return false;
+    }
+
+    private getMultiBranchNextId(node: any, next: any, responses: Record<string, any>): string | null {
+        const routes = Array.isArray(next.routes)
+            ? next.routes
+            : Array.isArray(node.data?.routes)
+                ? node.data.routes
+                : [];
+
+        for (const route of routes) {
+            if (!route || typeof route !== 'object') continue;
+            const condition = route.condition as LogicGroup | undefined;
+            if (!this.conditionHasRules(condition)) continue;
+            if (this.evaluateCondition(condition, responses)) {
+                return typeof route.targetId === 'string' && route.targetId.length > 0 ? route.targetId : null;
+            }
+        }
+
+        return typeof next.fallbackId === 'string' && next.fallbackId.length > 0 ? next.fallbackId : null;
+    }
+
     /**
      * Evaluates a complex logic group (AND/OR) against stored responses.
      */
     private evaluateCondition(group: LogicGroup | null | undefined, responses: Record<string, any>): boolean {
-        if (!group || !group.children || group.children.length === 0) {
+        if (!group || !this.conditionHasRules(group)) {
             throw new Error("Cannot evaluate an empty condition group.");
         }
 
-        const results = group.children.map(child => {
-            if (child.type === 'group') {
-                return this.evaluateCondition(child as LogicGroup, responses);
-            } else {
-                return this.evaluateRule(child as LogicRule, responses);
-            }
-        });
+        const results = group.children
+            .filter((child) => this.conditionHasRules(child))
+            .map(child => {
+                if (child.type === 'group') {
+                    return this.evaluateCondition(child as LogicGroup, responses);
+                } else {
+                    return this.evaluateRule(child as LogicRule, responses);
+                }
+            });
 
         if (group.logicType === 'OR') {
             return results.some(r => r === true);
@@ -179,39 +230,37 @@ export class DAGReader {
             }
         }
 
-        // --- NEW: Resilience Logic for Label vs Value mismatch ---
-        // If the referenced node is a choice/multi-choice, and the targetValue matches an option's LABEL,
-        // we should also allow it to match the option's VALUE.
+        // Canonicalize both legacy option values/labels and current stable IDs.
+        // Conditions historically stored `value`, while current runners submit `exportId`.
         const fieldNode = this.graph[rule.field];
         const possibleOptions = fieldNode?.data?.options || fieldNode?.data?.columns;
-        
         const norm = (v: any) => String(v || '').toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim();
-
-        // Helper to resolve label -> value
-        const resolveToValue = (val: string) => {
-            const nVal = norm(val);
-             // 1. Check standard options
-             if (possibleOptions && Array.isArray(possibleOptions)) {
-                const matchingOption = possibleOptions.find((opt: any) => norm(opt.label) === nVal);
-                if (matchingOption) return matchingOption.value;
+        const resolveChoiceIdentity = (input: unknown): unknown => {
+            if (Array.isArray(input)) return input.map(resolveChoiceIdentity);
+            if (typeof input !== 'string') return input;
+            const normalizedInput = norm(input);
+            const matchingOption = Array.isArray(possibleOptions)
+                ? possibleOptions.find((option: any) => (
+                    matchesStructuredItemKey(option, input)
+                    || [option?.label, option?.exportId, option?.technicalId, option?.value, option?.id]
+                        .some((alias) => alias !== undefined && norm(alias) === normalizedInput)
+                ))
+                : undefined;
+            if (matchingOption) {
+                return resolveStructuredItemKey(
+                    matchingOption,
+                    String(matchingOption.value ?? matchingOption.id ?? input),
+                );
             }
-            // 2. Check "Other" option
-            if (fieldNode?.data?.allowOther && nVal !== 'other') {
-                if (norm(fieldNode.data.otherLabel || 'Other') === nVal) {
-                    return 'other';
-                }
+            if (fieldNode?.data?.allowOther && normalizedInput !== 'other'
+                && norm(fieldNode.data.otherLabel || 'Other') === normalizedInput) {
+                return 'other';
             }
-            return val;
+            return input;
         };
 
-        if (typeof value === 'string') {
-            value = resolveToValue(value);
-        }
-
-        if (typeof targetValue === 'string') {
-            targetValue = resolveToValue(targetValue);
-        }
-        // ---------------------------------------------------------
+        value = resolveChoiceIdentity(value);
+        targetValue = resolveChoiceIdentity(targetValue);
 
         const normStr = (v: any) => {
             if (v === undefined || v === null) return '';
@@ -405,7 +454,7 @@ export class DAGReader {
         let current = this.getStartNode();
 
         // Check if start node itself has skip logic (unlikely but possible)
-        if (current && current.data?.condition) {
+        if (current && this.conditionHasRules(current.data?.condition)) {
             if (!this.evaluateCondition(current.data.condition, responses)) {
                 // If start is skipped, we need to find the REAL start
                 // But getNextNode depends on a current node. 

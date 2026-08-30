@@ -1,20 +1,14 @@
-export type UserRole = "SUPER_ADMIN" | "PROJECT_MANAGER" | "SALES_REP" | "DEMO_USER";
-
-export interface User {
-  id: string;
+export type AimUser = {
+  userId: string;
   email: string;
-  name?: string;
-  role: UserRole;
-  roleExpiresAt?: string | null;
-}
+  name: string;
+  orgId: string | null;
+  isOrgOwner: boolean;
+  isAimAdmin: boolean;
+  platformScopes: string[];
+};
 
 export interface LoginCredentials {
   email: string;
-  password?: string;
-}
-
-export interface LoginResponse {
-  message: string;
-  user: User;
-  token: string;
+  password: string;
 }

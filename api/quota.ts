@@ -1,5 +1,6 @@
 import apiClient from "@/lib/api-client";
-import { SurveyQuota } from "@/src/shared/types/survey";
+import { SurveyQuota, QuotaCondition } from "@/src/shared/types/survey";
+import type { LogicGroup } from "@/components/properties/conditionTypes";
 import { z } from "zod";
 import { reportError } from "@/lib/error-reporter";
 
@@ -22,7 +23,16 @@ export const quotaApi = {
     return parsed.data.data as SurveyQuota[];
   },
 
-  createQuota: async (surveyId: string, data: Omit<SurveyQuota, 'id' | 'createdAt' | 'surveyId'>): Promise<SurveyQuota> => {
+  createQuota: async (surveyId: string, data: {
+    name?: string;
+    type?: 'screener' | 'survey';
+    groupOperator?: 'and' | 'or';
+    rule?: LogicGroup;
+    limit: number;
+    isActive?: boolean;
+    syncId?: string;
+    conditions?: QuotaCondition[];
+  }): Promise<SurveyQuota> => {
     const response = await apiClient.post<{ data: SurveyQuota }>(`/quotas/${surveyId}`, data);
     const parsed = z.object({ data: z.record(z.unknown()) }).safeParse(response.data);
     if (!parsed.success) {
@@ -54,7 +64,16 @@ export const quotaApi = {
     return parsed.data.data as unknown as SurveyQuota;
   },
 
-  updateQuota: async (id: string, data: Partial<Omit<SurveyQuota, 'id' | 'createdAt' | 'surveyId'>>): Promise<SurveyQuota> => {
+  updateQuota: async (id: string, data: {
+    name?: string;
+    type?: 'screener' | 'survey';
+    groupOperator?: 'and' | 'or';
+    rule?: LogicGroup | null;
+    limit?: number;
+    isActive?: boolean;
+    syncId?: string;
+    conditions?: QuotaCondition[];
+  }): Promise<SurveyQuota> => {
     const response = await apiClient.put<{ data: SurveyQuota }>(`/quotas/${id}`, data);
     const parsed = z.object({ data: z.record(z.unknown()) }).safeParse(response.data);
     if (!parsed.success) {

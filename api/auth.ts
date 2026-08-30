@@ -1,42 +1,31 @@
 import apiClient from "@/lib/api-client";
-import { LoginCredentials, LoginResponse, User } from "@/types/auth";
 import { z } from "zod";
 import { reportError } from "@/lib/error-reporter";
 
-const userSchema = z.object({
-  id: z.string(),
+export type AimUser = {
+  userId: string;
+  email: string;
+  name: string;
+  orgId: string | null;
+  isOrgOwner: boolean;
+  isAimAdmin: boolean;
+  platformScopes: string[];
+};
+
+const aimUserSchema = z.object({
+  userId: z.string(),
   email: z.string(),
-  name: z.string().optional(),
-  role: z.enum(["SUPER_ADMIN", "PROJECT_MANAGER", "SALES_REP", "DEMO_USER"]),
-  roleExpiresAt: z.string().nullable().optional(),
+  name: z.string(),
+  orgId: z.string().nullable(),
+  isOrgOwner: z.boolean(),
+  isAimAdmin: z.boolean(),
+  platformScopes: z.array(z.string()),
 });
 
-const meSchema = z.object({
-  user: userSchema,
-});
+const meSchema = z.object({ user: aimUserSchema });
 
 export const authApi = {
-  //Done
-  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
-    const response = await apiClient.post<LoginResponse>("/auth/login", credentials);
-    const parsed = z
-      .object({
-        token: z.string(),
-        user: userSchema,
-      })
-      .safeParse(response.data);
-    if (!parsed.success) {
-      reportError({
-        kind: "api",
-        message: "Invalid login response shape",
-        details: { endpoint: "/auth/login" },
-      });
-      throw new Error("Invalid login payload");
-    }
-    return parsed.data as LoginResponse;
-  },
-  //Done
-  me: async (): Promise<{ user: User }> => {
+  me: async (): Promise<{ user: AimUser }> => {
     const response = await apiClient.get("/auth/me");
     const parsed = meSchema.safeParse(response.data);
     if (!parsed.success) {
@@ -50,11 +39,11 @@ export const authApi = {
     return parsed.data;
   },
 
-  updateMe: async (payload: { name: string }): Promise<{ user: User; message: string }> => {
+  updateMe: async (payload: { name: string }): Promise<{ user: AimUser; message: string }> => {
     const response = await apiClient.patch("/auth/me", payload);
     const parsed = z.object({
       message: z.string(),
-      user: userSchema,
+      user: aimUserSchema,
     }).safeParse(response.data);
     if (!parsed.success) {
       reportError({
@@ -63,34 +52,6 @@ export const authApi = {
         details: { endpoint: "/auth/me" },
       });
       throw new Error("Invalid update profile payload");
-    }
-    return parsed.data;
-  },
-
-  changePassword: async (payload: { currentPassword: string; newPassword: string }): Promise<{ message: string }> => {
-    const response = await apiClient.patch("/auth/me/password", payload);
-    const parsed = z.object({ message: z.string() }).safeParse(response.data);
-    if (!parsed.success) {
-      reportError({
-        kind: "api",
-        message: "Invalid change password response shape",
-        details: { endpoint: "/auth/me/password" },
-      });
-      throw new Error("Invalid change password payload");
-    }
-    return parsed.data;
-  },
-
-  logout: async (): Promise<{ message: string }> => {
-    const response = await apiClient.post("/auth/logout");
-    const parsed = z.object({ message: z.string() }).safeParse(response.data);
-    if (!parsed.success) {
-      reportError({
-        kind: "api",
-        message: "Invalid logout response shape",
-        details: { endpoint: "/auth/logout" },
-      });
-      throw new Error("Invalid logout payload");
     }
     return parsed.data;
   },
