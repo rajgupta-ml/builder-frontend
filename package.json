@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build --webpack",
     "test:dag-reader": "node --test scripts/dag-reader-choice-identity.test.mjs",
     "start": "next start",
