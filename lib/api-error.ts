@@ -74,6 +74,14 @@ export const toUserMessage = (error: unknown, fallback = "Something went wrong. 
     return "Network error. Please check your connection and try again.";
   }
 
+  if (parsed.status === 403 && parsed.detail) {
+    const match = parsed.detail.match(/^Requires scope:\s*(.+)$/i);
+    if (match?.[1]) {
+      return `You need the "${match[1]}" permission to access this feature.`;
+    }
+    return parsed.detail;
+  }
+
   if (parsed.code && MESSAGE_BY_CODE[parsed.code]) {
     return MESSAGE_BY_CODE[parsed.code];
   }

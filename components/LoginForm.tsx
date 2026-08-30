@@ -1,28 +1,34 @@
 "use client";
-import React, { SubmitEvent, useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-
+import { signIn, completeNewPassword as cognitoCompleteNewPassword, signOut, type CognitoUser } from "@/lib/cognito";
 import { authApi } from "@/api/auth";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import logo from "@/public/logo.jpg"
+import logo from "@/public/logo.jpg";
 import { toast } from "sonner";
 import { toUserMessage } from "@/lib/api-error";
-
-import { LoginSchema, LoginData } from "@/src/shared/common";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [isChecking, setIsChecking] = useState(true);
+  const [pendingCognitoUser, setPendingCognitoUser] = useState<CognitoUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("accessToken");
     if (token) {
       router.replace("/dashboard");
     } else {
@@ -30,44 +36,132 @@ export default function LoginForm() {
     }
   }, [router]);
 
-  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-
     try {
-      // Validate inputs using SSOT Schema
-      const validation = LoginSchema.safeParse({ email, password });
-
-      if (!validation.success) {
-        // Display the first error message
-        const errorMessage = validation.error.message;
-        toast.error(errorMessage);
+      const result = await signIn(email, password);
+      if ("newPasswordRequired" in result) {
+        setPendingCognitoUser(result.cognitoUser);
         setLoading(false);
         return;
       }
-
-      const response = await authApi.login(validation.data as LoginData);
+      localStorage.setItem("accessToken", result.accessToken);
+      const { user } = await authApi.me();
+      localStorage.setItem("user", JSON.stringify(user));
       toast.success("Login successful! Welcome back.");
-
-      // Store token
-      localStorage.setItem("token", response.token);
-      localStorage.setItem("user", JSON.stringify(response.user));
-
-      // Redirect to home or dashboard
       router.push("/dashboard");
-    } catch (err: any) {
-      console.error("Login failed:", err);
-      toast.error(toUserMessage(err, "Something went wrong. Please try again."));
+    } catch (err: unknown) {
+      signOut();
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user");
+      setError(toUserMessage(err, "Something went wrong. Please try again."));
     } finally {
       setLoading(false);
     }
   };
 
+  const handleNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (newPassword !== confirmPassword) {
+      setError("Passwords don't match");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await cognitoCompleteNewPassword(pendingCognitoUser!, newPassword);
+      localStorage.setItem("accessToken", result.accessToken);
+      const { user } = await authApi.me();
+      localStorage.setItem("user", JSON.stringify(user));
+      toast.success("Password set. Welcome!");
+      router.push("/dashboard");
+    } catch (err: unknown) {
+      signOut();
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user");
+      setError(toUserMessage(err, "Failed to set password"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (isChecking) {
     return (
       <div className="flex h-[400px] w-full items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
         <Spinner className="h-8 w-8 text-primary" />
+      </div>
+    );
+  }
+
+  if (pendingCognitoUser) {
+    return (
+      <div className="border border-border mx-auto w-full max-w-md rounded-none p-4 md:rounded-2xl md:p-8 bg-card text-card-foreground shadow-sm">
+        <h2 className="text-2xl font-bold mb-2">Set Your Password</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          You've been invited — set your permanent password to continue.
+        </p>
+        <form className="space-y-4" onSubmit={handleNewPassword}>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <LabelInputContainer>
+            <Label htmlFor="new-password">New Password</Label>
+            <div className="relative">
+              <Input
+                id="new-password"
+                type={showNewPassword ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+                aria-label={showNewPassword ? "Hide password" : "Show password"}
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </LabelInputContainer>
+          <LabelInputContainer>
+            <Label htmlFor="confirm-password">Confirm Password</Label>
+            <div className="relative">
+              <Input
+                id="confirm-password"
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </LabelInputContainer>
+          <button
+            type="submit"
+            className="w-full h-10 rounded-md bg-primary text-primary-foreground font-medium hover:opacity-90 disabled:opacity-50"
+            disabled={loading}
+          >
+            {loading ? <Spinner className="mx-auto h-4 w-4" /> : "Set Password & Continue"}
+          </button>
+        </form>
       </div>
     );
   }
@@ -91,12 +185,13 @@ export default function LoginForm() {
         Access the Survey Studio to build and manage your research workflows.
       </p>
 
-      <form className="my-8" onSubmit={handleSubmit}>
-        <LabelInputContainer className="mb-4">
+      <form className="my-8 space-y-4" onSubmit={handleLogin}>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <LabelInputContainer>
           <Label htmlFor="email" className="text-foreground">Email Address</Label>
           <Input
             id="email"
-            placeholder="projectmayhem@fc.com"
+            placeholder="name@company.com"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -104,43 +199,48 @@ export default function LoginForm() {
             className="bg-background border-border text-foreground placeholder:text-muted-foreground"
           />
         </LabelInputContainer>
-        <LabelInputContainer className="mb-4">
+        <LabelInputContainer>
           <Label htmlFor="password" className="text-foreground">Password</Label>
-          <Input
-            id="password"
-            placeholder="••••••••"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="bg-background border-border text-foreground placeholder:text-muted-foreground"
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              placeholder="••••••••"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="bg-background border-border text-foreground placeholder:text-muted-foreground pr-10"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+              tabIndex={-1}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </LabelInputContainer>
         <button
-          className="group/btn cursor-pointer relative block h-10 w-full rounded-md bg-primary text-primary-foreground font-medium shadow-sm hover:opacity-90 transition-all disabled:opacity-50"
           type="submit"
+          className="group/btn cursor-pointer relative block h-10 w-full rounded-md bg-primary text-primary-foreground font-medium shadow-sm hover:opacity-90 transition-all disabled:opacity-50"
           disabled={loading}
         >
           {loading ? "Logging in..." : "Login →"}
           <BottomGradient />
         </button>
-
-        <div className="my-8 h-1 w-full bg-linear-gradient-to-r from-transparent via-border to-transparent" />
       </form>
     </div>
   );
 }
 
-
-
-const BottomGradient = () => {
-  return (
-    <>
-      <span className="absolute inset-x-0 -bottom-px block h-px w-full bg-liner-to-r from-transparent via-cyan-500 to-transparent opacity-0 transition duration-500 group-hover/btn:opacity-100" />
-      <span className="absolute inset-x-10 -bottom-px mx-auto block h-px w-1/2 bg-liner-to-r from-transparent via-indigo-500 to-transparent opacity-0 blur-sm transition duration-500 group-hover/btn:opacity-100" />
-    </>
-  );
-};
+const BottomGradient = () => (
+  <>
+    <span className="absolute inset-x-0 -bottom-px block h-px w-full bg-liner-to-r from-transparent via-cyan-500 to-transparent opacity-0 transition duration-500 group-hover/btn:opacity-100" />
+    <span className="absolute inset-x-10 -bottom-px mx-auto block h-px w-1/2 bg-liner-to-r from-transparent via-indigo-500 to-transparent opacity-0 blur-sm transition duration-500 group-hover/btn:opacity-100" />
+  </>
+);
 
 const LabelInputContainer = ({
   children,
@@ -148,10 +248,8 @@ const LabelInputContainer = ({
 }: {
   children: React.ReactNode;
   className?: string;
-}) => {
-  return (
-    <div className={cn("flex w-full flex-col space-y-2", className)}>
-      {children}
-    </div>
-  );
-};
+}) => (
+  <div className={cn("flex w-full flex-col space-y-2", className)}>
+    {children}
+  </div>
+);

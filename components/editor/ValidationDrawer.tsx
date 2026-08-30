@@ -26,7 +26,7 @@ export function ValidationDrawer({ issues, onFocusNode }: ValidationDrawerProps)
   if (issues.length === 0) return null;
 
   return (
-    <div className="absolute top-20 right-4 z-40 w-[360px] rounded-xl border border-amber-500/30 bg-background shadow-lg">
+    <div className="absolute top-16 right-4 z-40 w-[360px] max-w-[calc(100%_-_2rem)] rounded-xl border border-amber-500/30 bg-background shadow-lg">
       <button
         onClick={() => setOpen((prev) => !prev)}
         className="w-full px-4 py-3 border-b border-border flex items-center justify-between hover:bg-muted/40 transition-colors"

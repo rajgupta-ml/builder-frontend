@@ -13,14 +13,15 @@ import {
     IconPlayerPause,
     IconBan,
     IconDotsVertical,
+    IconRoute,
     IconSparkles
 } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { useSurveyStore } from '@/src/store/useSurveyStore';
 import { toast } from 'sonner';
-import { getStoredUserRole, hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { getStoredUserScopes, hasPermission, PERMISSIONS } from '@/lib/permissions';
+import { PermissionRequired } from '@/components/auth/PermissionRequired';
 import { featureFlags } from '@/lib/feature-flags';
-import type { UserRole } from '@/types/auth';
 import type { WorkflowValidationIssue } from '@/api/surveyWorkflow';
 
 interface EditorHeaderProps {
@@ -34,6 +35,8 @@ interface EditorHeaderProps {
     onRunTest?: () => void;
     validationIssues?: WorkflowValidationIssue[];
     validationPending?: boolean;
+    analysisOpen?: boolean;
+    onAnalysisOpenChange?: (open: boolean) => void;
 }
 
 export function EditorHeader({
@@ -47,13 +50,15 @@ export function EditorHeader({
     onRunTest,
     validationIssues = [],
     validationPending = false,
+    analysisOpen = false,
+    onAnalysisOpenChange,
 }: EditorHeaderProps) {
     const router = useRouter();
     const versionDropdownRef = useRef<HTMLDivElement>(null);
     const actionsDropdownRef = useRef<HTMLDivElement>(null);
     const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
     const [isActionsDropdownOpen, setIsActionsDropdownOpen] = useState(false);
-    const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
+    const [userScopes, setUserScopes] = useState<string[]>([]);
 
     const {
         survey,
@@ -74,7 +79,7 @@ export function EditorHeader({
     } = useSurveyStore();
 
     useEffect(() => {
-        setUserRole(getStoredUserRole());
+        setUserScopes(getStoredUserScopes());
         const handleClickOutside = (event: MouseEvent) => {
             if (versionDropdownRef.current && !versionDropdownRef.current.contains(event.target as Node)) {
                 setIsVersionDropdownOpen(false);
@@ -88,8 +93,8 @@ export function EditorHeader({
     }, []);
 
     const isLive = survey?.status === 'LIVE' || survey?.status === 'PAUSED';
-    const canRunTest = hasPermission(userRole, PERMISSIONS.TEST_RUN);
-    const canPublishLive = hasPermission(userRole, PERMISSIONS.SURVEY_PUBLISH_LIVE);
+    const canRunTest = hasPermission(userScopes, PERMISSIONS.TEST_RUN);
+    const canPublishLive = hasPermission(userScopes, PERMISSIONS.SURVEY_PUBLISH_LIVE);
 
     const handlePublishLive = async () => {
         if (!workflowId) {
@@ -190,9 +195,8 @@ export function EditorHeader({
                 </div>
             )}
 
-            {/* Grouped Toolbar: Test / Versions / More */}
-            <div className="flex h-10 items-center gap-1 rounded-lg border border-border/60 bg-background/90 p-1 shadow-sm backdrop-blur-md">
-            {canRunTest && (
+            {/* Primary Action */}
+            {canRunTest ? (
                 <button
                     onClick={handleQuickTest}
                     disabled={isSyncingTest || isReadOnly}
@@ -206,6 +210,8 @@ export function EditorHeader({
                     )}
                     Test
                 </button>
+            ) : (
+                <PermissionRequired scope="survey_studio:test.run" />
             )}
 
             {/* Version History */}
@@ -320,6 +326,30 @@ export function EditorHeader({
                                 <IconShare size={15} />
                                 Share
                             </button>
+                            <div className="border-t border-border pt-1">
+                                <button
+                                    onClick={() => {
+                                        setIsActionsDropdownOpen(false);
+                                        onAnalysisOpenChange?.(!analysisOpen);
+                                    }}
+                                    className={cn(
+                                        'group flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all',
+                                        analysisOpen
+                                            ? 'border-primary/30 bg-primary/10 text-foreground'
+                                            : 'border-primary/15 bg-primary/5 text-foreground hover:border-primary/30 hover:bg-primary/10',
+                                    )}
+                                >
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                                        <IconRoute size={15} strokeWidth={2} />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block text-xs font-semibold">{analysisOpen ? 'Close flow explorer' : 'Explore flow'}</span>
+                                        <span className="mt-0.5 block text-[9px] font-normal text-muted-foreground">
+                                            {analysisOpen ? 'Return to editing' : 'Test answers and inspect routes'}
+                                        </span>
+                                    </span>
+                                </button>
+                            </div>
                             {!featureFlags.hideAiQuestionImporter && (
                                 <button
                                     onClick={() => {
@@ -379,10 +409,8 @@ export function EditorHeader({
                 )}
             </div>
 
-            </div>
-
             {/* Publish Button */}
-            {canPublishLive && (
+            {canPublishLive ? (
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handlePublishLive}
@@ -412,6 +440,8 @@ export function EditorHeader({
                         }
                     </button>
                 </div>
+            ) : (
+                <PermissionRequired scope="survey_studio:survey.publish" />
             )}
         </div>
     );

@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useReactFlow, Node, Edge } from "@xyflow/react";
 import apiClient from "@/lib/api-client";
 import { getNodeDefinition, PropertyField } from "@/components/nodes/definitions";
-import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto, IconSearch, IconArrowUp, IconArrowDown } from "@tabler/icons-react";
+import { IconX, IconFolderPlus, IconTrash, IconPlus, IconPhoto, IconSearch, IconArrowUp, IconArrowDown, IconFilter, IconAlertTriangle, IconChevronDown, IconRefresh, IconUpload } from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 import { ConditionBuilder } from "./ConditionBuilder";
 import type { LogicGroup } from "./conditionTypes";
 import { SkipRulesBuilder } from "./SkipRulesBuilder";
-import { isGhostJumpEdge } from "@/lib/skipMigration";
+import type { PropertyPanelTabId } from "@surveystudio/node-registery/builder";
+import { isGhostLogicEdge, type FlowRuleInspection } from "@/lib/skipMigration";
 import { StepsBuilder } from "./StepsBuilder";
 import EmojiPicker from "./EmojiPicker";
 import { MediaPreview } from "../nodes/MediaPreview";
@@ -24,6 +25,8 @@ interface PropertiesPanelProps {
     surveyId?: string;
     onChange: (fieldName: string, value: any) => void;
     onClose: () => void;
+    onInspectFlowRule?: (inspection: FlowRuleInspection | null) => void;
+    onQualityPoliciesChange?: (policies: Record<string, OpenEndQualityPolicyPreview>) => void;
     readOnly?: boolean;
 }
 
@@ -32,6 +35,7 @@ type OpenEndQualityPreviewState = {
     policies: Record<string, OpenEndQualityPolicyPreview>;
     loading: boolean;
     error: string | null;
+    retry?: () => void;
 };
 
 const EMPTY_OPEN_END_PREVIEW: OpenEndQualityPreviewState = {
@@ -42,6 +46,22 @@ const EMPTY_OPEN_END_PREVIEW: OpenEndQualityPreviewState = {
 };
 
 const OPEN_END_NODE_TYPES = new Set(["textInput", "multiInput"]);
+const supportsStraightLiningPolicy = (node: Node | null, data: Record<string, unknown>) => {
+    if (node?.type === "matrixChoice") return data.multiple !== true;
+    if (node?.type !== "rating" && node?.type !== "slider") return false;
+    const items = Array.isArray(data.items) ? data.items : [];
+    return data.responseMode === "multi" && items.length >= 2;
+};
+
+type StraightLiningPolicyMode = "inherit" | "enabled" | "disabled";
+
+const straightLiningPolicyMode = (data: Record<string, unknown>): StraightLiningPolicyMode => {
+    const policy = data.straightLiningPolicy && typeof data.straightLiningPolicy === "object"
+        ? data.straightLiningPolicy as Record<string, unknown>
+        : {};
+    return policy.mode === "enabled" || policy.mode === "disabled" ? policy.mode : "inherit";
+};
+
 const OPEN_END_QUALITY_PREVIEW_CACHE_LIMIT = 150;
 
 const OPEN_END_QUALITY_PREVIEW_CACHE = new Map<string, Pick<OpenEndQualityPreviewState, "automaticPolicies" | "policies">>();
@@ -145,28 +165,9 @@ const cacheOpenEndPreviewForNodes = (
     }
 };
 
-type PanelTab = "content" | "logic" | "quality";
+type PanelTab = PropertyPanelTabId;
 
-// Mirrors the section sets in @surveystudio/node-registery builder/settingsComponents.ts,
-// regrouped into three predictable tabs instead of seven collapsed accordions.
-const BASIC_FIELD_NAMES = new Set(["responseMode", "label", "description", "questionLabel", "url", "urls", "fields", "isPii", "welcomeMessage", "message", "buttonLabel", "thankYouMessage", "redirectUrl", "fallbackLabel"]);
-const OPTION_FIELD_NAMES = new Set(["options", "bulkOptions", "items", "columns", "rows", "steps", "allowedZips"]);
-const CHOICE_FIELD_NAMES = new Set(["allowOther", "otherLabel", "allowNone", "noneLabel", "randomizeOptions", "maxChoices", "multiple", "maxRating", "maxStars"]);
-const ADVANCED_FIELD_NAMES = new Set(["placeholder", "searchable", "displayMode", "min", "max", "step", "defaultValue", "checkboxLabel", "minChars", "maxChars", "minWords", "maxWords", "longAnswer", "sitekey", "outcome", "alt", "interactionType", "sliderConfig", "autoplay"]);
-const LOGIC_FIELD_NAMES = new Set(["condition", "routes"]);
-
-// Question nodes carry skip rules in data.skips; structural nodes don't.
-const STRUCTURAL_NODE_TYPES = new Set(["start", "end", "branch", "skip", "validation", "merge", "branchOut"]);
-
-const CONTENT_GROUPS: ReadonlyArray<{ id: string; title: string; names?: ReadonlySet<string> }> = [
-    { id: "basic", title: "Basic", names: BASIC_FIELD_NAMES },
-    { id: "options", title: "Options", names: OPTION_FIELD_NAMES },
-    { id: "choice", title: "Choice Settings", names: CHOICE_FIELD_NAMES },
-    { id: "advanced", title: "Advanced", names: ADVANCED_FIELD_NAMES },
-    { id: "other", title: "Other" },
-];
-
-const TAB_LABELS: Record<PanelTab, string> = { content: "Content", logic: "Logic", quality: "Quality" };
+const TAB_LABELS: Record<PanelTab, string> = { content: "Content", flow: "Flow", quality: "Quality" };
 
 // Survives node switches and panel remounts: auditing e.g. Quality across
 // several nodes keeps the panel on the Quality tab.
@@ -182,13 +183,14 @@ const isFieldVisible = (field: PropertyField, data: Record<string, unknown>) => 
     !field.visible || field.visible(data) !== false
 );
 
-export default function PropertiesPanel({ node, nodes, issues = [], surveyId, onChange, onClose, readOnly = false }: PropertiesPanelProps) {
+export default function PropertiesPanel({ node, nodes, issues = [], surveyId, onChange, onClose, onInspectFlowRule, onQualityPoliciesChange, readOnly = false }: PropertiesPanelProps) {
     const { getEdges: getCanvasEdges } = useReactFlow();
-    // The canvas injects ghost jump edges for the selected node; keep them out
+    // The canvas injects transient dependency edges while inspecting flow rules; keep them out
     // of everything that compiles or inspects the persisted workflow.
-    const getEdges = () => getCanvasEdges().filter((edge) => !isGhostJumpEdge(edge));
+    const getEdges = () => getCanvasEdges().filter((edge) => !isGhostLogicEdge(edge));
     const edges = getEdges();
     const [qualityPreview, setQualityPreview] = useState<OpenEndQualityPreviewState>(EMPTY_OPEN_END_PREVIEW);
+    const [qualityPreviewRequestVersion, setQualityPreviewRequestVersion] = useState(0);
 
     const isOpenEndNode = Boolean(node?.type && OPEN_END_NODE_TYPES.has(String(node.type)));
     const selectedPolicyKey = useMemo(() => buildOpenEndPolicyKey(node?.id), [node?.id]);
@@ -236,49 +238,60 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
             controller.abort();
             window.clearTimeout(timeout);
         };
-    }, [surveyId, node?.id, isOpenEndNode, selectedNodePreviewCacheKey]);
+    }, [surveyId, node?.id, isOpenEndNode, selectedNodePreviewCacheKey, qualityPreviewRequestVersion]);
+
+    useEffect(() => {
+        if (!isOpenEndNode || qualityPreview.loading || qualityPreview.error) return;
+        onQualityPoliciesChange?.(qualityPreview.policies);
+    }, [isOpenEndNode, onQualityPoliciesChange, qualityPreview.error, qualityPreview.loading, qualityPreview.policies]);
+
+    const retryQualityPreview = () => {
+        if (selectedNodePreviewCacheKey) {
+            OPEN_END_QUALITY_PREVIEW_CACHE.delete(selectedNodePreviewCacheKey);
+        }
+        setQualityPreviewRequestVersion((version) => version + 1);
+    };
 
     // Get the definition for this node type
     const definition = node ? getNodeDefinition(node.type || "") : null;
-    const data = (node?.data || {}) as Record<string, unknown>;
+    const data = useMemo(() => (node?.data || {}) as Record<string, unknown>, [node?.data]);
+    const hasStraightLiningPolicy = supportsStraightLiningPolicy(node, data);
 
-    const visibleFields = useMemo(
-        () => (definition ? definition.properties.filter((field) => isFieldVisible(field, data)) : []),
-        [definition, node?.data]
+    const panelGroups = useMemo(() => (definition
+        ? definition.propertyPanel.groups
+            .map((group) => ({
+                ...group,
+                fields: (group.fields as readonly PropertyField[]).filter((field) => isFieldVisible(field, data)),
+            }))
+            .filter((group) => group.fields.length > 0)
+        : []), [definition, data]);
+
+    const contentGroups = useMemo(() => panelGroups.filter((group) => group.tab === "content"), [panelGroups]);
+    const contentFields = useMemo(() => contentGroups.flatMap((group) => group.fields), [contentGroups]);
+    const flowFields = useMemo(
+        () => panelGroups.filter((group) => group.tab === "flow").flatMap((group) => group.fields),
+        [panelGroups]
     );
-
-    const qualityFields = useMemo(() => visibleFields.filter((field) => QUALITY_FIELD_NAMES.has(field.name)), [visibleFields]);
-    const logicFields = useMemo(() => visibleFields.filter((field) => LOGIC_FIELD_NAMES.has(field.name)), [visibleFields]);
-    const contentFields = useMemo(
-        () => visibleFields.filter((field) => !QUALITY_FIELD_NAMES.has(field.name) && !LOGIC_FIELD_NAMES.has(field.name)),
-        [visibleFields]
+    const qualityFields = useMemo(
+        () => panelGroups.filter((group) => group.tab === "quality").flatMap((group) => group.fields),
+        [panelGroups]
     );
+    const visibleFields = useMemo(() => panelGroups.flatMap((group) => group.fields), [panelGroups]);
+    const qualityFieldNames = useMemo(() => new Set(qualityFields.map((field) => field.name)), [qualityFields]);
 
-    const contentGroups = useMemo(() => {
-        const used = new Set<string>();
-        return CONTENT_GROUPS
-            .map((group) => {
-                const fields = group.names
-                    ? contentFields.filter((field) => {
-                        const matched = group.names?.has(field.name) ?? false;
-                        if (matched) used.add(field.name);
-                        return matched;
-                    })
-                    : contentFields.filter((field) => !used.has(field.name));
-                return { ...group, fields };
-            })
-            .filter((group) => group.fields.length > 0);
-    }, [contentFields]);
-
-    const supportsSkipRules = Boolean(node?.type && !STRUCTURAL_NODE_TYPES.has(String(node.type)));
+    const flowCapabilities = definition?.propertyPanel.flow;
+    const supportsConditionalDestinations = flowCapabilities?.supportsConditionalDestinations === true;
+    const questionConditionField = flowCapabilities?.visibilityField
+        ? flowFields.find((field) => field.name === flowCapabilities.visibilityField)
+        : undefined;
 
     const availableTabs = useMemo(() => {
         const tabs: PanelTab[] = [];
         if (contentFields.length > 0) tabs.push("content");
-        if (logicFields.length > 0 || supportsSkipRules) tabs.push("logic");
-        if (qualityFields.length > 0) tabs.push("quality");
+        if (flowFields.length > 0 || supportsConditionalDestinations) tabs.push("flow");
+        if (qualityFields.length > 0 || hasStraightLiningPolicy) tabs.push("quality");
         return tabs.length > 0 ? tabs : (["content"] as PanelTab[]);
-    }, [contentFields.length, logicFields.length, qualityFields.length, supportsSkipRules]);
+    }, [contentFields.length, flowFields.length, hasStraightLiningPolicy, qualityFields.length, supportsConditionalDestinations]);
 
     const [activeTab, setActiveTab] = useState<PanelTab>(LAST_ACTIVE_TAB);
     const [search, setSearch] = useState("");
@@ -305,21 +318,32 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
     const selectTab = (tab: PanelTab) => {
         LAST_ACTIVE_TAB = tab;
         setActiveTab(tab);
+        setSearch("");
     };
 
-    const hasLogicRule = useMemo(() => {
-        const condition = data.condition as Record<string, unknown> | undefined;
-        if (condition && typeof condition === "object" && (condition.field || Array.isArray(condition.children) && condition.children.length > 0)) return true;
-        if (Array.isArray(data.skips) && data.skips.length > 0) return true;
-        const routes = Array.isArray(data.routes) ? data.routes as Array<Record<string, unknown>> : [];
-        return routes.some((route) => {
-            const routeCondition = route?.condition as Record<string, unknown> | undefined;
-            return Boolean(routeCondition && typeof routeCondition === "object" && Array.isArray(routeCondition.children) && routeCondition.children.length > 0);
+    const hasFlowRule = useMemo(() => {
+        if (supportsConditionalDestinations && Array.isArray(data.skips) && data.skips.length > 0) return true;
+        return flowFields.some((field) => {
+            const fieldValue = data[field.name];
+            if (Array.isArray(fieldValue)) {
+                return fieldValue.some((item) => {
+                    const condition = (item as Record<string, unknown> | null)?.condition as Record<string, unknown> | undefined;
+                    return Boolean(condition && (condition.field || Array.isArray(condition.children) && condition.children.length > 0));
+                });
+            }
+            if (!fieldValue || typeof fieldValue !== "object") return false;
+            const condition = fieldValue as Record<string, unknown>;
+            return Boolean(condition.field || Array.isArray(condition.children) && condition.children.length > 0);
         });
-    }, [data.condition, data.routes, data.skips]);
+    }, [data, flowFields, supportsConditionalDestinations]);
 
     const qualityBadge = useMemo<"manual" | "off" | null>(() => {
         if (!node) return null;
+        if (hasStraightLiningPolicy) {
+            const mode = straightLiningPolicyMode(data);
+            if (mode === "enabled") return "manual";
+            if (mode === "disabled") return "off";
+        }
         if (node.type === "multiInput") {
             const subFields = Array.isArray(data.fields) ? data.fields as Record<string, unknown>[] : [];
             if (subFields.some((field) => getPolicyMode(field) === "manual")) return "manual";
@@ -330,13 +354,16 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
         if (mode === "manual") return "manual";
         if (mode === "disabled") return "off";
         return null;
-    }, [node, data]);
+    }, [data, hasStraightLiningPolicy, node]);
 
     const searchResults = useMemo(() => {
         const query = search.trim().toLowerCase();
         if (!query) return null;
-        return visibleFields.filter((field) => field.label.toLowerCase().includes(query));
-    }, [search, visibleFields]);
+        return contentFields.filter((field) => field.label.toLowerCase().includes(query));
+    }, [search, contentFields]);
+
+    const showSearch = activeTab === "content" && contentFields.length >= 10;
+    const hasErrorIssue = issues.some((issue) => issue.type === "error");
 
     if (!node || !definition) {
         return null;
@@ -367,7 +394,8 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                 nodeType={node.type}
                 nodeId={node.id}
                 fieldData={data}
-                qualityPreview={qualityPreview}
+                qualityPreview={{ ...qualityPreview, retry: retryQualityPreview }}
+                isQuestionFlow={supportsConditionalDestinations}
                 activePolicy={qualityPreview.policies[selectedPolicyKey]}
                 automaticPolicy={qualityPreview.automaticPolicies[selectedPolicyKey]}
                 onPatchData={(updates) => {
@@ -377,9 +405,36 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
             />
         );
 
-        // Quality fields render their own composite editor (or nothing) — no label wrapper.
-        if (QUALITY_FIELD_NAMES.has(field.name)) {
+        // Composite editors render their own content beneath the registry group heading.
+        if (qualityFieldNames.has(field.name) || field.type === "condition" || field.panel?.presentation === "unlabeled") {
             return <div key={field.name}>{control}</div>;
+        }
+
+        if (field.panel?.presentation === "disclosure") {
+            return (
+                <details key={field.name} className="group rounded-md border border-border bg-muted/10">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-foreground [&::-webkit-details-marker]:hidden">
+                        <span>{field.label}</span>
+                        <IconChevronDown size={14} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-1.5 border-t border-border p-3">
+                        {control}
+                        {field.helperText && <p className="text-[10px] leading-4 text-muted-foreground">{field.helperText}</p>}
+                    </div>
+                </details>
+            );
+        }
+
+        if (field.type === "switch") {
+            return (
+                <div key={field.name} className="flex items-start justify-between gap-3 py-1">
+                    <div className="min-w-0">
+                        <label className="text-xs font-medium text-foreground">{field.label}</label>
+                        {field.helperText && <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{field.helperText}</p>}
+                    </div>
+                    <div className="shrink-0 pt-0.5">{control}</div>
+                </div>
+            );
         }
 
         return (
@@ -392,8 +447,11 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
     };
 
     const tabBadge = (tab: PanelTab) => {
-        if (tab === "logic" && hasLogicRule) {
-            return <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" title="A logic rule is set" />;
+        if (tab === "flow" && hasFlowRule) {
+            return <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" title="A flow rule is set" />;
+        }
+        if (tab === "quality" && qualityPreview.error) {
+            return <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive/10 px-1 text-[9px] font-bold text-destructive" title="Quality preview unavailable">!</span>;
         }
         if (tab === "quality" && qualityBadge === "manual") {
             return <span className="ml-1 rounded-full bg-amber-500/15 px-1.5 py-px text-[9px] font-bold uppercase text-amber-600">Manual</span>;
@@ -480,44 +538,61 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                 </div>
             )}
 
-            {/* Search */}
-            <div className="px-4 pt-3 shrink-0">
-                <div className="relative">
-                    <IconSearch size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Find a setting..."
-                        className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-2 text-xs focus:outline-hidden focus:ring-1 focus:ring-primary transition-all"
-                    />
+            {issues.length > 0 && (
+                <details
+                    className={cn(
+                        "group mx-4 mt-3 shrink-0 rounded-md border",
+                        hasErrorIssue
+                            ? "border-destructive/30 bg-destructive/5"
+                            : "border-amber-500/30 bg-amber-500/5"
+                    )}
+                >
+                    <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-2 text-[11px] [&::-webkit-details-marker]:hidden">
+                        <IconAlertTriangle
+                            size={14}
+                            className={hasErrorIssue ? "shrink-0 text-destructive" : "shrink-0 text-amber-600"}
+                        />
+                        <span className="shrink-0 font-semibold">
+                            {issues.length} {issues.length === 1 ? "issue" : "issues"}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                            {issues[0].message}
+                        </span>
+                        <IconChevronDown size={13} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-1 border-t border-current/10 px-2.5 py-2" aria-live="polite">
+                        {issues.map((issue, idx) => (
+                            <div key={issue.code + "-" + idx} className="flex gap-1.5 text-[11px] leading-4">
+                                <span className={cn(
+                                    "shrink-0 font-semibold",
+                                    issue.type === "error" ? "text-destructive" : "text-amber-700 dark:text-amber-300"
+                                )}>
+                                    {issue.type === "error" ? "Error" : "Warning"}
+                                </span>
+                                <span className="text-foreground/80">{issue.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                </details>
+            )}
+
+            {showSearch && (
+                <div className="px-4 pt-3 shrink-0">
+                    <div className="relative">
+                        <IconSearch size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                            type="search"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Find a setting..."
+                            className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-2 text-xs transition-all focus:outline-hidden focus:ring-1 focus:ring-primary"
+                        />
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Form Fields */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {issues.length > 0 && (
-                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
-                        <p className="text-[11px] font-semibold mb-2">Validation</p>
-                        <div className="space-y-1.5">
-                            {issues.map((issue, idx) => (
-                                <div
-                                    key={`${issue.code}-${idx}`}
-                                    className={cn(
-                                        "rounded px-2 py-1 text-[11px] border",
-                                        issue.type === "error"
-                                            ? "border-destructive/40 bg-destructive/10 text-destructive"
-                                            : "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
-                                    )}
-                                >
-                                    <span className="font-semibold mr-1">{issue.type === "error" ? "Error:" : "Warning:"}</span>
-                                    {issue.message}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
                 <div className={cn("space-y-4", readOnly && "pointer-events-none opacity-60 grayscale")}>
                     {searchResults ? (
                         searchResults.length > 0 ? (
@@ -531,32 +606,81 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                         )
                     ) : (
                         <>
-                            {activeTab === "content" && contentGroups.map((group) => (
-                                <section key={group.id} className="space-y-3">
-                                    {contentGroups.length > 1 && (
-                                        <h3 className="sticky top-0 z-10 -mx-1 bg-background/95 px-1 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground backdrop-blur-sm">
-                                            {group.title}
-                                        </h3>
-                                    )}
-                                    {group.fields.map(renderPanelField)}
-                                </section>
-                            ))}
-                            {activeTab === "logic" && (
+                            {activeTab === "content" && contentGroups.map((group) => {
+                                const configuredCount = group.fields.filter((field) => {
+                                    const fieldValue = data[field.name];
+                                    return fieldValue !== undefined && fieldValue !== null && fieldValue !== "" && fieldValue !== false && fieldValue !== 0;
+                                }).length;
+                                const compactNumbers = group.fields.length > 1 && group.fields.every((field) => field.type === "number");
+
+                                if (group.collapsible) {
+                                    return (
+                                        <details key={group.id} className="group border-t border-border pt-3">
+                                            <summary className="flex cursor-pointer list-none items-center justify-between py-1 text-xs font-semibold text-foreground [&::-webkit-details-marker]:hidden">
+                                                <span>{group.title}</span>
+                                                <span className="flex items-center gap-2">
+                                                    {configuredCount > 0 && (
+                                                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
+                                                            {configuredCount} set
+                                                        </span>
+                                                    )}
+                                                    <IconChevronDown size={14} className="text-muted-foreground transition-transform group-open:rotate-180" />
+                                                </span>
+                                            </summary>
+                                            <div className={cn("pt-3", compactNumbers ? "grid grid-cols-2 gap-3" : "space-y-3")}>
+                                                {group.fields.map(renderPanelField)}
+                                            </div>
+                                        </details>
+                                    );
+                                }
+
+                                return (
+                                    <section key={group.id} className="space-y-3">
+                                        {contentGroups.length > 1 && (
+                                            <h3 className="border-b border-border pb-2 text-xs font-semibold text-muted-foreground">
+                                                {group.title}
+                                            </h3>
+                                        )}
+                                        <div className={compactNumbers ? "grid grid-cols-2 gap-3" : "space-y-3"}>
+                                            {group.fields.map(renderPanelField)}
+                                        </div>
+                                    </section>
+                                );
+                            })}
+                            {activeTab === "flow" && (
+                                supportsConditionalDestinations ? (
+                                    <SkipRulesBuilder
+                                        value={data.skips}
+                                        onChange={(rules) => onChange("skips", rules)}
+                                        condition={questionConditionField ? data[questionConditionField.name] : undefined}
+                                        onConditionChange={questionConditionField
+                                            ? (condition) => handleFieldChange(questionConditionField, condition)
+                                            : undefined}
+                                        nodes={nodes}
+                                        edges={edges}
+                                        currentNodeId={node.id}
+                                        nodeType={node.type}
+                                        nodeData={data}
+                                        onInspectRule={onInspectFlowRule}
+                                        readOnly={readOnly}
+                                    />
+                                ) : (
+                                    flowFields.map(renderPanelField)
+                                )
+                            )}
+                            {activeTab === "quality" && (
                                 <>
-                                    {logicFields.map(renderPanelField)}
-                                    {supportsSkipRules && (
-                                        <SkipRulesBuilder
-                                            value={data.skips}
-                                            onChange={(rules) => onChange("skips", rules)}
-                                            nodes={nodes}
-                                            edges={edges}
-                                            currentNodeId={node.id}
+                                    {qualityFields.map(renderPanelField)}
+                                    {hasStraightLiningPolicy && (
+                                        <StraightLiningQualityEditor
+                                            nodeType={String(node.type)}
+                                            fieldData={data}
                                             readOnly={readOnly}
+                                            onChange={(policy) => onChange("straightLiningPolicy", policy)}
                                         />
                                     )}
                                 </>
                             )}
-                            {activeTab === "quality" && qualityFields.map(renderPanelField)}
                         </>
                     )}
                 </div>
@@ -567,6 +691,136 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                 {node.id} · {node.type}
             </div>
         </aside>
+    );
+}
+
+function StraightLiningQualityEditor({
+    nodeType,
+    fieldData,
+    readOnly,
+    onChange,
+}: {
+    nodeType: string;
+    fieldData: Record<string, unknown>;
+    readOnly?: boolean;
+    onChange: (policy: Record<string, unknown>) => void;
+}) {
+    const rawPolicy = fieldData.straightLiningPolicy && typeof fieldData.straightLiningPolicy === "object"
+        ? fieldData.straightLiningPolicy as Record<string, unknown>
+        : {};
+    const mode = straightLiningPolicyMode(fieldData);
+    const comparableItems = nodeType === "matrixChoice"
+        ? (Array.isArray(fieldData.rows) ? fieldData.rows.length : 0)
+        : (Array.isArray(fieldData.items) ? fieldData.items.length : 0);
+    const optionCount = nodeType === "matrixChoice"
+        ? (Array.isArray(fieldData.columns) ? fieldData.columns.length : 0)
+        : nodeType === "rating"
+            ? Math.max(0, Math.floor(Number(fieldData.maxRating) || 0))
+            : (() => {
+                const min = Number(fieldData.min);
+                const max = Number(fieldData.max);
+                const step = Number(fieldData.step);
+                return Number.isFinite(min) && Number.isFinite(max) && Number.isFinite(step) && step > 0 && max >= min
+                    ? Math.floor((max - min) / step) + 1
+                    : 0;
+            })();
+    const defaultMinResponses = optionCount === 2 ? 10 : 8;
+    const minResponses = Number.isInteger(Number(rawPolicy.minResponses)) && Number(rawPolicy.minResponses) >= 2
+        ? Number(rawPolicy.minResponses)
+        : defaultMinResponses;
+    const configuredRatio = Number(rawPolicy.nearStraightLineRatio);
+    const thresholdPercent = Number.isFinite(configuredRatio) && configuredRatio > 0 && configuredRatio <= 1
+        ? Math.round(configuredRatio * 100)
+        : 90;
+    const inputClass = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50";
+
+    const setMode = (nextMode: StraightLiningPolicyMode) => {
+        if (nextMode === "inherit" || nextMode === "disabled") {
+            onChange({ mode: nextMode });
+            return;
+        }
+        onChange({
+            mode: "enabled",
+            minResponses,
+            nearStraightLineRatio: thresholdPercent / 100,
+        });
+    };
+
+    const updateEnabledPolicy = (updates: Record<string, unknown>) => {
+        onChange({
+            mode: "enabled",
+            minResponses,
+            nearStraightLineRatio: thresholdPercent / 100,
+            ...updates,
+        });
+    };
+
+    return (
+        <section className="space-y-3 rounded-lg border border-border bg-muted/10 p-3">
+            <div>
+                <p className="text-xs font-semibold text-foreground">Uniform response patterns</p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                    Applies only to comparable items in this {nodeType === "matrixChoice" ? "grid" : "multi-item scale"}. A finding requests review; it does not prove careless responding.
+                </p>
+            </div>
+
+            <div className="space-y-1.5">
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Policy</label>
+                <select
+                    disabled={readOnly}
+                    value={mode}
+                    onChange={(event) => setMode(event.target.value as StraightLiningPolicyMode)}
+                    className={inputClass}
+                >
+                    <option value="inherit">Use survey defaults</option>
+                    <option value="enabled">Override for this question</option>
+                    <option value="disabled">Disable for this question</option>
+                </select>
+            </div>
+
+            {mode === "enabled" && (
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-muted-foreground">Minimum comparable answers</label>
+                        <input
+                            type="number"
+                            min={2}
+                            step={1}
+                            disabled={readOnly}
+                            value={minResponses}
+                            onChange={(event) => updateEnabledPolicy({ minResponses: Math.max(2, Math.floor(Number(event.target.value) || 2)) })}
+                            className={inputClass}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-semibold text-muted-foreground">Same-answer threshold</label>
+                        <div className="relative">
+                            <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                step={1}
+                                disabled={readOnly}
+                                value={thresholdPercent}
+                                onChange={(event) => updateEnabledPolicy({
+                                    nearStraightLineRatio: Math.min(100, Math.max(1, Number(event.target.value) || 1)) / 100,
+                                })}
+                                className={`${inputClass} pr-8`}
+                            />
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="rounded-md bg-background px-3 py-2 text-[11px] text-muted-foreground">
+                This question currently has <span className="font-semibold text-foreground">{comparableItems}</span> comparable item{comparableItems === 1 ? "" : "s"}
+                {optionCount > 0 && <> and <span className="font-semibold text-foreground">{optionCount}</span> answer options</>}.
+                {mode === "inherit" && " Survey-level minimums and threshold apply."}
+                {mode === "disabled" && " This question will not be evaluated for uniform patterns."}
+                {mode === "enabled" && comparableItems < minResponses && ` It will not be evaluated until it has at least ${minResponses} comparable items.`}
+            </div>
+        </section>
     );
 }
 
@@ -780,26 +1034,47 @@ function PolicySummaryCard({
     policy,
     loading,
     error,
+    onRetry,
 }: {
     title: string;
     policy?: OpenEndQualityPolicyPreview;
     loading?: boolean;
     error?: string | null;
+    onRetry?: () => void;
 }) {
     if (loading && !policy) {
         return (
-            <div className="rounded-md border border-border bg-muted/30 p-3">
+            <div className="rounded-md border border-border bg-muted/20 p-3" aria-live="polite">
                 <p className="text-xs font-semibold text-foreground">{title}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">Detecting policy...</p>
+                <div className="mt-2 space-y-2 animate-pulse" aria-label="Detecting quality policy">
+                    <div className="h-2 w-3/4 rounded bg-muted" />
+                    <div className="h-2 w-1/2 rounded bg-muted" />
+                </div>
             </div>
         );
     }
 
     if (error && !policy) {
         return (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                <p className="text-xs font-semibold text-foreground">{title}</p>
-                <p className="mt-1 text-[11px] text-destructive">{error}</p>
+            <div className="rounded-md border border-destructive/25 bg-muted/15 p-3" role="status">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground">{title}</p>
+                        <p className="mt-1 text-[11px] font-medium text-destructive">Quality policy unavailable</p>
+                    </div>
+                    {onRetry && (
+                        <button
+                            type="button"
+                            onClick={onRetry}
+                            className="flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[10px] font-semibold text-foreground transition-colors hover:bg-muted"
+                        >
+                            <IconRefresh size={12} /> Retry
+                        </button>
+                    )}
+                </div>
+                <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                    The preview could not be loaded. Your saved settings are unchanged.
+                </p>
             </div>
         );
     }
@@ -856,7 +1131,7 @@ function PolicySummaryCard({
 function PolicyModeSelect({ mode, readOnly, onChange }: { mode: PolicyMode; readOnly?: boolean; onChange: (mode: PolicyMode) => void }) {
     return (
         <div className="space-y-1">
-            <label className="text-[10px] uppercase font-bold text-muted-foreground">Policy mode</label>
+            <label className="text-[10px] font-semibold text-muted-foreground">Policy mode</label>
             <select
                 disabled={readOnly}
                 value={mode}
@@ -934,6 +1209,7 @@ function OpenEndQualityEditor({
     activePolicy,
     previewLoading,
     previewError,
+    onRetry,
     readOnly,
     onPatchData,
 }: {
@@ -942,6 +1218,7 @@ function OpenEndQualityEditor({
     activePolicy?: OpenEndQualityPolicyPreview;
     previewLoading: boolean;
     previewError: string | null;
+    onRetry?: () => void;
     readOnly?: boolean;
     onPatchData?: (updates: Record<string, unknown>) => void;
 }) {
@@ -960,7 +1237,7 @@ function OpenEndQualityEditor({
 
     return (
         <div className="space-y-3">
-            <PolicySummaryCard title="Auto-detected policy" policy={automaticPolicy} loading={previewLoading} error={previewError} />
+            <PolicySummaryCard title="Auto-detected policy" policy={automaticPolicy} loading={previewLoading} error={previewError} onRetry={onRetry} />
             <div className="rounded-md border border-border bg-muted/10 p-3 space-y-3">
                 <PolicyModeSelect mode={mode} readOnly={readOnly} onChange={handleModeChange} />
                 {mode === "auto" && (
@@ -971,7 +1248,7 @@ function OpenEndQualityEditor({
                 {mode === "manual" && (
                     <div className="space-y-3">
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-muted-foreground">Manual intent</label>
+                            <label className="text-[10px] font-semibold text-muted-foreground">Manual intent</label>
                             <select
                                 disabled={readOnly}
                                 value={configuredIntent}
@@ -993,7 +1270,7 @@ function OpenEndQualityEditor({
                 )}
             </div>
             {mode !== "auto" && (
-                <PolicySummaryCard title="Effective runtime policy" policy={activePolicy} loading={previewLoading} error={previewError} />
+                <PolicySummaryCard title="Effective runtime policy" policy={activePolicy} loading={previewLoading} error={previewError} onRetry={onRetry} />
             )}
         </div>
     );
@@ -1005,6 +1282,7 @@ function MultiInputQualityEditor({
     activePolicy,
     previewLoading,
     previewError,
+    onRetry,
     readOnly,
     onUpdate,
 }: {
@@ -1013,6 +1291,7 @@ function MultiInputQualityEditor({
     activePolicy?: OpenEndQualityPolicyPreview;
     previewLoading: boolean;
     previewError: string | null;
+    onRetry?: () => void;
     readOnly?: boolean;
     onUpdate: (updates: Partial<MultiInputFieldItem>) => void;
 }) {
@@ -1032,12 +1311,12 @@ function MultiInputQualityEditor({
 
     return (
         <div className="rounded-md border border-border bg-background/60 p-3 space-y-3">
-            <PolicySummaryCard title="Auto-detected subfield policy" policy={automaticPolicy} loading={previewLoading} error={previewError} />
+            <PolicySummaryCard title="Auto-detected subfield policy" policy={automaticPolicy} loading={previewLoading} error={previewError} onRetry={onRetry} />
             <PolicyModeSelect mode={mode} readOnly={readOnly} onChange={handleModeChange} />
             {mode === "manual" && (
                 <div className="space-y-3">
                     <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-muted-foreground">Manual intent</label>
+                        <label className="text-[10px] font-semibold text-muted-foreground">Manual intent</label>
                         <select
                             disabled={readOnly}
                             value={configuredIntent}
@@ -1057,7 +1336,7 @@ function MultiInputQualityEditor({
                     Disabled for this subfield only. Other fields in this multi-input can still use auto-detect.
                 </p>
             )}
-            {mode !== "auto" && <PolicySummaryCard title="Effective subfield policy" policy={activePolicy} loading={previewLoading} error={previewError} />}
+            {mode !== "auto" && <PolicySummaryCard title="Effective subfield policy" policy={activePolicy} loading={previewLoading} error={previewError} onRetry={onRetry} />}
         </div>
     );
 }
@@ -1107,11 +1386,9 @@ function MultiInputFieldsBuilder({
             <button
                 type="button"
                 onClick={addField}
-                className="w-full flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-border rounded-lg hover:bg-muted/50 hover:border-primary/50 transition-all text-muted-foreground hover:text-primary group"
+                className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted/50 hover:text-primary"
             >
-                <div className="p-2 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-colors">
-                    <IconPlus size={20} className="text-primary" />
-                </div>
+                                    <IconPlus size={14} />
                 <span className="text-sm font-medium">Add Your First Field</span>
                 <p className="text-[10px] opacity-70">Each field gets its own auto-detected quality policy</p>
             </button>
@@ -1132,6 +1409,7 @@ function MultiInputFieldsBuilder({
                         activePolicy={qualityPreview.policies[policyKey]}
                         previewLoading={qualityPreview.loading}
                         previewError={qualityPreview.error}
+                        onRetry={qualityPreview.retry}
                         onUpdate={(updates) => updateField(index, updates)}
                         onRemove={() => removeField(index)}
                     />
@@ -1141,7 +1419,7 @@ function MultiInputFieldsBuilder({
                 <button
                     type="button"
                     onClick={addField}
-                    className="w-full py-2 border-2 border-dashed border-border rounded-md text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-1"
+                    className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary transition-colors"
                 >
                     <IconPlus size={14} /> Add Field
                 </button>
@@ -1159,6 +1437,7 @@ function MultiInputFieldCard({
     activePolicy,
     previewLoading,
     previewError,
+    onRetry,
     readOnly = false,
 }: {
     field: MultiInputFieldItem;
@@ -1169,24 +1448,36 @@ function MultiInputFieldCard({
     activePolicy?: OpenEndQualityPolicyPreview;
     previewLoading: boolean;
     previewError: string | null;
+    onRetry?: () => void;
     readOnly?: boolean;
 }) {
+    const [isExpanded, setIsExpanded] = useState(index === 0);
+
     return (
-        <div className="rounded-lg border border-border bg-muted/5 overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20">
+        <div className="overflow-hidden rounded-md border border-border bg-muted/5">
+            <div className={cn("flex items-center gap-2 bg-muted/20 px-3 py-2", isExpanded && "border-b border-border")}>
                 <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-foreground truncate">{field.label || `Field ${index + 1}`}</p>
                     <p className="text-[10px] text-muted-foreground">{field.value || "text"} subfield</p>
                 </div>
+                <button
+                    type="button"
+                    title={isExpanded ? "Collapse field" : "Expand field"}
+                    onClick={() => setIsExpanded((expanded) => !expanded)}
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                    <IconChevronDown size={14} className={cn("transition-transform", isExpanded && "rotate-180")} />
+                </button>
                 {!readOnly && (
                     <button type="button" onClick={onRemove} className="p-1 text-muted-foreground hover:text-destructive">
                         <IconTrash size={14} />
                     </button>
                 )}
             </div>
-            <div className="p-3 space-y-3">
+            {isExpanded && (
+                <div className="space-y-3 p-3">
                 <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground">Field label</label>
+                    <label className="text-[10px] font-semibold text-muted-foreground">Field label</label>
                     <input
                         type="text"
                         disabled={readOnly}
@@ -1197,7 +1488,7 @@ function MultiInputFieldCard({
                     />
                 </div>
                 <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground">Input type</label>
+                    <label className="text-[10px] font-semibold text-muted-foreground">Input type</label>
                     <select
                         disabled={readOnly}
                         value={field.value || "text"}
@@ -1215,10 +1506,12 @@ function MultiInputFieldCard({
                     activePolicy={activePolicy}
                     previewLoading={previewLoading}
                     previewError={previewError}
+                    onRetry={onRetry}
                     readOnly={readOnly}
                     onUpdate={onUpdate}
                 />
-            </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -1383,6 +1676,86 @@ function BranchRoutesBuilder({
     );
 }
 
+const getConditionPanelCopy = (nodeType?: string, fallbackTitle = "Display condition") => {
+    if (nodeType === "validation") {
+        return {
+            title: "Validation rules",
+            description: "Check answers against these rules before the flow continues.",
+        };
+    }
+    if (nodeType === "branch") {
+        return {
+            title: "Branch condition",
+            description: "Send respondents through this branch when the condition matches.",
+        };
+    }
+    if (nodeType === "skip") {
+        return {
+            title: "Skip when",
+            description: "Jump respondents through the skip path when the condition matches.",
+        };
+    }
+    return {
+        title: fallbackTitle === "Logic Rule" ? "Show condition" : fallbackTitle,
+        description: "Show this question only when the condition matches. With no rules, it is always shown.",
+    };
+};
+
+const countConditionRules = (value: unknown): number => {
+    if (!value || typeof value !== "object") return 0;
+    const item = value as { type?: string; children?: unknown[] };
+    if (item.type === "rule") return 1;
+    if (!Array.isArray(item.children)) return 0;
+    let total = 0;
+    for (const child of item.children) total += countConditionRules(child);
+    return total;
+};
+
+function BulkOptionsEditor({
+    placeholder,
+    onApply,
+    readOnly = false,
+}: {
+    placeholder?: string;
+    onApply: (value: string) => void;
+    readOnly?: boolean;
+}) {
+    const [draft, setDraft] = useState("");
+    const optionCount = draft.split("\n").filter((line) => line.trim().length > 0).length;
+
+    const applyList = () => {
+        if (optionCount === 0 || readOnly) return;
+        onApply(draft);
+        setDraft("");
+    };
+
+    return (
+        <div className="space-y-2">
+            <textarea
+                disabled={readOnly}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={placeholder}
+                rows={4}
+                className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:outline-hidden focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] text-muted-foreground">
+                    {optionCount === 0 ? "No options" : optionCount + " " + (optionCount === 1 ? "option" : "options")}
+                </span>
+                <button
+                    type="button"
+                    disabled={readOnly || optionCount === 0}
+                    onClick={applyList}
+                    className="rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    Apply list
+                </button>
+            </div>
+        </div>
+    );
+}
+
 function FieldRenderer({
     field,
     value,
@@ -1394,6 +1767,7 @@ function FieldRenderer({
     nodeId,
     fieldData = {},
     qualityPreview = EMPTY_OPEN_END_PREVIEW,
+    isQuestionFlow = false,
     activePolicy,
     automaticPolicy,
     onPatchData,
@@ -1408,10 +1782,21 @@ function FieldRenderer({
     nodeId?: string,
     fieldData?: Record<string, unknown>,
     qualityPreview?: OpenEndQualityPreviewState,
+    isQuestionFlow?: boolean,
     activePolicy?: OpenEndQualityPolicyPreview,
     automaticPolicy?: OpenEndQualityPolicyPreview,
     onPatchData?: (updates: Record<string, unknown>) => void,
 }) {
+    if (field.name === "bulkOptions") {
+        return (
+            <BulkOptionsEditor
+                placeholder={field.placeholder}
+                onApply={onChange}
+                readOnly={readOnly}
+            />
+        );
+    }
+
     if (QUALITY_FIELD_NAMES.has(field.name)) {
         if (field.name !== "openEndAnswerIntent") return null;
         if (nodeType === "textInput") {
@@ -1422,6 +1807,7 @@ function FieldRenderer({
                     activePolicy={activePolicy}
                     previewLoading={qualityPreview.loading}
                     previewError={qualityPreview.error}
+                    onRetry={qualityPreview.retry}
                     readOnly={readOnly}
                     onPatchData={onPatchData}
                 />
@@ -1443,24 +1829,57 @@ function FieldRenderer({
         if (['condition', 'branchRoutes', 'stepBuilder', 'emojiOptions'].includes(field.type)) {
             return (
                 <div className="pointer-events-none opacity-60 grayscale">
-                    <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} edges={edges} readOnly={false} nodeType={nodeType} nodeId={nodeId} fieldData={fieldData} qualityPreview={qualityPreview} activePolicy={activePolicy} automaticPolicy={automaticPolicy} onPatchData={onPatchData} />
+                    <FieldRenderer field={field} value={value} onChange={() => { }} nodes={nodes} edges={edges} readOnly={false} nodeType={nodeType} nodeId={nodeId} fieldData={fieldData} qualityPreview={qualityPreview} isQuestionFlow={isQuestionFlow} activePolicy={activePolicy} automaticPolicy={automaticPolicy} onPatchData={onPatchData} />
                 </div>
             );
         }
     }
 
     switch (field.type) {
-        case 'condition':
+        case 'condition': {
+            const copy = getConditionPanelCopy(nodeType, field.label);
+            const ruleCount = countConditionRules(value);
+            const isActive = ruleCount > 0;
+            const emptyStatus = isQuestionFlow ? "Always shown" : "Not configured";
             return (
-                <ConditionBuilder
-                    value={value || { field: '', operator: 'equals', value: '' }}
-                    onChange={onChange}
-                    nodes={nodes}
-                    edges={edges}
-                    currentNodeId={nodeId}
-                    builderMode={nodeType === 'validation' ? 'validation' : 'default'}
-                />
+                <div className="space-y-3">
+                    <div className={cn(
+                        "rounded-md border px-3 py-2 transition-colors",
+                        isActive
+                            ? "border-emerald-200/60 bg-emerald-50/50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                            : "border-border bg-muted/20"
+                    )}>
+                        <div className="flex items-center justify-between gap-2">
+                            <p className={cn(
+                                "flex min-w-0 items-center gap-1.5 text-xs font-semibold",
+                                isActive ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"
+                            )}>
+                                <IconFilter size={14} className="shrink-0" /> {copy.title}
+                            </p>
+                            <span className={cn(
+                                "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                                isActive ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground"
+                            )}>
+                                {isActive ? ruleCount + (ruleCount === 1 ? " rule" : " rules") : emptyStatus}
+                            </span>
+                        </div>
+                        <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                            {copy.description}
+                        </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-2">
+                        <ConditionBuilder
+                            value={value || { field: '', operator: 'equals', value: '' }}
+                            onChange={onChange}
+                            nodes={nodes}
+                            edges={edges}
+                            currentNodeId={nodeId}
+                            builderMode={nodeType === 'validation' ? 'validation' : 'default'}
+                        />
+                    </div>
+                </div>
             );
+        }
         case 'branchRoutes':
             return (
                 <BranchRoutesBuilder
@@ -1568,27 +1987,28 @@ function FieldRenderer({
             };
 
             return (
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="text"
-                            disabled={readOnly}
-                            value={value || ""}
-                            onChange={(e) => onChange(e.target.value)}
-                            placeholder={field.placeholder || "Storage key..."}
-                            className="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                    </div>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="text"
+                        disabled={readOnly}
+                        value={value || ""}
+                        onChange={(event) => onChange(event.target.value)}
+                        placeholder={field.placeholder || "Storage key..."}
+                        className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm transition-all focus:outline-hidden focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    />
                     {!readOnly && (
-                        <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
-                            <IconFolderPlus size={20} className="text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground font-medium">Click to Upload File</span>
+                        <label
+                            title="Upload file"
+                            className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                            <IconUpload size={16} />
+                            <span className="sr-only">Upload file</span>
                             <input type="file" className="hidden" onChange={handleS3Upload} />
                         </label>
                     )}
                 </div>
             );
-        case 'files':
+        case "files":
             const handleMultiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 const files = e.target.files;
                 if (!files || files.length === 0) return;
@@ -1656,36 +2076,36 @@ function FieldRenderer({
                     title="Number Input"
                     type="number"
                     disabled={readOnly}
-                    value={value || ""}
+                    value={value ?? ""}
                     onChange={(e) => onChange(Number(e.target.value))}
                     min={field.min}
                     max={field.max}
                     className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-hidden focus:ring-1 focus:ring-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 />
             );
-        case 'switch':
+        case "switch":
             return (
-                <div className="flex items-center gap-2">
-                    <button
-                        title="Enabled/Disabled Button"
-                        disabled={readOnly}
-                        onClick={() => onChange(!value)}
+                <button
+                    type="button"
+                    title={field.label + ": " + (value ? "Enabled" : "Disabled")}
+                    aria-label={field.label}
+                    aria-pressed={Boolean(value)}
+                    disabled={readOnly}
+                    onClick={() => onChange(!value)}
+                    className={cn(
+                        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                        value ? "bg-primary" : "bg-input"
+                    )}
+                >
+                    <span
                         className={cn(
-                            "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed",
-                            value ? "bg-primary" : "bg-input"
+                            "inline-block h-3 w-3 transform rounded-full bg-white transition-transform",
+                            value ? "translate-x-5" : "translate-x-1"
                         )}
-                    >
-                        <span
-                            className={cn(
-                                "inline-block h-3 w-3 transform rounded-full bg-white transition-transform",
-                                value ? "translate-x-5" : "translate-x-1"
-                            )}
-                        />
-                    </button>
-                    <span className="text-sm text-foreground">{value ? "Enabled" : "Disabled"}</span>
-                </div>
+                    />
+                </button>
             );
-        case 'options':
+        case "options":
             if (nodeType === 'multiInput' && field.name === 'fields') {
                 return (
                     <MultiInputFieldsBuilder
@@ -1736,7 +2156,7 @@ function FieldRenderer({
             return (
                 <div className="space-y-2">
                     {optionValues.map((option: any, index: number) => (
-                        <div key={index} className="flex flex-col gap-1.5 p-2 rounded-lg border border-border bg-muted/5 group">
+                        <div key={index} className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/5 p-1.5 group">
                             <div className="flex gap-1 items-center">
                                 <input
                                     type="text"
@@ -1812,9 +2232,10 @@ function FieldRenderer({
                                         value: isScaleItemsField ? `item${Date.now()}` : `opt${Date.now()}`
                                     }
                                 ])}
-                                className="text-xs text-primary hover:underline font-medium py-1 px-2"
+                                className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
                             >
-                                {isScaleItemsField ? '+ Add Item' : '+ Add Option'}
+                                <IconPlus size={14} />
+                                {isScaleItemsField ? "Add item" : "Add option"}
                             </button>
                         ) : (
                             isScaleItemsField ? (
@@ -1823,24 +2244,18 @@ function FieldRenderer({
                                         { label: 'Overall Rating', value: `item${Date.now()}_overall` },
                                         { label: 'Item 2', value: `item${Date.now()}_2` }
                                     ])}
-                                    className="w-full flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-border rounded-lg hover:bg-muted/50 hover:border-primary/50 transition-all text-muted-foreground hover:text-primary group"
+                                    className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted/50 hover:text-primary"
                                 >
-                                    <div className="p-2 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-colors">
-                                        <IconPlus size={20} className="text-primary" />
-                                    </div>
-                                    <span className="text-sm font-medium">Add Another Rating Item</span>
-                                    <p className="text-[10px] opacity-70">Default rating uses the Field Label automatically</p>
+                                    <IconPlus size={14} />
+                                    <span>Add rating items</span>
                                 </button>
                             ) : (
                                 <button
                                     onClick={() => onChange([{ label: 'Option 1', value: `opt${Date.now()}` }])}
-                                    className="w-full flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-border rounded-lg hover:bg-muted/50 hover:border-primary/50 transition-all text-muted-foreground hover:text-primary group"
+                                    className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:bg-muted/50 hover:text-primary"
                                 >
-                                    <div className="p-2 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-colors">
-                                        <IconPlus size={20} className="text-primary" />
-                                    </div>
-                                    <span className="text-sm font-medium">Add Your First Option</span>
-                                    <p className="text-[10px] opacity-70">Click to start building your list</p>
+                                    <IconPlus size={14} />
+                                    <span>Add first option</span>
                                 </button>
                             )
                         )

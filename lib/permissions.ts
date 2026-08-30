@@ -1,6 +1,5 @@
-import type { UserRole } from "@/types/auth";
-
 export const PERMISSIONS = {
+  SURVEY_READ: "survey.read",
   SURVEY_CREATE: "survey.create",
   SURVEY_EDIT: "survey.edit",
   SURVEY_DELETE: "survey.delete",
@@ -16,6 +15,7 @@ export const PERMISSIONS = {
   SURVEY_QUALITY_REVIEW: "survey.quality.review",
   SURVEY_QUALITY_CONFIGURE: "survey.quality.configure",
   SURVEY_QUALITY_EXPORT: "survey.quality.export",
+  SURVEY_QUALITY_EXPORT_DETAILED: "survey.quality.export.detailed",
   PRIVACY_MANAGE: "privacy.manage",
   TEST_RUN: "test.run",
   USER_MANAGE_ROLES: "user.manage_roles",
@@ -23,51 +23,49 @@ export const PERMISSIONS = {
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
 
-const ALL_PERMISSIONS = Object.values(PERMISSIONS);
-
-const rolePermissions: Record<UserRole, Set<Permission>> = {
-  SUPER_ADMIN: new Set(ALL_PERMISSIONS),
-  PROJECT_MANAGER: new Set(ALL_PERMISSIONS.filter((p) => p !== PERMISSIONS.USER_MANAGE_ROLES)),
-  SALES_REP: new Set([
-    PERMISSIONS.SURVEY_CREATE,
-    PERMISSIONS.SURVEY_EDIT,
-    PERMISSIONS.WORKFLOW_READ,
-    PERMISSIONS.WORKFLOW_EDIT,
-    PERMISSIONS.QUOTA_MANAGE,
-    PERMISSIONS.RESPONSE_READ,
-    PERMISSIONS.RESPONSE_SHARE,
-    PERMISSIONS.SURVEY_QUALITY_READ,
-    PERMISSIONS.TEST_RUN,
-  ]),
-  DEMO_USER: new Set([
-    PERMISSIONS.SURVEY_CREATE,
-    PERMISSIONS.SURVEY_EDIT,
-    PERMISSIONS.WORKFLOW_READ,
-    PERMISSIONS.WORKFLOW_EDIT,
-    PERMISSIONS.QUOTA_MANAGE,
-    PERMISSIONS.RESPONSE_READ,
-    PERMISSIONS.RESPONSE_SHARE,
-    PERMISSIONS.SURVEY_QUALITY_READ,
-  ]),
+const PERMISSION_TO_SCOPE: Record<Permission, string> = {
+  [PERMISSIONS.SURVEY_READ]: "survey_studio:survey.read",
+  [PERMISSIONS.SURVEY_CREATE]: "survey_studio:survey.create",
+  [PERMISSIONS.SURVEY_EDIT]: "survey_studio:survey.edit",
+  [PERMISSIONS.SURVEY_DELETE]: "survey_studio:survey.delete",
+  [PERMISSIONS.SURVEY_PUBLISH_LIVE]: "survey_studio:survey.publish",
+  [PERMISSIONS.WORKFLOW_READ]: "survey_studio:survey.read",
+  [PERMISSIONS.WORKFLOW_EDIT]: "survey_studio:survey.edit",
+  [PERMISSIONS.QUOTA_MANAGE]: "survey_studio:quota.manage",
+  [PERMISSIONS.RESPONSE_READ]: "survey_studio:response.read",
+  [PERMISSIONS.RESPONSE_EXPORT]: "survey_studio:response.export",
+  [PERMISSIONS.RESPONSE_SHARE]: "survey_studio:response.share",
+  [PERMISSIONS.RESPONSE_RESYNC]: "survey_studio:response.read",
+  [PERMISSIONS.SURVEY_QUALITY_READ]: "survey_studio:survey.quality.read",
+  [PERMISSIONS.SURVEY_QUALITY_REVIEW]: "survey_studio:survey.quality.review",
+  [PERMISSIONS.SURVEY_QUALITY_CONFIGURE]: "survey_studio:survey.quality.configure",
+  [PERMISSIONS.SURVEY_QUALITY_EXPORT]: "survey_studio:survey.quality.export",
+  [PERMISSIONS.SURVEY_QUALITY_EXPORT_DETAILED]: "survey_studio:survey.quality.export.detailed",
+  [PERMISSIONS.PRIVACY_MANAGE]: "survey_studio:privacy.manage",
+  [PERMISSIONS.TEST_RUN]: "survey_studio:test.run",
+  [PERMISSIONS.USER_MANAGE_ROLES]: "survey_studio:ops.write",
 };
 
-export const hasPermission = (role: UserRole | undefined, permission: Permission) => {
-  if (!role) return false;
-  return rolePermissions[role]?.has(permission) ?? false;
-};
+export const hasPermission = (scopes: readonly string[], permission: Permission): boolean =>
+  scopes.includes("*") || scopes.includes(PERMISSION_TO_SCOPE[permission]);
 
-export const getStoredUserRole = (): UserRole | undefined => {
-  if (typeof window === "undefined") return undefined;
+export const getStoredUserScopes = (): string[] => {
+  if (typeof window === "undefined") return [];
   const raw = localStorage.getItem("user");
-  if (!raw) return undefined;
+  if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw) as { role?: UserRole; roleExpiresAt?: string | null };
-    if (!parsed.role) return undefined;
-    if (parsed.roleExpiresAt && new Date(parsed.roleExpiresAt).getTime() < Date.now()) {
-      return undefined;
-    }
-    return parsed.role;
+    const parsed = JSON.parse(raw) as {
+      platformScopes?: unknown;
+      isOrgOwner?: unknown;
+      isAimAdmin?: unknown;
+    };
+    const scopes = Array.isArray(parsed.platformScopes)
+      ? parsed.platformScopes.filter((scope): scope is string => typeof scope === "string")
+      : [];
+    return parsed.isOrgOwner === true || parsed.isAimAdmin === true
+      ? Array.from(new Set(["*", ...scopes]))
+      : scopes;
   } catch {
-    return undefined;
+    return [];
   }
 };

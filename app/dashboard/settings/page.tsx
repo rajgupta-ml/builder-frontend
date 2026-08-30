@@ -6,7 +6,8 @@ import { authApi } from "@/api/auth";
 import { toUserMessage } from "@/lib/api-error";
 import { toast } from "sonner";
 import { IconLock, IconLogout, IconUser } from "@tabler/icons-react";
-import type { User } from "@/types/auth";
+import { signOut as cognitoSignOut } from "@/lib/cognito";
+import type { AimUser } from "@/types/auth";
 
 const passwordPolicyMessage =
     "Use at least 8 characters with uppercase, lowercase, number, and special character.";
@@ -18,7 +19,7 @@ export default function SettingsPage() {
     const [changingPassword, setChangingPassword] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
 
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<AimUser | null>(null);
     const [name, setName] = useState("");
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
@@ -30,7 +31,7 @@ export default function SettingsPage() {
             try {
                 const result = await authApi.me();
                 setUser(result.user);
-                setName(result.user.name || "");
+                setName(result.user.name ?? "");
             } catch (error) {
                 toast.error(toUserMessage(error, "Failed to load profile"));
             } finally {
@@ -68,14 +69,27 @@ export default function SettingsPage() {
             toast.error("New password and confirmation do not match");
             return;
         }
-
         setChangingPassword(true);
         try {
-            const result = await authApi.changePassword({ currentPassword, newPassword });
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            toast.success(result.message || "Password changed. Please log in again.");
-            router.replace("/");
+            const { CognitoUser, CognitoUserPool, AuthenticationDetails } = await import("amazon-cognito-identity-js");
+            const userPool = new CognitoUserPool({
+                UserPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!,
+                ClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
+            });
+            const cognitoUser = userPool.getCurrentUser();
+            if (!cognitoUser) throw new Error("No active session");
+            await new Promise<void>((resolve, reject) => {
+                cognitoUser.getSession((err: Error | null, session: any) => {
+                    if (err || !session) { reject(err || new Error("No session")); return; }
+                    cognitoUser.changePassword(currentPassword, newPassword, (changeErr) => {
+                        if (changeErr) reject(changeErr); else resolve();
+                    });
+                });
+            });
+            toast.success("Password changed successfully.");
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
         } catch (error) {
             toast.error(toUserMessage(error, "Failed to change password"));
         } finally {
@@ -83,18 +97,12 @@ export default function SettingsPage() {
         }
     };
 
-    const handleLogout = async () => {
+    const handleLogout = () => {
         setLoggingOut(true);
-        try {
-            await authApi.logout();
-        } catch {
-            // no-op: local logout still applies
-        } finally {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            router.replace("/");
-            setLoggingOut(false);
-        }
+        cognitoSignOut();
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("user");
+        router.replace("/");
     };
 
     if (loading) {

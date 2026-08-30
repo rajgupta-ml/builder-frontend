@@ -9,6 +9,7 @@ import {
     IconChartBar,
     IconSettings,
     IconClipboardList,
+    IconUsers,
     IconChevronLeft,
     IconChevronRight
 } from '@tabler/icons-react';
@@ -49,10 +50,21 @@ const SidebarItem = ({ href, icon: Icon, label, active, collapsed }: SidebarItem
 export const DashboardSidebar = () => {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = React.useState(false);
+    const [isOrgOwner, setIsOrgOwner] = React.useState(false);
+
+    React.useEffect(() => {
+        try {
+            const user = JSON.parse(localStorage.getItem("user") ?? "{}") as { isOrgOwner?: boolean };
+            setIsOrgOwner(user.isOrgOwner === true);
+        } catch {
+            setIsOrgOwner(false);
+        }
+    }, []);
 
     const menuItems = [
         { href: '/dashboard', icon: IconClipboardList, label: 'My Surveys' },
         { href: '/dashboard/metrics', icon: IconChartBar, label: 'Global Analytics' },
+        ...(isOrgOwner ? [{ href: '/dashboard/team', icon: IconUsers, label: 'Team' }] : []),
     ];
 
     const bottomItems = [

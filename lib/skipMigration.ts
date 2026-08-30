@@ -1,9 +1,17 @@
 import { type Node as ReactFlowNode, type Edge as ReactFlowEdge } from '@xyflow/react';
 
 // Ghost edges visualizing skip jumps on the canvas; never persisted or compiled.
+export const ANALYSIS_EDGE_ID_PREFIX = '__analysis__';
 export const JUMP_EDGE_ID_PREFIX = '__jump__';
+export const VISIBILITY_EDGE_ID_PREFIX = '__visibility__';
 export const isGhostJumpEdge = (edge: { id?: string }): boolean =>
     String(edge?.id || '').startsWith(JUMP_EDGE_ID_PREFIX);
+export const isGhostLogicEdge = (edge: { id?: string }): boolean => {
+    const id = String(edge?.id || '');
+    return id.startsWith(ANALYSIS_EDGE_ID_PREFIX)
+        || id.startsWith(JUMP_EDGE_ID_PREFIX)
+        || id.startsWith(VISIBILITY_EDGE_ID_PREFIX);
+};
 
 export interface SkipRule {
     id: string;
@@ -11,6 +19,25 @@ export interface SkipRule {
     condition: Record<string, any> | null;
     targetId: string | null;
 }
+
+export interface JumpPathInspection {
+    kind: 'jump';
+    sourceId: string;
+    ruleId: string;
+}
+
+export interface VisibilityRuleInspection {
+    kind: 'visibility';
+    targetId: string;
+    sourceIds: string[];
+    label: string;
+}
+
+export type FlowRuleInspection = JumpPathInspection | VisibilityRuleInspection;
+
+export const getSkipRuleKey = (rule: Pick<SkipRule, 'id'>, index: number): string => (
+    typeof rule.id === 'string' && rule.id.trim().length > 0 ? rule.id : String(index)
+);
 
 export const getNodeSkipRules = (data: unknown): SkipRule[] => {
     const record = data as Record<string, any> | null | undefined;

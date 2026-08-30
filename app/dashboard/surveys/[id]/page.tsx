@@ -25,7 +25,8 @@ import { generateUniqueId } from '@/lib/utils';
 import { toast } from 'sonner';
 import { NodeSearchPalette } from '@/components/editor/NodeSearchPalette';
 import type { Node as ReactFlowNode, XYPosition } from '@xyflow/react';
-import { surveyWorkflowApi, type WorkflowValidationIssue } from '@/api/surveyWorkflow';
+import { surveyWorkflowApi, type OpenEndQualityPolicyPreview, type WorkflowValidationIssue } from '@/api/surveyWorkflow';
+import type { FlowRuleInspection } from '@/lib/skipMigration';
 
 const DEFAULT_NODE_WIDTH = 260;
 const DEFAULT_NODE_HEIGHT = 140;
@@ -133,15 +134,22 @@ function SurveyFlow() {
     const [nodeViewerOpenSignal, setNodeViewerOpenSignal] = useState(0);
     const [isNodeSearchOpen, setIsNodeSearchOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [analysisOpen, setAnalysisOpen] = useState(false);
     const [hasRunTest, setHasRunTest] = useState(false);
     const [hasConfiguredSettings, setHasConfiguredSettings] = useState(false);
     const [validationIssues, setValidationIssues] = useState<WorkflowValidationIssue[]>([]);
     const [validationPending, setValidationPending] = useState(false);
+    const [qualityPolicies, setQualityPolicies] = useState<Record<string, OpenEndQualityPolicyPreview>>({});
+    const [inspectedFlowRule, setInspectedFlowRule] = useState<FlowRuleInspection | null>(null);
     const validateRunRef = useRef(0);
+    useEffect(() => {
+        setInspectedFlowRule(null);
+    }, [selectedNodeId]);
 
     // Load Data
     useEffect(() => {
         if (surveyId) {
+            setQualityPolicies({});
             loadSurveyData(surveyId);
         }
     }, [surveyId, loadSurveyData]);
@@ -186,6 +194,14 @@ function SurveyFlow() {
                 return;
             }
 
+            if (analysisOpen) {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setAnalysisOpen(false);
+                }
+                return;
+            }
+
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
                 event.preventDefault();
                 setIsNodeSearchOpen((prev) => !prev);
@@ -225,7 +241,14 @@ function SurveyFlow() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedNodeId, isReadOnly, nodes, edges, setNodes, setEdges, setSelectedNodeId, zoomIn, zoomOut]);
+    }, [analysisOpen, selectedNodeId, isReadOnly, nodes, edges, setNodes, setEdges, setSelectedNodeId, zoomIn, zoomOut]);
+
+    useEffect(() => {
+        if (!analysisOpen) return;
+        setSelectedNodeId(null);
+        setIsNodeSearchOpen(false);
+        setInspectedFlowRule(null);
+    }, [analysisOpen, setSelectedNodeId]);
 
     // Autosave Hook
     useAutosave(surveyId || "");
@@ -350,14 +373,20 @@ function SurveyFlow() {
 
     return (
         <div className="flex w-full h-screen bg-background overflow-hidden relative">
-            <SurveyNodeSidebar
+            {!analysisOpen && <SurveyNodeSidebar
                 confirmNavigation={confirmNavigation}
                 isCollapsed={isSidebarCollapsed}
                 onCollapsedChange={setIsSidebarCollapsed}
-            />
+            />}
 
             <div className="flex-1 h-full relative" >
-                <EditorCanvas />
+                <EditorCanvas
+                    inspectedFlowRule={inspectedFlowRule}
+                    onInspectFlowRule={setInspectedFlowRule}
+                    analysisOpen={analysisOpen}
+                    onAnalysisOpenChange={setAnalysisOpen}
+                    qualityPolicies={qualityPolicies}
+                />
 
                 <SurveyNavTabs
                     surveyId={surveyId || ""}
@@ -365,7 +394,7 @@ function SurveyFlow() {
                     className="absolute top-4 left-4 z-50"
                 />
 
-                {!hasQuestionNode && !isReadOnly && (
+                {!analysisOpen && !hasQuestionNode && !isReadOnly && (
                     <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
                         <div className="pointer-events-auto rounded-xl border border-border bg-background/95 p-5 shadow-lg text-center max-w-sm">
                             <h3 className="text-sm font-semibold mb-1">Start building your survey</h3>
@@ -382,25 +411,34 @@ function SurveyFlow() {
                     </div>
                 )}
 
-                <OnboardingChecklist
+                {!analysisOpen && <OnboardingChecklist
                     surveyId={surveyId || ""}
                     hasQuestion={hasQuestionNode}
                     hasConfiguredSettings={hasConfiguredSettings}
                     hasRunTest={hasRunTest}
-                />
+                />}
 
-                <ValidationDrawer
+                {!analysisOpen && <ValidationDrawer
                     issues={validationIssues}
                     onFocusNode={(nodeId) => setSelectedNodeId(nodeId)}
-                />
+                />}
 
-                <NodeSearchPalette
+                {!analysisOpen && <NodeSearchPalette
                     isOpen={isNodeSearchOpen}
                     onClose={() => setIsNodeSearchOpen(false)}
                     onSelectType={handleAddNodeFromPalette}
-                />
+                />}
 
-                <NodeViewer nodes={nodes} onSelect={setSelectedNodeId} openSignal={nodeViewerOpenSignal} />
+                {!analysisOpen && <NodeViewer nodes={nodes} onSelect={setSelectedNodeId} openSignal={nodeViewerOpenSignal} />}
+
+                {!selectedNode && !analysisOpen && (
+                    <div className="absolute right-20 bottom-4 z-20 w-72 max-w-[calc(100%_-_6rem)] rounded-xl border border-border bg-background/95 p-4 shadow-lg backdrop-blur">
+                        <h4 className="text-sm font-semibold mb-1">Nothing selected</h4>
+                        <p className="text-xs text-muted-foreground">
+                            Click any node to edit it. Tip: press <kbd className="px-1 rounded border border-border bg-muted">/</kbd> to search nodes quickly.
+                        </p>
+                    </div>
+                )}
 
                 <EditorHeader
                     surveyId={surveyId || ""}
@@ -418,6 +456,8 @@ function SurveyFlow() {
                     }}
                     validationIssues={validationIssues}
                     validationPending={validationPending}
+                    analysisOpen={analysisOpen}
+                    onAnalysisOpenChange={setAnalysisOpen}
                 />
             </div>
 
@@ -443,27 +483,21 @@ function SurveyFlow() {
             />
 
             {/* Right Sidebar: Properties Panel */}
-            {selectedNode && (
+            {selectedNode && !analysisOpen && (
                 <PropertiesPanel
                     node={selectedNode}
                     nodes={nodes}
                     issues={selectedNodeIssues}
                     surveyId={surveyId}
                     readOnly={isReadOnly}
+                    onInspectFlowRule={setInspectedFlowRule}
+                    onQualityPoliciesChange={setQualityPolicies}
                     onChange={(fieldName, value) => {
                         if (isReadOnly || !selectedNodeId) return;
                         updateNodeData(selectedNodeId, { [fieldName]: value });
                     }}
                     onClose={() => setSelectedNodeId(null)}
                 />
-            )}
-            {!selectedNode && (
-                <div className="absolute right-4 bottom-4 w-72 rounded-xl border border-border bg-background/95 p-4 shadow-lg z-20">
-                    <h4 className="text-sm font-semibold mb-1">Nothing selected</h4>
-                    <p className="text-xs text-muted-foreground mb-3">
-                        Click any node to edit it. Tip: press <kbd className="px-1 rounded border border-border bg-muted">/</kbd> to search nodes quickly.
-                    </p>
-                </div>
             )}
 
             <SurveySettingsModal

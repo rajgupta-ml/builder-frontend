@@ -55,9 +55,7 @@ type MetricsStreamHandlers = {
 };
 
 export type QualitySummary = {
-    averageScore: number | null;
     totalResponses: number;
-    scoredResponses: number;
     stateCounts: Record<string, number>;
     detectorCounts: Record<string, number>;
     detectorReviewMetrics: Record<string, {
@@ -76,11 +74,9 @@ export type QualityResponseListItem = {
     startedAt: string | null;
     completedAt: string | null;
     updatedAt: string | null;
-    qualityScore: number | null;
     qualityState: string | null;
     qualityProcessingStatus: string | null;
-    qualityScoreVersion: string | null;
-    qualityCriticalOverride: boolean | null;
+    qualityRulesVersion: string | null;
     qualityReviewStatus: string | null;
     qualityReviewReasonCode: string | null;
     qualityReviewedAt: string | null;
@@ -92,8 +88,6 @@ export type QualityResponseFlag = {
     detectorCode: string;
     flagCode: string;
     scopeKey: string;
-    scoreGroup: string;
-    scoreImpact: number;
     severity: string;
     source: string;
     confidence: number | null;
@@ -104,23 +98,6 @@ export type QualityResponseFlag = {
     settingsVersion: number | null;
     detectedAt: string;
     retiredAt: string | null;
-};
-
-export type QualityScoreHistoryItem = {
-    id: string;
-    reason: string;
-    previousScore: number | null;
-    newScore: number | null;
-    previousState: string | null;
-    newState: string | null;
-    previousProcessingStatus: string | null;
-    newProcessingStatus: string | null;
-    previousCriticalOverride: boolean | null;
-    newCriticalOverride: boolean | null;
-    settingsVersion: number | null;
-    scoreVersion: string | null;
-    reasonPayload: Record<string, unknown> | null;
-    createdAt: string;
 };
 
 export type QualityOperationStatus = {
@@ -154,39 +131,29 @@ export type QualityResponseDetail = {
     startedAt: string | null;
     completedAt: string | null;
     updatedAt: string | null;
-    qualityScore: number | null;
     qualityState: string | null;
     qualityProcessingStatus: string | null;
-    qualityScoreVersion: string | null;
-    qualityScoredAt: string | null;
-    qualityCriticalOverride: boolean | null;
+    qualityRulesVersion: string | null;
+    qualityEvaluatedAt: string | null;
     qualityReviewStatus: string | null;
     qualityReviewReasonCode: string | null;
     qualityReviewedAt: string | null;
     qualitySettingsVersion: number | null;
     qualityFlags: QualityResponseFlag[];
-    qualityScoreHistory: QualityScoreHistoryItem[];
     openEndQuality?: OpenEndQualitySummary;
 };
 
 export type QualityDetectorSettings = {
     enabled: boolean;
-    scoreImpact?: number;
-    severity?: string;
     thresholdSeconds?: number;
+    expectedSurveySeconds?: number;
     expectedSurveyRatio?: number;
-    minimumFloorSeconds?: number;
     expectedTimeRatio?: number;
     wordsPerSecond?: number;
     interactionFloorSeconds?: number;
     minResponses?: number;
+    binaryMinResponses?: number;
     nearStraightLineRatio?: number;
-    straightLineScoreImpact?: number;
-    straightLineSeverity?: string;
-    nearStraightLineScoreImpact?: number;
-    nearStraightLineSeverity?: string;
-    patternResponseScoreImpact?: number;
-    patternResponseSeverity?: string;
 };
 
 export type QualitySettings = {
@@ -194,13 +161,7 @@ export type QualitySettings = {
     version: number | null;
     guardrailVersion: number;
     isEnabled: boolean;
-    scoreVersion: string;
-    thresholds: {
-        cleanMin: number;
-        watchlistMin: number;
-        flaggedMin: number;
-    };
-    scoreGroupCaps: Record<string, number>;
+    rulesVersion: string;
     detectors: Record<string, QualityDetectorSettings>;
     compliancePolicy?: {
         duplicateDeviceTestOnly: boolean;
@@ -245,7 +206,7 @@ export const surveyResponseApi = {
         surveyId: string,
         handlers: MetricsStreamHandlers
     ): Promise<void> => {
-        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         if (!token) {
             throw new Error("Missing auth token for metrics stream");
         }
@@ -404,9 +365,7 @@ export const surveyResponseApi = {
                 details: { endpoint: `/responses/quality/${surveyId}/summary` },
             });
             return {
-                averageScore: null,
                 totalResponses: 0,
-                scoredResponses: 0,
                 stateCounts: {},
                 detectorCounts: {},
                 detectorReviewMetrics: {},
@@ -501,14 +460,11 @@ export const surveyResponseApi = {
         surveyId: string,
         input: {
             guardrailVersion?: number;
-            scoreVersion?: string;
-            thresholds: {
-                cleanMin: number;
-                watchlistMin: number;
-                flaggedMin: number;
-            };
-            scoreGroupCaps: Record<string, number>;
             detectors: Record<string, QualityDetectorSettings>;
+            compliancePolicy?: {
+                duplicateDeviceTestOnly: boolean;
+                duplicateDeviceLiveApprovalRecorded: boolean;
+            };
         }
     ): Promise<QualitySettings> => {
         const response = await apiClient.put(`/responses/quality/${surveyId}/settings`, input);
@@ -522,6 +478,41 @@ export const surveyResponseApi = {
             throw new Error('Invalid quality settings update payload');
         }
         return payload as QualitySettings;
+    },
+
+    exportQualityResponses: async (
+        surveyId: string,
+        format: 'csv' | 'xlsx' | 'json' = 'csv',
+        mode?: 'LIVE' | 'TEST',
+        detailed = false
+    ) => {
+        try {
+            const endpoint = detailed
+                ? `/responses/quality/${surveyId}/export/detailed`
+                : `/responses/quality/${surveyId}/export`;
+            const response = await apiClient.get(endpoint, {
+                params: mode ? { format, mode } : { format },
+                responseType: 'blob',
+            });
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const modeLabel = mode || 'ALL';
+            const fallbackFilename = `${detailed ? 'quality-detailed-export' : 'quality-export'}-${surveyId}-${modeLabel}-${timestamp}.${format}`;
+            const contentDisposition = response.headers['content-disposition'];
+            const filenameMatch = contentDisposition?.match(/filename="?([^";]+)"?/);
+            const filename = filenameMatch?.[1] || fallbackFilename;
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Quality export failed", error);
+            toast.error(toUserMessage(error, "Failed to export response quality. Please try again."));
+        }
     },
 
     exportResponses: async (surveyId: string, format: 'csv' | 'xlsx' | 'spss' = 'csv', mode?: 'LIVE' | 'TEST') => {

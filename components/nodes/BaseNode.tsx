@@ -27,6 +27,12 @@ interface BaseNodeProps {
 
 const BaseNode = ({ id, selected, data, children, icon: Icon, color = "bg-primary", handles }: BaseNodeProps) => {
     const { deleteElements } = useReactFlow();
+    const straightLineGroup = data.straightLiningGroup && typeof data.straightLiningGroup === "object"
+        ? data.straightLiningGroup as Record<string, unknown>
+        : null;
+    const straightLineGroupLabel = typeof straightLineGroup?.label === "string"
+        ? straightLineGroup.label.trim()
+        : "";
 
     // Default actions if not provided in data
     const handleDelete = () => {
@@ -77,6 +83,14 @@ const BaseNode = ({ id, selected, data, children, icon: Icon, color = "bg-primar
             {/* Content Body */}
             <div className="p-3">
                 {children}
+                {straightLineGroupLabel && (
+                    <div
+                        className="mt-2 truncate rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[9px] font-semibold text-violet-700"
+                        title={"Straight-line group: " + straightLineGroupLabel}
+                    >
+                        SL group · {straightLineGroupLabel}
+                    </div>
+                )}
             </div>
 
             {/* Source Handle (Output) - BOTTOM */}

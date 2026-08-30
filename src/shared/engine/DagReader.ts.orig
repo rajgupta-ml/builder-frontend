@@ -143,12 +143,12 @@ export class DAGReader {
         const results = group.children
             .filter((child) => this.conditionHasRules(child))
             .map(child => {
-                if (child.type === 'group') {
-                    return this.evaluateCondition(child as LogicGroup, responses);
-                } else {
-                    return this.evaluateRule(child as LogicRule, responses);
-                }
-            });
+            if (child.type === 'group') {
+                return this.evaluateCondition(child as LogicGroup, responses);
+            } else {
+                return this.evaluateRule(child as LogicRule, responses);
+            }
+        });
 
         if (group.logicType === 'OR') {
             return results.some(r => r === true);

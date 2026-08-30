@@ -47,8 +47,7 @@ import { ReconcileResponseModal } from "@/components/modals/ReconcileResponseMod
 import { ModalPortal } from "@/components/ui/ModalPortal";
 import { safeDateTime, safeIdShort } from "@/lib/safe-format";
 import { toUserMessage } from "@/lib/api-error";
-import { getStoredUserRole, hasPermission, PERMISSIONS } from "@/lib/permissions";
-import type { UserRole } from "@/types/auth";
+import { getStoredUserScopes, hasPermission, PERMISSIONS } from "@/lib/permissions";
 import { SurveyNavTabs } from "@/components/editor/SurveyNavTabs";
 
 interface MetricData {
@@ -164,7 +163,7 @@ export default function SurveyMetricsPage() {
     const [secureShareMode, setSecureShareMode] = useState<"EXPORT" | "DASHBOARD">("EXPORT");
     const [isReconcileOpen, setIsReconcileOpen] = useState(false);
     const [resyncing, setResyncing] = useState(false);
-    const [userRole, setUserRole] = useState<UserRole | undefined>(undefined);
+    const [userScopes, setUserScopes] = useState<string[]>([]);
     const [shareEmail, setShareEmail] = useState("");
     const [shareFormat, setShareFormat] = useState<SharedExportFormat>("csv");
     const [shareMode, setShareMode] = useState<SharedExportMode>("LIVE");
@@ -322,7 +321,7 @@ export default function SurveyMetricsPage() {
     useEffect(() => {
         if (!id) return;
         const controller = new AbortController();
-        setUserRole(getStoredUserRole());
+        setUserScopes(getStoredUserScopes());
         fetchData(controller.signal);
         return () => controller.abort();
     }, [fetchData, id]);
@@ -374,11 +373,11 @@ export default function SurveyMetricsPage() {
         };
     }, [applyRealtimeMetricsUpdate, currentPage, fetchResponsesOnly, id, modeFilter, viewMode]);
 
-    const canManageSurvey = hasPermission(userRole, PERMISSIONS.SURVEY_EDIT);
-    const canManageQuotas = hasPermission(userRole, PERMISSIONS.QUOTA_MANAGE);
-    const canExport = hasPermission(userRole, PERMISSIONS.RESPONSE_EXPORT);
-    const canShareResponses = hasPermission(userRole, PERMISSIONS.RESPONSE_SHARE);
-    const canResync = hasPermission(userRole, PERMISSIONS.RESPONSE_RESYNC);
+    const canManageSurvey = hasPermission(userScopes, PERMISSIONS.SURVEY_EDIT);
+    const canManageQuotas = hasPermission(userScopes, PERMISSIONS.QUOTA_MANAGE);
+    const canExport = hasPermission(userScopes, PERMISSIONS.RESPONSE_EXPORT);
+    const canShareResponses = hasPermission(userScopes, PERMISSIONS.RESPONSE_SHARE);
+    const canResync = hasPermission(userScopes, PERMISSIONS.RESPONSE_RESYNC);
 
     const copyGeneratedLink = async (url: string) => {
         if (typeof navigator === "undefined" || !navigator.clipboard) return false;
@@ -596,21 +595,16 @@ export default function SurveyMetricsPage() {
         'Version',
         'Survey Name',
         'activeQualityFlags',
-        'qualityScore',
         'qualityState',
         'qualityProcessingStatus',
         'qualityReviewStatus',
         'qualityReviewReasonCode',
-        'qualityScoreVersion',
-        'qualityCriticalOverride',
         'quality_flag_count',
         'quality_flags',
         'quality_flag_severities',
         'quality_review_status',
         'quality_review_reason',
-        'quality_processing_status',
-        'quality_score',
-        'quality_score_version'
+        'quality_processing_status'
     ];
     const normalizedStandardHeaders = new Set(standardHeaders.map(h => h.trim().toLowerCase()));
     const isStandardHeader = (header: string) => normalizedStandardHeaders.has(header.trim().toLowerCase());
@@ -685,6 +679,7 @@ export default function SurveyMetricsPage() {
                             <IconRefresh size={16} strokeWidth={1.7} />
                         </button>
 
+                    {!canExport && <button disabled className="px-4 py-2 text-sm border border-border/60 rounded-md opacity-40 cursor-not-allowed" title="Requires permission: survey_studio:response.export"><IconDownload size={18} className="inline mr-2" />Export Data</button>}
                         {canExport && (
                             <div className="relative">
                                 <button
