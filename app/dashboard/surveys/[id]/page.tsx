@@ -19,7 +19,6 @@ import { EditorCanvas } from '@/components/editor/EditorCanvas';
 import { ShareModal } from '@/components/editor/ShareModal';
 import { AiImportModal } from '@/components/editor/AiImportModal';
 import { ValidationDrawer } from '@/components/editor/ValidationDrawer';
-import { OnboardingChecklist } from '@/components/editor/OnboardingChecklist';
 import { getNodeInitialData } from '@/components/nodes/definitions';
 import { generateUniqueId } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -410,13 +409,6 @@ function SurveyFlow() {
                         </div>
                     </div>
                 )}
-
-                {!analysisOpen && <OnboardingChecklist
-                    surveyId={surveyId || ""}
-                    hasQuestion={hasQuestionNode}
-                    hasConfiguredSettings={hasConfiguredSettings}
-                    hasRunTest={hasRunTest}
-                />}
 
                 {!analysisOpen && <ValidationDrawer
                     issues={validationIssues}

@@ -3,6 +3,7 @@ import { useReactFlow, type Node } from '@xyflow/react';
 import { IconSearch, IconFocus2, IconList } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { getNodeDefinition } from '@/components/nodes/definitions';
+import { buildEndNodeSequence } from '@/lib/endNodeSequence';
 
 export default function NodeViewer({
     nodes,
@@ -43,6 +44,7 @@ export default function NodeViewer({
             questionNumberMap.set(node.id, qCount);
         }
     });
+    const endNumberMap = buildEndNodeSequence(nodes);
 
     const filteredNodes = nodes.filter(n =>
         (n.data?.label as string || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -89,6 +91,7 @@ export default function NodeViewer({
                                 const def = getNodeDefinition(node.type || '');
                                 const Icon = def?.icon || IconFocus2;
                                 const qNumber = questionNumberMap.get(node.id);
+                                const endNumber = node.type === 'end' ? endNumberMap.get(node.id) : undefined;
 
                                 return (
                                     <button
@@ -104,7 +107,7 @@ export default function NodeViewer({
                                                 {qNumber ? `Q${qNumber} • ` : ''}{node.type?.replace(/([A-Z])/g, ' $1')}
                                             </div>
                                             <div className="text-[13px] font-medium truncate text-foreground leading-tight">
-                                                {node.data?.label as string || 'Untitled Node'}
+                                                {endNumber ? `${endNumber}. End` : (node.data?.label as string || 'Untitled Node')}
                                             </div>
                                         </div>
                                         <IconFocus2 size={12} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

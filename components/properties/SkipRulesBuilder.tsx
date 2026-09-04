@@ -5,6 +5,7 @@ import { ConditionBuilder } from "./ConditionBuilder";
 import type { LogicGroup, LogicRule } from "./conditionTypes";
 import { getSkipRuleKey, type FlowRuleInspection, type SkipRule, type VisibilityRuleInspection } from "@/lib/skipMigration";
 import { cn, generateUniqueId } from "@/lib/utils";
+import { buildEndNodeSequence } from "@/lib/endNodeSequence";
 
 interface SkipRulesBuilderProps {
     value: unknown;
@@ -111,28 +112,33 @@ const getChoiceOptions = (data?: Record<string, unknown>): ChoiceOption[] => {
     return baseOptions;
 };
 
-const getTargetBaseLabel = (node: Node): string => {
+const getTargetBaseLabel = (node: Node, endSequence: Map<string, number>): string => {
     const data = (node.data || {}) as Record<string, unknown>;
     if (node.type === "end") {
+        const seq = endSequence.get(node.id);
+        const prefix = seq ? seq + ". " : "";
         const outcome = String(data.outcome || "").trim();
-        if (outcome) return "End: " + titleCase(outcome);
+        if (outcome) return prefix + "End: " + titleCase(outcome);
         const message = String(data.message || "").trim();
-        if (message) return "End: " + message;
-        return "End screen";
+        if (message) return prefix + "End: " + message;
+        return prefix + "End";
     }
     return String(data.label || node.id);
 };
 
 const getTargetOptions = (nodes: Node[], currentNodeId: string, currentY: number | null) => {
-    const allowedNodes = nodes.filter((node) => isAllowedSkipTarget(node, currentNodeId, currentY));
+    const allowedNodes = nodes
+        .filter((node) => isAllowedSkipTarget(node, currentNodeId, currentY))
+        .sort((a, b) => Number(a.type === "end") - Number(b.type === "end"));
+    const endSequence = buildEndNodeSequence(nodes);
     const baseCounts = allowedNodes.reduce<Record<string, number>>((counts, node) => {
-        const label = getTargetBaseLabel(node);
+        const label = getTargetBaseLabel(node, endSequence);
         counts[label] = (counts[label] || 0) + 1;
         return counts;
     }, {});
 
     return allowedNodes.map((node) => {
-        const baseLabel = getTargetBaseLabel(node);
+        const baseLabel = getTargetBaseLabel(node, endSequence);
         const label = baseCounts[baseLabel] > 1 ? baseLabel + " - " + node.id.slice(-6) : baseLabel;
         return { id: node.id, label, type: String(node.type || "") };
     });
@@ -168,12 +174,13 @@ const getVisibilityInspection = (
     const rules = collectLogicRules(value);
     if (rules.length === 0) return null;
     const nodeIds = new Set(nodes.map((node) => node.id));
+    const endSequence = buildEndNodeSequence(nodes);
     const sourceIds = [...new Set(rules
         .flatMap((rule) => [rule.field, rule.valueType === "variable" ? rule.compareField : undefined])
         .filter((id): id is string => Boolean(id) && id !== targetId && nodeIds.has(String(id))))];
     const firstRule = rules[0];
     const sourceNode = nodes.find((node) => node.id === firstRule.field);
-    const sourceLabel = sourceNode ? getTargetBaseLabel(sourceNode) : "Answer";
+    const sourceLabel = sourceNode ? getTargetBaseLabel(sourceNode, endSequence) : "Answer";
     const operator = VISIBILITY_OPERATOR_LABELS[firstRule.operator] || titleCase(firstRule.operator || "matches");
     const rawValue = firstRule.valueType === "variable"
         ? nodes.find((node) => node.id === firstRule.compareField)?.data?.label || "another answer"
@@ -246,7 +253,7 @@ export function SkipRulesBuilder({
         || edges.find((edge) => edge.source === currentNodeId);
     const defaultTarget = nodes.find((node) => node.id === defaultEdge?.target);
     const defaultTargetLabel = defaultTarget
-        ? getTargetBaseLabel(defaultTarget)
+        ? getTargetBaseLabel(defaultTarget, buildEndNodeSequence(nodes))
         : "the connected next step";
 
     const commit = (nextRules: SkipRule[]) => {

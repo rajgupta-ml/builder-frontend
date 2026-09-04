@@ -26,6 +26,7 @@ import { FlowDebugger } from '@/lib/flowDebugger';
 import { PathAnalysisDrawer } from '@/components/editor/PathAnalysisDrawer';
 import type { OpenEndQualityPolicyPreview } from '@/api/surveyWorkflow';
 import { buildFlowRelationships } from '@/lib/flowRelationships';
+import { buildEndNodeSequence } from '@/lib/endNodeSequence';
 
 const getId = () => generateUniqueId('node');
 const DEFAULT_DEBUG_CANVAS_PERCENT = 32;
@@ -299,10 +300,12 @@ export function EditorCanvas({
 
     const nodesWithQualityStatus = useMemo<ReactFlowNode[]>(() => {
         const flowRelationships = buildFlowRelationships(nodes);
+        const endSequence = buildEndNodeSequence(nodes);
         return nodes.map((node) => {
             const relationshipData = {
                 __flowRelationships: flowRelationships.get(node.id),
                 __onInspectFlowRule: onInspectFlowRule,
+                __endSequence: node.type === 'end' ? endSequence.get(node.id) : undefined,
             };
 
             if (node.type === 'textInput') {

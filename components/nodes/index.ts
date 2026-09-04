@@ -490,6 +490,14 @@ const EndRegistryNode = (props: NodeProps<any>) => {
                 props.selected ? 'border-red-800 ring-4 ring-red-500/20 shadow-xl' : 'border-red-700 hover:border-red-800',
             ),
         },
+        e(
+            'span',
+            {
+                className: 'absolute left-1/2 bottom-full mb-1 -translate-x-1/2 whitespace-nowrap rounded-full border border-red-700 bg-white px-2 py-0.5 text-[10px] font-bold text-red-700 shadow-sm',
+                title: `Node ID: ${props.id}`,
+            },
+            `${props.data.__endSequence ?? '?'}. End`,
+        ),
         e(Handle, {
             type: 'target',
             position: Position.Top,
