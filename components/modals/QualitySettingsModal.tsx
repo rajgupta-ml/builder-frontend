@@ -50,6 +50,38 @@ const validPercent = (value: string) => {
     return Number.isFinite(parsed) && parsed > 0 && parsed <= 100;
 };
 
+type StraightLiningPreset = {
+    id: string;
+    label: string;
+    hint: string;
+    percent: string;
+    minAnswers: string;
+    binaryMinAnswers: string;
+};
+
+const STRAIGHT_LINING_PRESETS: StraightLiningPreset[] = [
+    { id: "strict", label: "Strict", hint: "Flags sooner, on less evidence", percent: "80", minAnswers: "6", binaryMinAnswers: "8" },
+    { id: "balanced", label: "Balanced", hint: "Recommended default", percent: "90", minAnswers: "8", binaryMinAnswers: "10" },
+    { id: "lenient", label: "Lenient", hint: "Needs stronger, longer evidence", percent: "97", minAnswers: "12", binaryMinAnswers: "16" },
+];
+
+const matchesPreset = (form: FormState, preset: StraightLiningPreset) => (
+    form.straightLiningPercent === preset.percent
+    && form.straightLiningMinAnswers === preset.minAnswers
+    && form.straightLiningBinaryMinAnswers === preset.binaryMinAnswers
+);
+
+const describeStraightLiningRule = (form: FormState) => {
+    const percent = Number(form.straightLiningPercent);
+    const minAnswers = Number(form.straightLiningMinAnswers);
+    const binaryMinAnswers = Number(form.straightLiningBinaryMinAnswers);
+    if (!validPercent(form.straightLiningPercent) || !Number.isFinite(minAnswers) || !Number.isFinite(binaryMinAnswers)) {
+        return "Enter valid numbers above to see what this rule will do.";
+    }
+    return `Once a respondent has ${minAnswers}+ comparable answers, we check whether ${percent}%+ of them are the same option. `
+        + `Two-option grids (e.g. yes/no) need ${binaryMinAnswers}+ comparable answers before this applies — a 50/50 guess matches by chance too often to judge on fewer.`;
+};
+
 export function QualitySettingsModal({ isOpen, onClose, surveyId, onSave }: QualitySettingsModalProps) {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -206,7 +238,36 @@ export function QualitySettingsModal({ isOpen, onClose, surveyId, onSave }: Qual
                                             enabled={form.straightLiningEnabled}
                                             onToggle={(enabled) => setForm({ ...form, straightLiningEnabled: enabled })}
                                         >
-                                            <div className="grid gap-3 sm:grid-cols-2">
+                                            <div className="space-y-1.5">
+                                                <span className="text-sm font-medium text-foreground">Presets</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {STRAIGHT_LINING_PRESETS.map((preset) => {
+                                                        const active = matchesPreset(form, preset);
+                                                        return (
+                                                            <button
+                                                                key={preset.id}
+                                                                type="button"
+                                                                title={preset.hint}
+                                                                onClick={() => setForm({
+                                                                    ...form,
+                                                                    straightLiningPercent: preset.percent,
+                                                                    straightLiningMinAnswers: preset.minAnswers,
+                                                                    straightLiningBinaryMinAnswers: preset.binaryMinAnswers,
+                                                                })}
+                                                                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                                    active
+                                                                        ? "border-primary bg-primary/10 text-primary"
+                                                                        : "border-border text-muted-foreground hover:bg-muted"
+                                                                }`}
+                                                            >
+                                                                {preset.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                                 <NumberField
                                                     label="Same-answer threshold"
                                                     value={form.straightLiningPercent}
@@ -221,10 +282,16 @@ export function QualitySettingsModal({ isOpen, onClose, surveyId, onSave }: Qual
                                                 <NumberField
                                                     label="Minimum answers for two-option grids"
                                                     value={form.straightLiningBinaryMinAnswers}
+                                                    hint="Higher than the general minimum — a 50/50 guess matches by chance far more often."
                                                     onChange={(straightLiningBinaryMinAnswers) => setForm({ ...form, straightLiningBinaryMinAnswers })}
                                                 />
                                             </div>
-                                            <p className="text-xs text-muted-foreground">
+
+                                            <div className="mt-4 rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5 text-xs leading-relaxed text-foreground">
+                                                {describeStraightLiningRule(form)}
+                                            </div>
+
+                                            <p className="mt-3 text-xs text-muted-foreground">
                                                 These are survey defaults. Eligible questions can inherit them, override them, or disable this check. A finding is evidence for review, not proof of careless responding.
                                             </p>
                                         </RuleCard>
@@ -310,7 +377,7 @@ function RuleCard({
     );
 }
 
-function NumberField({ label, value, onChange, suffix }: { label: string; value: string; onChange: (value: string) => void; suffix?: string }) {
+function NumberField({ label, value, onChange, suffix, hint }: { label: string; value: string; onChange: (value: string) => void; suffix?: string; hint?: string }) {
     return (
         <label className="block space-y-2 text-sm font-medium text-foreground">
             <span>{label}</span>
@@ -325,6 +392,7 @@ function NumberField({ label, value, onChange, suffix }: { label: string; value:
                 />
                 {suffix && <span className="flex items-center border-l border-border bg-muted/40 px-3 text-xs text-muted-foreground">{suffix}</span>}
             </div>
+            {hint && <span className="block text-xs font-normal leading-snug text-muted-foreground">{hint}</span>}
         </label>
     );
 }
