@@ -6,6 +6,7 @@ import type { LogicGroup, LogicRule } from "./conditionTypes";
 import { getSkipRuleKey, type FlowRuleInspection, type SkipRule, type VisibilityRuleInspection } from "@/lib/skipMigration";
 import { cn, generateUniqueId } from "@/lib/utils";
 import { buildEndNodeSequence } from "@/lib/endNodeSequence";
+import { getChoiceOptions, titleCase, type ChoiceOption } from "@/lib/choiceOptions";
 
 interface SkipRulesBuilderProps {
     value: unknown;
@@ -77,39 +78,6 @@ const isAllowedSkipTarget = (node: Node, currentNodeId: string, currentY: number
     if (currentY !== null && targetY !== null && targetY <= currentY) return false;
 
     return true;
-};
-
-type ChoiceOption = { label: string; value: string };
-
-const titleCase = (value: string): string => value
-    .replace(/[_-]+/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
-const getOptionValue = (option: unknown): string => {
-    const record = option as Record<string, unknown> | null;
-    return String(record?.value || "").trim();
-};
-
-const getChoiceOptions = (data?: Record<string, unknown>): ChoiceOption[] => {
-    const options = Array.isArray(data?.options) ? data.options : [];
-    const baseOptions = options
-        .map((option) => {
-            const record = option as Record<string, unknown>;
-            const value = getOptionValue(record);
-            if (!value) return null;
-            return { label: String(record.label || value), value };
-        })
-        .filter((option): option is ChoiceOption => Boolean(option));
-
-    if (data?.allowOther) {
-        baseOptions.push({ label: String(data.otherLabel || "Other"), value: "other" });
-    }
-    if (data?.allowNone) {
-        baseOptions.push({ label: String(data.noneLabel || "None of these"), value: "none" });
-    }
-
-    return baseOptions;
 };
 
 const getTargetBaseLabel = (node: Node, endSequence: Map<string, number>): string => {
@@ -192,16 +160,20 @@ const getVisibilityInspection = (
     return { kind: "visibility", targetId, sourceIds, label };
 };
 
-const getSingleChoiceOptionValue = (rule: SkipRule, currentNodeId: string): string | null => {
+// Multi-select answers are matched with "contains"; every other choice type
+// (single-select, dropdown, ranking, consent, emoji rating) uses "equals".
+const optionOperatorForNodeType = (nodeType?: string): string => (nodeType === "multipleChoice" ? "contains" : "equals");
+
+const getChoiceOptionValue = (rule: SkipRule, currentNodeId: string): string | null => {
     const condition = normalizeCondition(rule.condition);
     if (condition.logicType !== "AND" || condition.children.length !== 1) return null;
     const child = condition.children[0] as LogicRule | undefined;
     if (!child || child.type !== "rule") return null;
-    if (child.field !== currentNodeId || child.operator !== "equals" || child.valueType === "variable") return null;
+    if (child.field !== currentNodeId || (child.operator !== "equals" && child.operator !== "contains") || child.valueType === "variable") return null;
     return typeof child.value === "string" && child.value ? child.value : null;
 };
 
-const createOptionCondition = (currentNodeId: string, optionValue: string): LogicGroup => ({
+const createOptionCondition = (currentNodeId: string, optionValue: string, operator: string): LogicGroup => ({
     id: generateUniqueId("group"),
     type: "group",
     logicType: "AND",
@@ -209,7 +181,7 @@ const createOptionCondition = (currentNodeId: string, optionValue: string): Logi
         id: generateUniqueId("rule"),
         type: "rule",
         field: currentNodeId,
-        operator: "equals",
+        operator,
         value: optionValue,
         valueType: "static",
     }],
@@ -317,9 +289,10 @@ export function SkipRulesBuilder({
         setVisibilityDraftOpen(false);
     };
 
-    const choiceOptions = nodeType === "singleChoice" ? getChoiceOptions(nodeData) : [];
+    const choiceOptions = getChoiceOptions(nodeData);
+    const choiceOperator = optionOperatorForNodeType(nodeType);
     const optionRuleEntries = rules
-        .map((rule, index) => ({ rule, index, optionValue: getSingleChoiceOptionValue(rule, currentNodeId) }))
+        .map((rule, index) => ({ rule, index, optionValue: getChoiceOptionValue(rule, currentNodeId) }))
         .filter((entry): entry is { rule: SkipRule; index: number; optionValue: string } => Boolean(entry.optionValue));
     const optionValues = new Set(choiceOptions.map((option) => option.value));
     const optionRuleByValue = new Map<string, SkipRule>();
@@ -335,14 +308,14 @@ export function SkipRulesBuilder({
         const option = choiceOptions.find((candidate) => candidate.value === optionValue);
         if (!option) return;
         const remainingRules = rules.filter((rule) => (
-            rule !== route && getSingleChoiceOptionValue(rule, currentNodeId) !== optionValue
+            rule !== route && getChoiceOptionValue(rule, currentNodeId) !== optionValue
         ));
         commit([
             ...remainingRules,
             {
                 ...route,
                 label: option.label,
-                condition: createOptionCondition(currentNodeId, option.value),
+                condition: createOptionCondition(currentNodeId, option.value, choiceOperator),
             },
         ]);
     };
@@ -358,13 +331,13 @@ export function SkipRulesBuilder({
     const addOptionRoute = (targetId: string) => {
         const option = choiceOptions.find((candidate) => candidate.value === optionRouteDraftValue);
         if (!option || !targetId) return;
-        const remainingRules = rules.filter((rule) => getSingleChoiceOptionValue(rule, currentNodeId) !== option.value);
+        const remainingRules = rules.filter((rule) => getChoiceOptionValue(rule, currentNodeId) !== option.value);
         commit([
             ...remainingRules,
             {
                 id: generateUniqueId("skip"),
                 label: option.label,
-                condition: createOptionCondition(currentNodeId, option.value),
+                condition: createOptionCondition(currentNodeId, option.value, choiceOperator),
                 targetId,
             },
         ]);
@@ -372,14 +345,14 @@ export function SkipRulesBuilder({
         setOptionRouteDraftValue("");
     };
 
-    if (nodeType === "singleChoice" && choiceOptions.length > 0) {
+    if (choiceOptions.length > 0) {
         const configuredRoutes = choiceOptions.flatMap((option) => {
             const route = optionRuleByValue.get(option.value);
             return route ? [{ option, route }] : [];
         });
         const usedOptionValues = new Set(configuredRoutes.map(({ option }) => option.value));
         const availableDraftOptions = choiceOptions.filter((option) => !usedOptionValues.has(option.value));
-        const singleChoiceRuleCount = configuredRoutes.length + (showVisibilityRule ? 1 : 0);
+        const optionRuleCount = configuredRoutes.length + (showVisibilityRule ? 1 : 0);
 
         return (
             <div className="space-y-4">
@@ -397,7 +370,7 @@ export function SkipRulesBuilder({
                 <div className="flex items-center justify-between gap-2">
                     <h3 className="text-xs font-semibold text-foreground">Flow rules</h3>
                     <span className="text-[10px] text-muted-foreground">
-                        {singleChoiceRuleCount === 0 ? "No rules" : singleChoiceRuleCount + (singleChoiceRuleCount === 1 ? " rule" : " rules")}
+                        {optionRuleCount === 0 ? "No rules" : optionRuleCount + (optionRuleCount === 1 ? " rule" : " rules")}
                     </span>
                 </div>
 
@@ -705,13 +678,14 @@ export function SkipRulesBuilder({
                                 </select>
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[10px] font-semibold text-muted-foreground">When</label>
+                                <label className="text-[10px] font-semibold text-muted-foreground">When this question's answer</label>
                                 <ConditionBuilder
                                     value={normalizeCondition(rule.condition)}
                                     onChange={(nextCondition) => updateRule(index, { condition: nextCondition })}
                                     nodes={nodes}
                                     edges={edges}
                                     currentNodeId={currentNodeId}
+                                    lockedFieldId={currentNodeId}
                                 />
                             </div>
                         </div>

@@ -3,10 +3,9 @@ import AuthGuard from "@/components/AuthGuard";
 import { DashboardSidebar } from "@/components/dashboard/Sidebar";
 import { DashboardHeader } from "@/components/dashboard/Header";
 import { usePathname } from "next/navigation";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700"] });
-export const jetBrainsMono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "700"] });
 
 export default function DashboardLayout({
     children,

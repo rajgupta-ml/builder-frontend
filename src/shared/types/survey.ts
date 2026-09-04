@@ -19,6 +19,8 @@ export interface Survey {
   client: string; 
   redirectUrl: string | null;
   securityTerminateUrl: string | null;
+  disqualifiedRedirectUrl: string | null;
+  qualityTerminateRedirectUrl: string | null;
   privacyConfig?: {
     privacyMode?: "standard" | "strict";
     responseRetentionDays?: number;

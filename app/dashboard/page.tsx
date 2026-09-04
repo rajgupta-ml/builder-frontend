@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Surveys } from "@/src/shared/types/survey";
 import NewSurveyModal from "@/components/SurveyModal";
 import { toUserMessage } from "@/lib/api-error";
-import { jetBrainsMono } from "@/app/dashboard/layout";
+import { jetBrainsMono } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
 import {
   getStoredUserScopes,

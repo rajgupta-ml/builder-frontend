@@ -8,7 +8,7 @@ import { surveyResponseApi } from "@/api/surveyResponse";
 import type { Surveys } from "@/src/shared/types/survey";
 import { toUserMessage } from "@/lib/api-error";
 import { toast } from "sonner";
-import { jetBrainsMono } from "@/app/dashboard/layout";
+import { jetBrainsMono } from "@/lib/fonts";
 import { AnimatePresence, motion } from "framer-motion";
 
 type SurveyModeMetrics = {

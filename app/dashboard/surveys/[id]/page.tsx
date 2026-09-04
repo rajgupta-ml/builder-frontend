@@ -7,7 +7,7 @@ import '@xyflow/react/dist/style.css';
 import SurveyNodeSidebar from '@/components/SurveyNodeSidebar';
 import PropertiesPanel from '@/components/properties/PropertiesPanel';
 import NodeViewer from '@/components/NodeViewer';
-import { SurveySettingsModal } from '@/components/modals/SurveySettingsModal';
+import { SurveySettingsModal, type SessionOutcome } from '@/components/modals/SurveySettingsModal';
 import { SurveyQuotaModal } from '@/components/modals/SurveyQuotaModal';
 
 import { useSurveyStore } from '@/src/store/useSurveyStore';
@@ -126,6 +126,7 @@ function SurveyFlow() {
 
     // Modal States
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [settingsFocusOutcome, setSettingsFocusOutcome] = useState<SessionOutcome | undefined>(undefined);
     const [isQuotaOpen, setIsQuotaOpen] = useState(false);
     const [isShareOpen, setIsShareOpen] = useState(false);
     const [isAiImportOpen, setIsAiImportOpen] = useState(false);
@@ -164,6 +165,8 @@ function SurveyFlow() {
             survey.redirectUrl ||
             survey.overQuotaUrl ||
             survey.securityTerminateUrl ||
+            survey.disqualifiedRedirectUrl ||
+            survey.qualityTerminateRedirectUrl ||
             survey.globalQuota !== null
         );
         setHasConfiguredSettings(configured);
@@ -481,6 +484,7 @@ function SurveyFlow() {
                     nodes={nodes}
                     issues={selectedNodeIssues}
                     surveyId={surveyId}
+                    survey={survey}
                     readOnly={isReadOnly}
                     onInspectFlowRule={setInspectedFlowRule}
                     onQualityPoliciesChange={setQualityPolicies}
@@ -489,13 +493,21 @@ function SurveyFlow() {
                         updateNodeData(selectedNodeId, { [fieldName]: value });
                     }}
                     onClose={() => setSelectedNodeId(null)}
+                    onOpenSettings={(focusOutcome) => {
+                        setSettingsFocusOutcome(focusOutcome);
+                        setIsSettingsOpen(true);
+                    }}
                 />
             )}
 
             <SurveySettingsModal
                 isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
+                onClose={() => {
+                    setIsSettingsOpen(false);
+                    setSettingsFocusOutcome(undefined);
+                }}
                 surveyId={surveyId || ""}
+                focusOutcome={settingsFocusOutcome}
                 onSave={() => {
                     setHasConfiguredSettings(true);
                     refreshSurveyData(surveyId || "");

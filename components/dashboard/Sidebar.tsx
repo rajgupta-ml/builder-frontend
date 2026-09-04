@@ -13,7 +13,7 @@ import {
     IconChevronLeft,
     IconChevronRight
 } from '@tabler/icons-react';
-import { jetBrainsMono } from '@/app/dashboard/layout';
+import { jetBrainsMono } from '@/lib/fonts';
 
 interface SidebarItemProps {
     href: string;

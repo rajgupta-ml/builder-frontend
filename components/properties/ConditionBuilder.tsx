@@ -34,6 +34,13 @@ interface ConditionBuilderProps {
      */
     optionKeyMode?: OptionKeyMode;
     builderMode?: BuilderMode;
+    /**
+     * When set, every rule's field is locked to this node id — the field
+     * picker is hidden and replaced with a static label. Used where the
+     * condition is inherently "about" one specific question (e.g. a jump
+     * rule's own trigger question) rather than a free pick across ancestors.
+     */
+    lockedFieldId?: string;
 }
 
 const ALL_OPERATORS = [
@@ -264,7 +271,8 @@ export const ConditionBuilder = ({
     currentNodeId,
     fieldKeyMode = 'nodeId',
     optionKeyMode = 'value',
-    builderMode = 'default'
+    builderMode = 'default',
+    lockedFieldId,
 }: ConditionBuilderProps) => {
     const ancestorNodeIds = useMemo(() => {
         if (!currentNodeId || !edges) {
@@ -298,13 +306,17 @@ export const ConditionBuilder = ({
 
     // Determine valid nodes for logic
     const validQuestions = useMemo(() => {
+        if (lockedFieldId) {
+            const lockedNode = nodes.find(n => n.id === lockedFieldId);
+            return lockedNode ? [lockedNode] : [];
+        }
         return nodes.filter(n => {
             const def = getNodeDefinition(n.type || '');
             const isStructural = ['start', 'end', 'branch', 'skip', 'validation', 'merge', 'branchOut', 'image', 'video', 'audio'].includes(n.type || '');
             const isAllowedByGraph = ancestorNodeIds ? ancestorNodeIds.has(n.id) : true;
             return def && !isStructural && n.id !== 'current' && isAllowedByGraph;
         });
-    }, [ancestorNodeIds, nodes]);
+    }, [ancestorNodeIds, nodes, lockedFieldId]);
 
     // Ensure initial value is valid Group
     const rootGroup: LogicGroup = (value && value.type === 'group') ? value : {
@@ -327,6 +339,7 @@ export const ConditionBuilder = ({
                 fieldKeyMode={fieldKeyMode}
                 optionKeyMode={optionKeyMode}
                 builderMode={builderMode}
+                lockedFieldId={lockedFieldId}
                 isRoot={true}
                 onRemove={() => { }} // Root cannot be removed
             />
@@ -335,7 +348,7 @@ export const ConditionBuilder = ({
 };
 
 // Recursive Group Component
-const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKeyMode, optionKeyMode, builderMode }: {
+const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKeyMode, optionKeyMode, builderMode, lockedFieldId }: {
     group: LogicGroup,
     onChange: (g: LogicGroup) => void,
     validQuestions: Node[],
@@ -343,7 +356,8 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
     onRemove: () => void,
     fieldKeyMode: FieldKeyMode,
     optionKeyMode: OptionKeyMode,
-    builderMode: BuilderMode
+    builderMode: BuilderMode,
+    lockedFieldId?: string,
 }) => {
 
     const updateSelf = (updates: Partial<LogicGroup>) => {
@@ -354,7 +368,7 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
         const newRule: LogicRule = {
             id: generateUniqueId('rule'),
             type: 'rule',
-            field: '',
+            field: lockedFieldId || '',
             operator: 'equals',
             value: '',
             valueType: 'static'
@@ -438,6 +452,7 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
                                     fieldKeyMode={fieldKeyMode}
                                     optionKeyMode={optionKeyMode}
                                     builderMode={builderMode}
+                                    lockedFieldId={lockedFieldId}
                                     onRemove={() => removeChild(index)}
                                 />
                             ) : (
@@ -449,6 +464,7 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
                                     fieldKeyMode={fieldKeyMode}
                                     optionKeyMode={optionKeyMode}
                                     builderMode={builderMode}
+                                    lockedFieldId={lockedFieldId}
                                 />
                             )}
                         </div>
@@ -475,7 +491,7 @@ const GroupItem = ({ group, onChange, validQuestions, isRoot, onRemove, fieldKey
     );
 };
 
-const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, optionKeyMode, builderMode }: {
+const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, optionKeyMode, builderMode, lockedFieldId }: {
     rule: LogicRule;
     onUpdate: (r: LogicRule) => void;
     onRemove: () => void;
@@ -483,14 +499,24 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
     fieldKeyMode: FieldKeyMode;
     optionKeyMode: OptionKeyMode;
     builderMode: BuilderMode;
+    lockedFieldId?: string;
 }) => {
     // Local state for the tag input in 'in_range' mode
     const [tagInput, setTagInput] = React.useState('');
 
+    // Keep the rule's field pinned to the locked question, even for older
+    // rules created before it was locked (or if it was ever pointed elsewhere).
+    React.useEffect(() => {
+        if (lockedFieldId && rule.field !== lockedFieldId) {
+            onUpdate({ ...rule, field: lockedFieldId });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lockedFieldId, rule.field]);
+
     // Logic for rendering inputs (same as before but adapted)
     const selectedQuestion = useMemo(
-        () => findQuestionByKey(validQuestions, rule.field, fieldKeyMode),
-        [validQuestions, rule.field, fieldKeyMode]
+        () => findQuestionByKey(validQuestions, lockedFieldId || rule.field, fieldKeyMode),
+        [validQuestions, lockedFieldId, rule.field, fieldKeyMode]
     );
     const selectedQuestionData = (selectedQuestion?.data || {}) as any;
     const availableOperators = getOperatorsForContext(selectedQuestion?.type as string, builderMode);
@@ -553,82 +579,109 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
     };
 
     return (
-        <div className="flex flex-wrap items-center gap-2 p-2 bg-background border border-input rounded-md shadow-sm group hover:border-primary/50 transition-colors">
-            {/* Field Select */}
-            <select
-                className="flex-1 min-w-[100px] text-[10px] p-1.5 rounded border border-input bg-card h-7"
-                disabled={validQuestions.length === 0}
-                value={rule.field}
-                onChange={(e) => {
-                    const newFieldId = e.target.value;
-                    const newQuestion = findQuestionByKey(validQuestions, newFieldId, fieldKeyMode);
-                    const allowedOps = getOperatorsForContext(newQuestion?.type as string, builderMode);
-                    const currentOpValid = allowedOps.some(op => op.value === rule.operator);
-                    onUpdate({
-                        ...rule,
-                        field: newFieldId,
-                        subField: '',
-                        compareField: '',
-                        operator: currentOpValid ? rule.operator : allowedOps[0]?.value || 'equals',
-                        value: currentOpValid ? rule.value : getDefaultRuleValueForOperator(allowedOps[0]?.value || 'equals'),
-                        valueType: 'static'
-                    });
-                }}
-            >
-                <option value="">Field...</option>
-                {validQuestions.map(n => {
-                    const questionKey = getQuestionKey(n, fieldKeyMode);
-                    if (!questionKey) return null;
-                    return (
-                    <option
-                        key={questionKey}
-                        value={questionKey}
+        <div className="space-y-2.5 rounded-md border border-input bg-background p-3 shadow-sm transition-colors group hover:border-primary/50">
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">Rule</span>
+                <button
+                    onClick={onRemove}
+                    className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    title="Remove rule"
+                >
+                    <IconTrash size={13} />
+                </button>
+            </div>
+
+            {/* Field: locked to one question, or a free picker across ancestors */}
+            <div className="space-y-1">
+                <span className="text-[9px] font-medium text-muted-foreground">Question</span>
+                {lockedFieldId ? (
+                    <div
+                        className="flex w-full items-center truncate rounded-md border border-input bg-muted/40 px-2.5 py-2 text-xs font-medium text-muted-foreground"
+                        title={String((selectedQuestion?.data as any)?.label || selectedQuestion?.id || '')}
                     >
-                        {String((n.data as any)?.label || n.id)}
-                    </option>
-                    );
-                })}
-            </select>
-            {validQuestions.length === 0 && (
-                <span className="basis-full text-[10px] text-muted-foreground italic">
-                    No previous questions available for logic at this step.
-                </span>
-            )}
+                        {String((selectedQuestion?.data as any)?.label || selectedQuestion?.id || 'This question')}
+                    </div>
+                ) : (
+                    <>
+                        <select
+                            className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs"
+                            disabled={validQuestions.length === 0}
+                            value={rule.field}
+                            onChange={(e) => {
+                                const newFieldId = e.target.value;
+                                const newQuestion = findQuestionByKey(validQuestions, newFieldId, fieldKeyMode);
+                                const allowedOps = getOperatorsForContext(newQuestion?.type as string, builderMode);
+                                const currentOpValid = allowedOps.some(op => op.value === rule.operator);
+                                onUpdate({
+                                    ...rule,
+                                    field: newFieldId,
+                                    subField: '',
+                                    compareField: '',
+                                    operator: currentOpValid ? rule.operator : allowedOps[0]?.value || 'equals',
+                                    value: currentOpValid ? rule.value : getDefaultRuleValueForOperator(allowedOps[0]?.value || 'equals'),
+                                    valueType: 'static'
+                                });
+                            }}
+                        >
+                            <option value="">Field...</option>
+                            {validQuestions.map(n => {
+                                const questionKey = getQuestionKey(n, fieldKeyMode);
+                                if (!questionKey) return null;
+                                return (
+                                <option
+                                    key={questionKey}
+                                    value={questionKey}
+                                >
+                                    {String((n.data as any)?.label || n.id)}
+                                </option>
+                                );
+                            })}
+                        </select>
+                        {validQuestions.length === 0 && (
+                            <span className="block text-[10px] italic text-muted-foreground">
+                                No previous questions available for logic at this step.
+                            </span>
+                        )}
+                    </>
+                )}
+            </div>
 
             {/* Subfield if Matrix, Slider, Rating, or MultiInput */}
             {shouldShowSubField && (
-                <select
-                    className="flex-1 min-w-[100px] text-[10px] p-1.5 rounded border border-input bg-card h-7"
-                    value={rule.subField || ''}
-                    onChange={(e) => onUpdate({ ...rule, subField: e.target.value })}
-                >
-                    <option value="">
-                        {selectedType === 'matrixChoice' ? 'Row...' :
-                            selectedType === 'multiInput' ? 'Field...' : 'Item...'}
-                    </option>
-                    {(selectedType === 'multiInput'
-                        ? (selectedQuestionData.fields as any[] || [])
-                        : (selectedQuestionData.items as any[] || selectedQuestionData.rows as any[] || [])
-                    ).map((sub: any, i: number) => {
-                        const optionKey = getOptionKey(sub, optionKeyMode);
-                        if (!optionKey) return null;
-                        return (
-                        <option key={optionKey} value={optionKey}>
-                            {sub.label || sub.text || sub.id}
+                <div className="space-y-1">
+                    <span className="text-[9px] font-medium text-muted-foreground">
+                        {selectedType === 'matrixChoice' ? 'Row' : selectedType === 'multiInput' ? 'Field' : 'Item'}
+                    </span>
+                    <select
+                        className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs"
+                        value={rule.subField || ''}
+                        onChange={(e) => onUpdate({ ...rule, subField: e.target.value })}
+                    >
+                        <option value="">
+                            {selectedType === 'matrixChoice' ? 'Row...' :
+                                selectedType === 'multiInput' ? 'Field...' : 'Item...'}
                         </option>
-                        );
-                    })}
-                </select>
+                        {(selectedType === 'multiInput'
+                            ? (selectedQuestionData.fields as any[] || [])
+                            : (selectedQuestionData.items as any[] || selectedQuestionData.rows as any[] || [])
+                        ).map((sub: any, i: number) => {
+                            const optionKey = getOptionKey(sub, optionKeyMode);
+                            if (!optionKey) return null;
+                            return (
+                            <option key={optionKey} value={optionKey}>
+                                {sub.label || sub.text || sub.id}
+                            </option>
+                            );
+                        })}
+                    </select>
+                </div>
             )}
 
             {/* Operator — filtered by selected question type */}
-            <select
-                className={cn(
-                    "shrink-0 text-[10px] p-1.5 rounded border border-input bg-card h-7",
-                    selectedType === 'dateInput' && builderMode !== 'validation'
-                        ? "w-[190px]"
-                        : (isAgeDobConsistencyOperator || isGenericFieldCompareOperator) ? "w-[160px]" : "w-[90px]"
-                )}
+            <div className="space-y-1">
+                <span className="text-[9px] font-medium text-muted-foreground">Condition</span>
+                <select
+                className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs"
                 value={rule.operator}
                 onChange={(e) => {
                     const nextOperator = e.target.value;
@@ -687,13 +740,15 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                         <option key={op.value} value={op.value}>{op.label}</option>
                     ))
                 )}
-            </select>
+                </select>
+            </div>
 
             {/* Value Inputs based on Operator */}
             {!['is_set', 'is_empty'].includes(rule.operator) && (
+                <div className="space-y-1">
+                <span className="text-[9px] font-medium text-muted-foreground">Value</span>
                 <div className={cn(
-                    "flex gap-1 items-center min-w-0 transition-all",
-                    ['in_range', 'not_in_range', 'is_between'].includes(rule.operator) ? "basis-full w-full mt-1 order-last" : "flex-1 min-w-[120px]"
+                    "flex w-full gap-1 items-center min-w-0 transition-all"
                 )}>
 
                     {/* AGE vs DOB CONSISTENCY */}
@@ -935,7 +990,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
 
                                 {rule.valueType === 'variable' && !isAgeDobConsistencyOperator ? (
                                     <select
-                                        className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                        className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs"
                                         value={rule.value}
                                         onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
                                     >
@@ -957,7 +1012,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                     </select>
                                 ) : rule.operator === 'is_postal_code' ? (
                                     <select
-                                        className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                        className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs"
                                         value={rule.value}
                                         onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
                                     >
@@ -970,7 +1025,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                     </select>
                                 ) : questionOptions.length > 0 ? (
                                     <select
-                                        className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                        className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs"
                                         value={rule.value}
                                         onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
                                     >
@@ -991,7 +1046,7 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                                 ) : (
                                     <input
                                         type={isNumericNodeType(selectedQuestion?.type) ? 'number' : 'text'}
-                                        className="w-full text-[10px] p-1.5 rounded border border-input bg-card h-7"
+                                        className="w-full rounded-md border border-input bg-card px-2.5 py-2 text-xs"
                                         placeholder={getValuePlaceholder(selectedQuestion?.type, rule.operator)}
                                         value={rule.value}
                                         onChange={(e) => onUpdate({ ...rule, value: e.target.value })}
@@ -1001,15 +1056,8 @@ const RuleItem = ({ rule, onUpdate, onRemove, validQuestions, fieldKeyMode, opti
                         </>
                     )}
                 </div>
+                </div>
             )}
-
-            {/* Remove Rule */}
-            <button
-                onClick={onRemove}
-                className="shrink-0 p-1 text-muted-foreground hover:text-destructive transition-colors ml-auto"
-            >
-                <IconTrash size={14} />
-            </button>
         </div>
     );
 };

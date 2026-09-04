@@ -104,6 +104,8 @@ export const surveyApi = {
     redirectUrl?: string | null;
     overQuotaUrl?: string | null;
     securityTerminateUrl?: string | null;
+    disqualifiedRedirectUrl?: string | null;
+    qualityTerminateRedirectUrl?: string | null;
     globalQuota?: number | null;
     privacyConfig?: {
       piiOverrideDenylist?: string[];

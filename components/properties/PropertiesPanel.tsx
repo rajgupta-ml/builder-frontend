@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { ConditionBuilder } from "./ConditionBuilder";
 import type { LogicGroup } from "./conditionTypes";
 import { SkipRulesBuilder } from "./SkipRulesBuilder";
+import { BranchPathEditor } from "./BranchPathEditor";
 import type { PropertyPanelTabId } from "@surveystudio/node-registery/builder";
 import { isGhostLogicEdge, type FlowRuleInspection } from "@/lib/skipMigration";
 import { StepsBuilder } from "./StepsBuilder";
@@ -15,6 +16,8 @@ import { MediaPreview } from "../nodes/MediaPreview";
 import { surveyWorkflowApi, type OpenEndQualityPolicyPreview, type WorkflowValidationIssue } from "@/api/surveyWorkflow";
 import { generateRuntimeJson } from "@/lib/compiler";
 import { useSurveyStore } from "@/src/store/useSurveyStore";
+import type { Survey } from "@/src/shared/types/survey";
+import type { SessionOutcome } from "@/components/modals/SurveySettingsModal";
 
 // ... (imports remain same)
 
@@ -23,12 +26,35 @@ interface PropertiesPanelProps {
     nodes: Node[]; // Full list of nodes needed for logic builder
     issues?: WorkflowValidationIssue[];
     surveyId?: string;
+    survey?: Survey | null;
     onChange: (fieldName: string, value: any) => void;
     onClose: () => void;
     onInspectFlowRule?: (inspection: FlowRuleInspection | null) => void;
     onQualityPoliciesChange?: (policies: Record<string, OpenEndQualityPolicyPreview>) => void;
+    onOpenSettings?: (focusOutcome?: SessionOutcome) => void;
     readOnly?: boolean;
 }
+
+const OUTCOME_REDIRECT_LABELS: Record<SessionOutcome, string> = {
+    completed: "Completed",
+    disqualified: "Disqualified",
+    quality_terminate: "Quality Terminate",
+    security_terminate: "Security Terminate",
+};
+
+const resolveOutcomeRedirectUrl = (outcome: unknown, survey: Survey | null | undefined): string | null => {
+    switch (String(outcome || "completed") as SessionOutcome) {
+        case "disqualified":
+            return survey?.disqualifiedRedirectUrl || null;
+        case "quality_terminate":
+            return survey?.qualityTerminateRedirectUrl || null;
+        case "security_terminate":
+            return survey?.securityTerminateUrl || null;
+        case "completed":
+        default:
+            return survey?.redirectUrl || null;
+    }
+};
 
 type OpenEndQualityPreviewState = {
     automaticPolicies: Record<string, OpenEndQualityPolicyPreview>;
@@ -183,7 +209,7 @@ const isFieldVisible = (field: PropertyField, data: Record<string, unknown>) => 
     !field.visible || field.visible(data) !== false
 );
 
-export default function PropertiesPanel({ node, nodes, issues = [], surveyId, onChange, onClose, onInspectFlowRule, onQualityPoliciesChange, readOnly = false }: PropertiesPanelProps) {
+export default function PropertiesPanel({ node, nodes, issues = [], surveyId, survey, onChange, onClose, onInspectFlowRule, onQualityPoliciesChange, onOpenSettings, readOnly = false }: PropertiesPanelProps) {
     const { getEdges: getCanvasEdges } = useReactFlow();
     // The canvas injects transient dependency edges while inspecting flow rules; keep them out
     // of everything that compiles or inspects the persisted workflow.
@@ -257,14 +283,18 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
     const data = useMemo(() => (node?.data || {}) as Record<string, unknown>, [node?.data]);
     const hasStraightLiningPolicy = supportsStraightLiningPolicy(node, data);
 
+    const isEndNode = node?.type === "end";
+
     const panelGroups = useMemo(() => (definition
         ? definition.propertyPanel.groups
             .map((group) => ({
                 ...group,
-                fields: (group.fields as readonly PropertyField[]).filter((field) => isFieldVisible(field, data)),
+                fields: (group.fields as readonly PropertyField[]).filter((field) => (
+                    isFieldVisible(field, data) && !(isEndNode && field.name === "redirectUrl")
+                )),
             }))
             .filter((group) => group.fields.length > 0)
-        : []), [definition, data]);
+        : []), [definition, data, isEndNode]);
 
     const contentGroups = useMemo(() => panelGroups.filter((group) => group.tab === "content"), [panelGroups]);
     const contentFields = useMemo(() => contentGroups.flatMap((group) => group.fields), [contentGroups]);
@@ -434,6 +464,41 @@ export default function PropertiesPanel({ node, nodes, issues = [], surveyId, on
                     </div>
                     <div className="shrink-0 pt-0.5">{control}</div>
                 </div>
+            );
+        }
+
+        if (isEndNode && field.name === "outcome") {
+            const outcome = String(data.outcome ?? field.defaultValue ?? "completed") as SessionOutcome;
+            const resolvedUrl = resolveOutcomeRedirectUrl(outcome, survey);
+            return (
+                <React.Fragment key={field.name}>
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-foreground">{field.label}</label>
+                        {control}
+                        {field.helperText && <p className="text-[10px] text-muted-foreground italic">{field.helperText}</p>}
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-foreground">Redirect URL</label>
+                        <div className="flex items-center gap-2">
+                            <div className={cn(
+                                "flex-1 min-w-0 truncate rounded-md border border-input bg-muted/30 px-2.5 py-1.5 text-xs",
+                                resolvedUrl ? "text-foreground" : "text-muted-foreground italic"
+                            )}>
+                                {resolvedUrl || "Not set"}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => onOpenSettings?.(outcome)}
+                                className="shrink-0 rounded-md border border-input px-2 py-1.5 text-[11px] font-medium text-foreground hover:bg-muted transition-colors"
+                            >
+                                Edit URL
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground italic">
+                            {OUTCOME_REDIRECT_LABELS[outcome]} redirect, managed in Survey Settings.
+                        </p>
+                    </div>
+                </React.Fragment>
             );
         }
 
@@ -1837,6 +1902,18 @@ function FieldRenderer({
 
     switch (field.type) {
         case 'condition': {
+            if (nodeType === 'branch' && nodeId) {
+                return (
+                    <BranchPathEditor
+                        value={value || { id: 'root', type: 'group', logicType: 'OR', children: [] }}
+                        onChange={onChange}
+                        nodes={nodes}
+                        edges={edges}
+                        currentNodeId={nodeId}
+                        readOnly={readOnly}
+                    />
+                );
+            }
             const copy = getConditionPanelCopy(nodeType, field.label);
             const ruleCount = countConditionRules(value);
             const isActive = ruleCount > 0;

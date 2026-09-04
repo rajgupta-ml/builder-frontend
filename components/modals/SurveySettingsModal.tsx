@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { surveyApi } from "@/api/survey";
 import { surveyLinkApi, type SurveyGleLink, type AvailableGleProject } from "@/api/surveyLink";
 import { Survey } from "@/src/shared/types/survey";
@@ -12,14 +12,49 @@ import { getStoredUserScopes, hasPermission, PERMISSIONS } from "@/lib/permissio
 
 const GLE_BASE = process.env.NEXT_PUBLIC_GLE_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:5173" : "https://gle.algorithmicintelmatrix.com");
 
+const URL_FIELD_KEYS = ["overQuotaUrl", "redirectUrl", "disqualifiedRedirectUrl", "qualityTerminateRedirectUrl", "securityTerminateUrl"] as const;
+type UrlFieldKey = typeof URL_FIELD_KEYS[number];
+
+const HOSTNAME_LABEL = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+const IPV4_HOSTNAME = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+const isValidHostname = (hostname: string): boolean => {
+    if (!hostname || hostname.endsWith(".")) return false; // trailing dot is usually a typo, not intentional FQDN
+    if (hostname === "localhost" || IPV4_HOSTNAME.test(hostname)) return true;
+    const labels = hostname.split(".");
+    if (labels.length < 2) return false; // require a TLD, e.g. reject bare "example"
+    return labels.every((label) => HOSTNAME_LABEL.test(label));
+};
+
+const getUrlFormatError = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        return "Broken URL — check the format (e.g. https://example.com/page)";
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "Broken URL — must start with http:// or https://";
+    }
+    if (!isValidHostname(parsed.hostname)) {
+        return "Broken URL — invalid or malformed host";
+    }
+    return null;
+};
+
+export type SessionOutcome = "completed" | "disqualified" | "quality_terminate" | "security_terminate";
+
 interface SurveySettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
     surveyId: string;
     onSave?: () => void; // Final callback to refresh state in parent
+    focusOutcome?: SessionOutcome; // Scrolls/highlights the matching redirect field on open
 }
 
-export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: SurveySettingsModalProps) {
+export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave, focusOutcome }: SurveySettingsModalProps) {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [survey, setSurvey] = useState<Survey | null>(null);
@@ -42,9 +77,25 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
         redirectUrl: "",
         overQuotaUrl: "",
         securityTerminateUrl: "",
-        globalQuota: "",
-        piiOverrideDenylist: ""
+        disqualifiedRedirectUrl: "",
+        qualityTerminateRedirectUrl: "",
+        globalQuota: ""
     });
+
+    const urlErrors = useMemo(() => (
+        URL_FIELD_KEYS.reduce((acc, key) => {
+            acc[key] = getUrlFormatError(formData[key]);
+            return acc;
+        }, {} as Record<UrlFieldKey, string | null>)
+    ), [formData]);
+    const hasUrlErrors = URL_FIELD_KEYS.some((key) => urlErrors[key] !== null);
+
+    const outcomeFieldRefs = {
+        completed: useRef<HTMLDivElement>(null),
+        disqualified: useRef<HTMLDivElement>(null),
+        quality_terminate: useRef<HTMLDivElement>(null),
+        security_terminate: useRef<HTMLDivElement>(null),
+    } as const;
 
     useEffect(() => {
         const controller = new AbortController();
@@ -60,6 +111,16 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
         }
         return () => controller.abort();
     }, [isOpen, surveyId]);
+
+    useEffect(() => {
+        if (!isOpen || loading || !focusOutcome) return;
+        const node = outcomeFieldRefs[focusOutcome]?.current;
+        if (!node) return;
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+        node.classList.add("ring-2", "ring-primary/50");
+        const timeout = window.setTimeout(() => node.classList.remove("ring-2", "ring-primary/50"), 2000);
+        return () => window.clearTimeout(timeout);
+    }, [isOpen, loading, focusOutcome]);
 
     const fetchGleLink = async () => {
         setGleLinkLoading(true);
@@ -125,10 +186,9 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                 redirectUrl: data.redirectUrl || "",
                 overQuotaUrl: data.overQuotaUrl || "",
                 securityTerminateUrl: data.securityTerminateUrl || "",
-                globalQuota: data.globalQuota !== null ? String(data.globalQuota) : "",
-                piiOverrideDenylist: Array.isArray(data.privacyConfig?.piiOverrideDenylist)
-                    ? data.privacyConfig!.piiOverrideDenylist!.join("\n")
-                    : ""
+                disqualifiedRedirectUrl: data.disqualifiedRedirectUrl || "",
+                qualityTerminateRedirectUrl: data.qualityTerminateRedirectUrl || "",
+                globalQuota: data.globalQuota !== null ? String(data.globalQuota) : ""
             });
         } catch (error) {
             if (signal?.aborted) return;
@@ -142,6 +202,10 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
 
     const handleSave = async () => {
         if (!survey) return;
+        if (hasUrlErrors) {
+            toast.error("Fix the broken URL(s) before saving.");
+            return;
+        }
         setSaving(true);
         try {
             const updates: Parameters<typeof surveyApi.updateSurvey>[1] = {};
@@ -165,24 +229,19 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                 updates.securityTerminateUrl = newSecurityTerminateUrl;
             }
 
+            const newDisqualifiedRedirectUrl = getUrlValue(formData.disqualifiedRedirectUrl);
+            if (newDisqualifiedRedirectUrl !== survey.disqualifiedRedirectUrl) {
+                updates.disqualifiedRedirectUrl = newDisqualifiedRedirectUrl;
+            }
+
+            const newQualityTerminateRedirectUrl = getUrlValue(formData.qualityTerminateRedirectUrl);
+            if (newQualityTerminateRedirectUrl !== survey.qualityTerminateRedirectUrl) {
+                updates.qualityTerminateRedirectUrl = newQualityTerminateRedirectUrl;
+            }
+
             const newGlobalQuota = formData.globalQuota !== "" ? parseInt(formData.globalQuota) : null;
             if (newGlobalQuota !== survey.globalQuota) {
                 updates.globalQuota = newGlobalQuota;
-            }
-
-            const parsedOverrides = formData.piiOverrideDenylist
-                .split(/[\n,]+/)
-                .map((item) => item.trim())
-                .filter((item) => item.length > 0);
-            const currentOverrides = Array.isArray(survey.privacyConfig?.piiOverrideDenylist)
-                ? survey.privacyConfig!.piiOverrideDenylist!
-                : [];
-            const changedOverrides = parsedOverrides.join("|") !== currentOverrides.join("|");
-            if (changedOverrides) {
-                updates.privacyConfig = {
-                    ...(survey.privacyConfig || {}),
-                    piiOverrideDenylist: parsedOverrides
-                };
             }
 
             if (Object.keys(updates).length > 0) {
@@ -256,7 +315,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                 <input
                                                     type="url"
                                                     placeholder="https://example.com/over-quota"
-                                                    className="flex-1 bg-muted/30 border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                                    className={`flex-1 bg-muted/30 border rounded-xl px-4 py-3 text-sm focus:ring-2 outline-none transition-all ${urlErrors.overQuotaUrl ? "border-destructive focus:ring-destructive/20" : "border-border focus:ring-primary/20"}`}
                                                     value={formData.overQuotaUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, overQuotaUrl: e.target.value }))}
                                                 />
@@ -264,23 +323,27 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
+                                            {urlErrors.overQuotaUrl && <p className="text-xs text-destructive">{urlErrors.overQuotaUrl}</p>}
                                         </div>
                                     </div>
 
-                                    {/* Redirects Section */}
+                                    {/* Session Outcome Redirects Section */}
                                     <div className="space-y-4">
                                         <div className="flex items-center gap-2 pb-2 border-b border-border">
                                             <IconExternalLink size={18} className="text-blue-600" />
-                                            <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Redirects</h4>
+                                            <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Session Outcome Redirects</h4>
                                         </div>
+                                        <p className="text-xs text-muted-foreground -mt-2">
+                                            Every End node picks one of these outcomes and redirects here. These URLs are only set here — not per node.
+                                        </p>
 
-                                        <div className="grid gap-2">
-                                            <label className="text-sm font-semibold">Default Completion Redirect</label>
+                                        <div ref={outcomeFieldRefs.completed} className="grid gap-2 rounded-xl transition-shadow">
+                                            <label className="text-sm font-semibold">Completed Redirect</label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="url"
                                                     placeholder="https://example.com/thank-you"
-                                                    className="flex-1 bg-muted/30 border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                                    className={`flex-1 bg-muted/30 border rounded-xl px-4 py-3 text-sm focus:ring-2 outline-none transition-all ${urlErrors.redirectUrl ? "border-destructive focus:ring-destructive/20" : "border-border focus:ring-primary/20"}`}
                                                     value={formData.redirectUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, redirectUrl: e.target.value }))}
                                                 />
@@ -288,15 +351,50 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
+                                            {urlErrors.redirectUrl && <p className="text-xs text-destructive">{urlErrors.redirectUrl}</p>}
                                         </div>
 
-                                        <div className="grid gap-2">
+                                        <div ref={outcomeFieldRefs.disqualified} className="grid gap-2 rounded-xl transition-shadow">
+                                            <label className="text-sm font-semibold">Disqualified Redirect</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="url"
+                                                    placeholder="https://example.com/disqualified"
+                                                    className={`flex-1 bg-muted/30 border rounded-xl px-4 py-3 text-sm focus:ring-2 outline-none transition-all ${urlErrors.disqualifiedRedirectUrl ? "border-destructive focus:ring-destructive/20" : "border-border focus:ring-primary/20"}`}
+                                                    value={formData.disqualifiedRedirectUrl}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, disqualifiedRedirectUrl: e.target.value }))}
+                                                />
+                                                <button title="External Link" className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.disqualifiedRedirectUrl)}>
+                                                    <IconExternalLink size={20} />
+                                                </button>
+                                            </div>
+                                            {urlErrors.disqualifiedRedirectUrl && <p className="text-xs text-destructive">{urlErrors.disqualifiedRedirectUrl}</p>}
+                                        </div>
+
+                                        <div ref={outcomeFieldRefs.quality_terminate} className="grid gap-2 rounded-xl transition-shadow">
+                                            <label className="text-sm font-semibold">Quality Terminate Redirect</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="url"
+                                                    placeholder="https://example.com/quality-terminate"
+                                                    className={`flex-1 bg-muted/30 border rounded-xl px-4 py-3 text-sm focus:ring-2 outline-none transition-all ${urlErrors.qualityTerminateRedirectUrl ? "border-destructive focus:ring-destructive/20" : "border-border focus:ring-primary/20"}`}
+                                                    value={formData.qualityTerminateRedirectUrl}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, qualityTerminateRedirectUrl: e.target.value }))}
+                                                />
+                                                <button title="External Link" className="p-3 hover:bg-muted rounded-xl border border-border text-muted-foreground" onClick={() => openPreview(formData.qualityTerminateRedirectUrl)}>
+                                                    <IconExternalLink size={20} />
+                                                </button>
+                                            </div>
+                                            {urlErrors.qualityTerminateRedirectUrl && <p className="text-xs text-destructive">{urlErrors.qualityTerminateRedirectUrl}</p>}
+                                        </div>
+
+                                        <div ref={outcomeFieldRefs.security_terminate} className="grid gap-2 rounded-xl transition-shadow">
                                             <label className="text-sm font-semibold">Security Terminate Redirect</label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="url"
                                                     placeholder="https://example.com/security-fail"
-                                                    className="flex-1 bg-muted/30 border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                                    className={`flex-1 bg-muted/30 border rounded-xl px-4 py-3 text-sm focus:ring-2 outline-none transition-all ${urlErrors.securityTerminateUrl ? "border-destructive focus:ring-destructive/20" : "border-border focus:ring-primary/20"}`}
                                                     value={formData.securityTerminateUrl}
                                                     onChange={(e) => setFormData(prev => ({ ...prev, securityTerminateUrl: e.target.value }))}
                                                 />
@@ -304,6 +402,7 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                                     <IconExternalLink size={20} />
                                                 </button>
                                             </div>
+                                            {urlErrors.securityTerminateUrl && <p className="text-xs text-destructive">{urlErrors.securityTerminateUrl}</p>}
                                         </div>
                                     </div>
 
@@ -457,25 +556,6 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                                             </div>
                                         )}
                                     </div>
-
-                                    <div className="space-y-4">
-                                        <div className="flex items-center gap-2 pb-2 border-b border-border">
-                                            <IconAlertTriangle size={18} className="text-amber-600" />
-                                            <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">PII Overrides</h4>
-                                        </div>
-                                        <div className="grid gap-2">
-                                            <label className="text-sm font-semibold">PII Technical ID Denylist</label>
-                                            <textarea
-                                                placeholder={"Enter one technical ID per line\nExample: q_email, field_phone"}
-                                                className="min-h-[120px] bg-muted/30 border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-y"
-                                                value={formData.piiOverrideDenylist}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, piiOverrideDenylist: e.target.value }))}
-                                            />
-                                            <p className="text-xs text-muted-foreground">
-                                                Any ID listed here is always treated as PII, encrypted at rest, and excluded from analytics exports.
-                                            </p>
-                                        </div>
-                                    </div>
                                 </>
                             )}
                         </div>
@@ -490,7 +570,8 @@ export function SurveySettingsModal({ isOpen, onClose, surveyId, onSave }: Surve
                             </button>
                             <button
                                 onClick={handleSave}
-                                disabled={saving || loading}
+                                disabled={saving || loading || hasUrlErrors}
+                                title={hasUrlErrors ? "Fix the broken URL(s) before saving" : undefined}
                                 className="flex items-center gap-2 px-6 py-2 bg-primary text-white text-sm font-bold rounded-lg shadow hover:bg-primary/90 transition-all disabled:opacity-70"
                             >
                                 {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <IconDeviceFloppy size={18} />}
