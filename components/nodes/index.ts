@@ -91,6 +91,17 @@ const getBuilder = (type: string): RegistryBuilderEntry | undefined => {
     return builderRegistry[type as keyof typeof builderRegistry] as unknown as RegistryBuilderEntry | undefined;
 };
 
+// Hides options with a blank label from the canvas preview only — the
+// underlying node data (properties panel, saved survey, runner) is untouched.
+const withVisibleOptionsOnly = (data: Record<string, unknown>): Record<string, unknown> => {
+    if (!Array.isArray(data.options)) return data;
+    const visibleOptions = (data.options as Array<Record<string, unknown>>).filter(
+        (option) => String(option?.label ?? '').trim() !== ''
+    );
+    if (visibleOptions.length === data.options.length) return data;
+    return { ...data, options: visibleOptions };
+};
+
 const renderCanvas = (props: NodeProps<any>) => {
     const entry = getBuilder(String(props.type || ''));
     const CanvasComponent = entry?.CanvasComponent;
@@ -102,7 +113,7 @@ const renderCanvas = (props: NodeProps<any>) => {
     return e(CanvasComponent as React.ComponentType<any>, {
         id: props.id,
         type: String(props.type || ''),
-        data: props.data,
+        data: withVisibleOptionsOnly(props.data as Record<string, unknown>),
         selected: props.selected,
     });
 };
