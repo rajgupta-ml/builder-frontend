@@ -20,6 +20,9 @@ const SCOPE_CATALOG: Record<TeamOrg["platformAccess"][number], Array<{ scope: st
     { scope: "gle:qualifications.write", label: "Create / edit qualifications" },
     { scope: "gle:commissions.manage", label: "Manage commissions" },
     { scope: "gle:logs.read", label: "View audit logs" },
+    { scope: "gle:reports.read", label: "View reports" },
+    { scope: "gle:msa_templates.manage", label: "Manage MSA templates" },
+    { scope: "gle:msa.personalize", label: "Personalize MSAs" },
   ],
   survey_studio: [
     { scope: "survey_studio:survey.read", label: "View surveys" },
